@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/.copilot/PLAN-2025-08-13.md">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/.copilot/PLAN-2025-08-13.md" />
+              <option name="updatedContent" value="# PLC 컴파일 파이프라인/동기화 작업 계획 및 상태 기록&#10;&#10;- 작성일: 2025-08-13&#10;- 대상 단계: Phase 2 (입출력 동기화 단일화), Phase 3 (타이머/카운터 초기화)&#10;- 작성 목적: 두 단계 실행 전 현재 상태 점검과 상세 작업 계획/DoD/리스크/테스트 항목을 명시하여 작업 추적 및 회귀 방지&#10;&#10;## 1) 현재 파악된 프로젝트 상태 요약&#10;- ProgrammingMode&#10;  - UpdateInputsFromSystem(map&lt;string,bool&gt;) 존재 여부 확인 필요&#10;  - NeedsRecompilation(), ComputeProgramHash() 존재 여부 확인 필요&#10;  - 타이머/카운터 상태 맵(m_timerStates/m_counterStates) 및 초기화 루틴 존재 여부 확인 필요&#10;- Application_Physics&#10;  - 물리 → X 입력 전달 경로 유무 확인 필요&#10;  - PLC 출력(Y) → 물리엔진 동기화 경로 존재 여부 확인 필요&#10;- CompiledPLCExecutor&#10;  - X/Y/M 디바이스 상태 접근자(Get/SetDeviceState) 존재 여부 확인 필요&#10;&#10;(참고: 실제 실행 전, 상기 존재 여부를 코드 기준으로 재확인하고 갭이 있으면 보완)&#10;&#10;## 2) 목표(Phase 2/3)&#10;- Phase 2: 입력/출력 동기화 경로를 단일화하고, 범위·경계 검증 및 변경 감지 기반 갱신으로 안정화/최적화한다.&#10;- Phase 3: 래더에서 참조되는 T/C 주소를 스캔해 기본 상태를 안전하게 초기화하고, preset 파싱 유효성을 강화한다.&#10;&#10;## 3) 상세 작업 항목(체크리스트)&#10;### Phase 2: 입출력 동기화 단일화&#10;- [ ] 입력 단일 진입점 확보: ProgrammingMode::UpdateInputsFromSystem(std::map&lt;std::string,bool&gt;) 사용&#10;- [ ] 물리 → ProgrammingMode 입력 전달: Application_Physics에서 X0..X15 전압 → bool(12V 임계) 변환 후 UpdateInputsFromSystem 호출&#10;- [ ] PLC → 디바이스 출력 동기화: ProgrammingMode::SyncOpenPLCToDevices()&#10;  - [ ] Y0..Y15 전체 범위 커버&#10;  - [ ] M0..M999까지 확장(경계 체크)&#10;  - [ ] 변경 시에만 갱신(불필요한 write 최소화)&#10;- [ ] 입력 경계 검증: ProgrammingMode::SyncPhysicsToOpenPLC()에서 X0..X15만 허용&#10;- [ ] 예외/로그: 비정상 주소/형식 파싱 실패 시 경고 로그 남김&#10;&#10;### Phase 3: 타이머/카운터 초기화&#10;- [ ] SetLadderProgram() 시 래더 스캔으로 T/C 주소 집합 구성&#10;- [ ] 미존재 상태 생성, 기존 상태 보존 정책 유지&#10;- [ ] preset 파싱 강화: stoi 실패/음수 → 0으로 클램핑, 경고 로그 출력&#10;- [ ] TON: enabled/value/done 재설정 정책 점검, CTU: lastPower 처리 포함&#10;&#10;## 4) 영향 받는 파일&#10;- include/ProgrammingMode.h&#10;- src/ProgrammingMode.cpp&#10;- src/ProgrammingMode_Sim.cpp&#10;- src/Application_Physics.cpp&#10;- (간접) include/CompiledPLCExecutor.h, src/CompiledPLCExecutor.cpp&#10;&#10;## 5) 완료 기준(Definition of Done)&#10;- 빌드 성공 및 런타임 크래시 없음&#10;- X 입력이 물리 상태 변화에 따라 ProgrammingMode에 일관되게 반영됨(단일 경로)&#10;- Y0..Y15, M0..M999 출력이 엔진 결과에 맞춰 변경 감지 기반으로 반영됨&#10;- T/C 주소 스캔으로 초기 상태가 자동 생성되며 preset 유효성 검사 로그 출력됨&#10;- 기본 시나리오 테스트(아래) 통과&#10;&#10;## 6) 테스트 시나리오&#10;- [ ] 기본 로직: X0 → XIC → OTE Y0 토글&#10;- [ ] 수직 OR 연결 동작 확인(두 경로 중 하나 ON 시 Y 동작)&#10;- [ ] TON: preset에 따른 done 타이밍 확인(유효/무효 preset 케이스)&#10;- [ ] CTU: 상승엣지 카운트 및 preset 달성 시 done 확인&#10;- [ ] 편집 → SetLadderProgram → 재컴파일/재초기화 흐름 정상&#10;- [ ] 컴파일 실패 시 폴백/로그 동작 확인&#10;&#10;## 7) 리스크 및 완화&#10;- 대형 래더에서 M0..M999 전량 동기화 비용 증가 → 사용 주소만 동기화하는 최적화 계획(후속)&#10;- 주소 파싱 실패로 무시된 디바이스 발생 → 경고 로그와 테스트 케이스로 조기 검출&#10;- 물리/PLC 업데이트 순서 경쟁 → 단일 진입점 유지 및 프레임 내 순서 고정&#10;&#10;## 8) 롤백 계획&#10;- 변경 전 브랜치/커밋 태그 보존&#10;- Phase 2/3 변경이 문제 유발 시, 이전 버전으로 즉시 롤백 후 문제 포인트 단위 재적용&#10;&#10;## 9) 작업 타임라인(예상)&#10;- Phase 2: ~1일&#10;- Phase 3: ~1일&#10;&#10;## 10) 변경 이력 템플릿&#10;- 2025-08-13: 계획서 초안 작성(본 문서)&#10;- YYYY-MM-DD: Phase 2 적용, 테스트 결과 요약, 남은 이슈&#10;- YYYY-MM-DD: Phase 3 적용, 테스트 결과 요약, 남은 이슈&#10;" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
