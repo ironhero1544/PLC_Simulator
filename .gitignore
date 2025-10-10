@@ -1,0 +1,84 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+bin/
+lib/
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Object files
+*.o
+*.obj
+*.lo
+*.slo
+
+# Libraries
+*.lib
+*.a
+*.so
+*.dylib
+*.dll
+
+# Compiled Dynamic libraries
+*.so.*
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# IDE settings
+.idea/
+.vscode/
+.vs/
+*.suo
+*.user
+*.sln.docstates
+*.vcxproj.user
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# Compilation database (generated)
+compile_commands.json
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Test results
+Testing/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Backup files from migration
+*.old
+*.backup

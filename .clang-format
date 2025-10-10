@@ -1,0 +1,95 @@
+---
+# Google C++ Style Guide 기반 clang-format 설정
+# PLC Emulator 프로젝트용
+
+Language: Cpp
+BasedOnStyle: Google
+
+# 기본 들여쓰기: 2칸
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+
+# 줄 길이 제한
+ColumnLimit: 80
+
+# 접근 지정자 들여쓰기
+AccessModifierOffset: -1
+
+# 괄호 정렬
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Left
+AlignOperands: true
+AlignTrailingComments: true
+
+# 짧은 구문 허용
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+
+# 줄바꿈 전 중괄호
+BreakBeforeBraces: Attach
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+
+# 생성자 초기화 리스트
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+
+# 포인터 및 참조 정렬
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# 빈 줄 정책
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+
+# 네임스페이스 들여쓰기
+NamespaceIndentation: None
+
+# Include 정렬
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  # 1. 대응 헤더 (자동 감지)
+  - Regex: '^".*\.h"'
+    Priority: 1
+  # 2. C 시스템 헤더
+  - Regex: '^<.*\.h>'
+    Priority: 2
+  # 3. C++ 시스템 헤더
+  - Regex: '^<.*>'
+    Priority: 3
+  # 4. 외부 라이브러리 (glad, GLFW, imgui)
+  - Regex: '^<(glad|GLFW|imgui)'
+    Priority: 4
+  # 5. 기타
+  - Regex: '.*'
+    Priority: 5
+
+# 주석 정렬
+ReflowComments: true
+
+# 공백 정책
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: true
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# 기타
+Standard: c++20
+---
