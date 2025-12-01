@@ -1,3 +1,8 @@
+// programming_mode.h
+// Copyright 2024 PLC Emulator Project
+//
+// Ladder diagram editor and simulator.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
 
@@ -66,7 +71,9 @@ struct SimulatorState {
 
   /**
    * @brief Deep copy constructor
+    * Deep copy c위구조체또는
    * @param other Source state to copy from
+    * Source st에서e copy 부터
    */
   SimulatorState(const SimulatorState& other)
       : deviceStates(other.deviceStates),
@@ -77,8 +84,11 @@ struct SimulatorState {
 
   /**
    * @brief Assignment operator with timestamp update
+    * Assignment oper에서또는 와 함께 timestmp 업데이트
    * @param other Source state to assign from
+    * Source st에서e 로서sign 부터
    * @return Reference to this object
+    * Reference 이 객체
    */
   SimulatorState& operator=(const SimulatorState& other) {
     if (this != &other) {
@@ -93,8 +103,11 @@ struct SimulatorState {
 
   /**
    * @brief Update device state with automatic sequence tracking
+    * 업데이트 device st에서e 와 함께 um에서ic sequence trck내g
    * @param address Device address to update
+    * Device 추가ress 업데이트
    * @param state New device state
+    * New device st에서e
    */
   void UpdateDeviceState(const std::string& address, bool state) {
     deviceStates[address] = state;
@@ -123,13 +136,17 @@ struct VerticalConnection {
 
   /**
    * @brief Get starting rung number
+    * 가져오기 strt내g rung 번호
    * @return First rung number or 0 if empty
+    * First rung 번호 또는 0 만약 empty
    */
   int startRung() const { return rungs.empty() ? 0 : rungs.front(); }
 
   /**
    * @brief Get ending rung number
+    * 가져오기 end내g rung 번호
    * @return Last rung number or 0 if empty
+    * L로서t rung 번호 또는 0 만약 empty
    */
   int endRung() const { return rungs.empty() ? 0 : rungs.back(); }
 };
@@ -149,90 +166,114 @@ class ProgrammingMode {
  public:
   /**
    * @brief Constructor with optional application reference
+    * C위구조체또는 와 함께 opti위l pplic에서i위 참조
    * @param app Pointer to Application instance for project operations
+    * Po내ter Applic에서i위 인스턴스 위한 project oper에서i위s
    */
   ProgrammingMode(plc::Application* app = nullptr);
 
   /**
    * @brief Initialize programming mode components and state
+    * 초기화 프로그램m내g mode 컴포넌트s 및 st에서e
    */
   void Initialize();
 
   /**
    * @brief Update programming mode logic and state
+    * 업데이트 프로그램m내g mode logic 및 st에서e
    */
   void Update();
 
   /**
    * @brief Update with PLC running state for conditional behavior
+    * 업데이트 와 함께 PLC runn내g st에서e 위한 c위diti위l 이다hvi또는
    * @param isPlcRunning Current PLC execution state
+    * Current PLC executi위 st에서e
    */
   void UpdateWithPlcState(bool isPlcRunning);
 
   /**
    * @brief Handle keyboard input for ladder editing
+    * 처리 keybord 입력 위한 래더 edit내g
    * @param key Key code of pressed key
+    * Key code 의 pressed key
    */
   void HandleKeyboardInput(int key);
 
   /**
    * @brief Render complete programming mode user interface
+    * 렌더링 complete 프로그램m내g mode user 내terfce
    * @param isPlcRunning Current PLC execution state for UI context
+    * Current PLC executi위 st에서e 위한 UI c위text
    */
   void RenderProgrammingModeUI(bool isPlcRunning);
 
   /**
    * @brief Set monitor mode for read-only ladder viewing
+    * 설정 m위it또는 mode 위한 red-위ly 래더 view내g
    * @param monitor True for monitor mode, false for edit mode
+    * True 위한 m위it또는 mode, 거짓 위한 edit mode
    */
   void SetMonitorMode(bool monitor) { is_monitor_mode_ = monitor; }
 
   /**
    * @brief Save current ladder program to OpenPLC .ld format
+    * 저장 current 래더 프로그램 OpenPLC .ld 위한m에서
    * @param filepath Target file path for .ld output
+    * Tr가져오기 파일 경로 위한 .ld 출력
    */
   void SaveLadderProgramToLD(const std::string& filepath);
 
   /**
    * @brief Test compilation of .ld file using OpenPLC compiler
+    * Test compil에서i위 의 .ld 파일 us내g OpenPLC 컴파일r
    * @param ldFilepath Path to .ld file to compile and test
+    * P에서h .ld 파일 컴파일 및 test
    */
   void TestCompileLDFile(const std::string& ldFilepath);
 
   /**
    * @brief Get current ladder program (read-only access)
+    * 가져오기 current 래더 프로그램 (red-위ly ccess)
    * @return Const reference to current ladder program
+    * C위st 참조 current 래더 프로그램
    */
   const LadderProgram& GetLadderProgram() const;
 
   /**
    * @brief Set new ladder program with state synchronization
+    * 설정 new 래더 프로그램 와 함께 st에서e synchr위iz에서i위
    * @param program New ladder program to load
+    * New 래더 프로그램 로드
    */
   void SetLadderProgram(const LadderProgram& program);
 
   /**
    * @brief Get current device states (read-only access)
+    * 가져오기 current device st에서es (red-위ly ccess)
    * @return Const reference to device state map
+    * C위st 참조 device st에서e 맵
    */
   const std::map<std::string, bool>& GetDeviceStates() const;
 
   /**
    * @brief Get current timer states (read-only access)
+    * 가져오기 current timer st에서es (red-위ly ccess)
    * @return Const reference to timer state map
+    * C위st 참조 timer st에서e 맵
    */
   const std::map<std::string, TimerState>& GetTimerStates() const;
 
   /**
    * @brief Get current counter states (read-only access)
+    * 가져오기 current 개수er st에서es (red-위ly ccess)
    * @return Const reference to counter state map
+    * C위st 참조 개수er st에서e 맵
    */
   const std::map<std::string, CounterState>& GetCounterStates() const;
 
-  // === 신규: 시스템 입력(X) 단일 진입점 반영 ===
   void UpdateInputsFromSystem(const std::map<std::string, bool>& inputs);
 
-  // === Phase 4: 엔진 상태 조회 API ===
   bool IsUsingCompiledEngine() const { return use_compiled_engine_; }
   bool HasCompiledCodeLoaded() const { return !current_compiled_code_.empty(); }
   const char* GetEngineType() const {
@@ -246,7 +287,6 @@ class ProgrammingMode {
   int GetLastInstructionCount() const { return last_instruction_count_; }
   const std::string& GetLastScanError() const { return last_scan_error_; }
 
-  // === GXWorks2 기본 정규화 모드 ===
   void SetGX2NormalizationEnabled(bool enabled) {
     gx2_normalization_enabled_ = enabled;
   }
@@ -331,7 +371,6 @@ class ProgrammingMode {
   void ProcessPendingStateUpdates();     // 대��� 중인 상태 업데이트 처리
   void SafeUpdateUI(const SimulatorState& state);  // 안전한 UI 업데이트
 
-  // === GXWorks2 기본 정규화 ===
   LadderProgram NormalizeLadderGX2(
       const LadderProgram& src);  // 컴파일/실행 직전 내부 정규화
 
@@ -378,13 +417,11 @@ class ProgrammingMode {
   char temp_address_buffer_[64];
   int vertical_line_count_;
 
-  // === 신규: 재컴파일 트리거 상태 ===
   bool is_dirty_ = false;         // 레더 변경됨
   size_t last_compiled_hash_ = 0;  // 마지막 컴파일된 레더 해시
   size_t ComputeProgramHash(const LadderProgram& program) const;  // 해시 계산
   void MarkDirty() { is_dirty_ = true; }  // 더티 표시 헬퍼
 
-  // === 신규: T/C 초기화 헬퍼 ===
   void InitializeTimersAndCountersFromProgram();
 
   // 사용 중인 코일 주소 수집 (OTE/SET/RST 대상)
@@ -392,14 +429,12 @@ class ProgrammingMode {
   // 사용 중인 입력(X) 주소 수집 (XIC/XIO 대상)
   void GetUsedInputs(std::vector<std::string>& inputs) const;
 
-  // === Phase 4: 상태 가시성��� 내부 캐시 ===
   std::string last_compile_error_;  // 마지막 컴파일 에러 메시지
   bool last_scan_success_ = false;  // 최근 스캔 성공 여부
   int last_cycle_time_us_ = 0;       // 최근 스캔 사이클 시간(us)
   int last_instruction_count_ = 0;  // 최근 실행된 명령어 수
   std::string last_scan_error_;     // 최근 스캔 에러 메시지
 
-  // === GX2 정규화 상태 ===
   bool gx2_normalization_enabled_ = true;   // 기본 ON
   int last_normalization_fix_count_ = 0;     // 최근 정규화에서 적용된 수정 수
   std::string last_normalization_summary_;  // 최근 정규화 요약(경고/보정 내역)

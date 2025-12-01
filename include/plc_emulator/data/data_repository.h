@@ -1,3 +1,8 @@
+// data_repository.h
+// Copyright 2024 PLC Emulator Project
+//
+// Central data storage for simulation state.
+
 // include/DataRepository.h
 // C언어 스타일 데이터 저장소 패턴 구현
 // 구조체 + 함수 포인터 기반으로 데이터 접근 계층 분리
@@ -15,7 +20,6 @@
 
 namespace plc {
 
-// === ComponentRepository: 실배선 컴포넌트 관리 ===
 
 typedef struct ComponentRepository {
   // 데이터 저장소 (STL 컨테이너 사용)
@@ -36,7 +40,6 @@ ComponentRepository* CreateComponentRepository(
     std::vector<PlacedComponent>* components);
 void DestroyComponentRepository(ComponentRepository* repo);
 
-// === WiringRepository: 배선 정보 관리 ===
 
 typedef struct WiringRepository {
   // 데이터 저장소
@@ -60,7 +63,6 @@ typedef struct WiringRepository {
 WiringRepository* CreateWiringRepository(std::vector<Wire>* wires);
 void DestroyWiringRepository(WiringRepository* repo);
 
-// === LadderRepository: 래더 프로그램 관리 ===
 
 typedef struct LadderRepository {
   // 데이터 저장소들 (plc 네임스페이스 명시)
@@ -95,7 +97,6 @@ LadderRepository* CreateLadderRepository(
     std::map<std::string, plc::CounterState>* counterStates);
 void DestroyLadderRepository(LadderRepository* repo);
 
-// === IORepository: I/O 매핑 정보 관리 (Phase 2) ===
 
 typedef struct IORepository {
   // 데이터 저장소
@@ -132,7 +133,6 @@ typedef struct IORepository {
 IORepository* CreateIORepository(IOMapping* mapping, MappingResult* result);
 void DestroyIORepository(IORepository* repo);
 
-// === 전역 구현 함수들 (C언어 스타일) ===
 
 // ComponentRepository 구현 함수들
 int ComponentRepo_AddComponent(ComponentRepository* repo,

@@ -1,3 +1,8 @@
+// programming_mode_edit.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Ladder editing functions.
+
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>

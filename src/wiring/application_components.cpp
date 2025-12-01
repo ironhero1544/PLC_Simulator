@@ -1,3 +1,8 @@
+// application_components.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Component rendering functions.
+
 // src/Application_Components.cpp
 
 #include "plc_emulator/core/application.h"

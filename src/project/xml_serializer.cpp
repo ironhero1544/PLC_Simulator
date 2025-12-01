@@ -1,3 +1,8 @@
+// xml_serializer.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of XML serializer.
+
 #include "plc_emulator/project/xml_serializer.h"
 
 #include <chrono>

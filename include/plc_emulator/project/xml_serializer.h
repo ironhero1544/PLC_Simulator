@@ -1,3 +1,8 @@
+// xml_serializer.h
+// Copyright 2024 PLC Emulator Project
+//
+// XML serialization utilities.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_XML_SERIALIZER_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_XML_SERIALIZER_H_
 
@@ -12,6 +17,7 @@ namespace plc {
 
 /**
  * @brief LadderProgram의 XML 직렬화/역직렬화를 담당하는 클래스
+  * L추가erProgrm의 XML 직렬화/역직렬화를 담당하는 클래스
  *
  * 이 클래스는 LadderProgram의 모든 구조적 정보를 완전히 보존하여
  * XML 형태로 저장하고 복원할 수 있습니다.
@@ -44,6 +50,7 @@ class XMLSerializer {
 
   /**
    * @brief LadderProgram을 XML 문자열로 직렬화
+    * L추가erProgrm을 XML 문자열로 직렬화
    * @param program 직렬화할 래더 프로그램
    * @return 직렬화 결과
    */
@@ -51,6 +58,7 @@ class XMLSerializer {
 
   /**
    * @brief XML 문자열을 LadderProgram으로 역직렬화
+    * XML 문자열을 L추가erProgrm으로 역직렬화
    * @param xmlContent XML 문자열
    * @return 역직렬화 결과
    */

@@ -1,3 +1,8 @@
+// memory_manager.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of PLC memory manager.
+
 #include "plc_emulator/data/memory_manager.h"
 #include <stdexcept>
 #include <sstream>

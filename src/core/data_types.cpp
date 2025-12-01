@@ -1,3 +1,8 @@
+// data_types.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of common data types.
+
 // src/DataTypes.cpp
 
 #include "plc_emulator/core/data_types.h"

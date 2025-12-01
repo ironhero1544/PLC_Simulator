@@ -1,0 +1,17 @@
+D:\jetbrainTools\CLion\bin\cmake\win\x64\bin\cmake.exe -SD:\CLionProjects\PLC_Emulator -BD:\CLionProjects\PLC_Emulator\cmake-build-release --check-build-system CMakeFiles\Makefile.cmake 0
+D:\jetbrainTools\CLion\bin\cmake\win\x64\bin\cmake.exe -E cmake_progress_start D:\CLionProjects\PLC_Emulator\cmake-build-release\CMakeFiles D:\CLionProjects\PLC_Emulator\cmake-build-release\\CMakeFiles\progress.marks
+D:/jetbrainTools/CLion/bin/mingw/bin/mingw32-make.exe  -f CMakeFiles\Makefile2 all
+mingw32-make[1]: Entering directory 'D:/CLionProjects/PLC_Emulator/cmake-build-release'
+D:/jetbrainTools/CLion/bin/mingw/bin/mingw32-make.exe  -f CMakeFiles\imgui_lib.dir\build.make CMakeFiles/imgui_lib.dir/depend
+mingw32-make[2]: Entering directory 'D:/CLionProjects/PLC_Emulator/cmake-build-release'
+D:\jetbrainTools\CLion\bin\cmake\win\x64\bin\cmake.exe -E cmake_depends "MinGW Makefiles" D:\CLionProjects\PLC_Emulator D:\CLionProjects\PLC_Emulator D:\CLionProjects\PLC_Emulator\cmake-build-release D:\CLionProjects\PLC_Emulator\cmake-build-release D:\CLionProjects\PLC_Emulator\cmake-build-release\CMakeFiles\imgui_lib.dir\DependInfo.cmake "--color="
+mingw32-make[2]: Leaving directory 'D:/CLionProjects/PLC_Emulator/cmake-build-release'
+D:/jetbrainTools/CLion/bin/mingw/bin/mingw32-make.exe  -f CMakeFiles\imgui_lib.dir\build.make CMakeFiles/imgui_lib.dir/build
+mingw32-make[2]: Entering directory 'D:/CLionProjects/PLC_Emulator/cmake-build-release'
+[  1%] Building CXX object CMakeFiles/imgui_lib.dir/_deps/imgui-src/imgui.cpp.obj
+D:\jetbrainTools\CLion\bin\mingw\bin\g++.exe -DUNICODE -D_UNICODE @CMakeFiles/imgui_lib.dir/includes_CXX.rsp -O3 -DNDEBUG -std=c++20 -fdiagnostics-color=always -finput-charset=UTF-8 -fexec-charset=UTF-8 -MD -MT CMakeFiles/imgui_lib.dir/_deps/imgui-src/imgui.cpp.obj -MF CMakeFiles\imgui_lib.dir\_deps\imgui-src\imgui.cpp.obj.d -o CMakeFiles\imgui_lib.dir\_deps\imgui-src\imgui.cpp.obj -c D:\CLionProjects\PLC_Emulator\cmake-build-release\_deps\imgui-src\imgui.cpp
+mingw32-make[2]: *** [CMakeFiles\imgui_lib.dir\build.make:79: CMakeFiles/imgui_lib.dir/_deps/imgui-src/imgui.cpp.obj] Error 1
+mingw32-make[2]: Leaving directory 'D:/CLionProjects/PLC_Emulator/cmake-build-release'
+mingw32-make[1]: *** [CMakeFiles\Makefile2:205: CMakeFiles/imgui_lib.dir/all] Error 2
+mingw32-make[1]: Leaving directory 'D:/CLionProjects/PLC_Emulator/cmake-build-release'
+mingw32-make: *** [makefile:135: all] Error 2

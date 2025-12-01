@@ -1,3 +1,8 @@
+// project_file_manager.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of project file manager.
+
 #include "plc_emulator/project/project_file_manager.h"
 
 #include "miniz.h"

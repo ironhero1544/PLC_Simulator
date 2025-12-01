@@ -1,4 +1,9 @@
 // window_manager.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of window manager.
+
+// window_manager.cpp
 // Window management implementation
 // 윈도우 관리 구현
 

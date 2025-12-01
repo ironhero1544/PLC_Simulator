@@ -1,3 +1,8 @@
+// programming_mode_sim.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Ladder simulation functions.
+
 #include "plc_emulator/programming/compiled_plc_executor.h"
 #include "plc_emulator/programming/programming_mode.h"
 #include "plc_emulator/project/ladder_to_ld_converter.h"
@@ -39,7 +44,6 @@ void ProgrammingMode::ExecuteWithOpenPLCEngine() {
     // STEP 3: Execute OpenPLC scan cycle with timeout protection
     auto result = plc_executor_->ExecuteScanCycle();
 
-    // === Phase 4: 스캔 결과 캐시 ===
     last_scan_success_ = result.success;
     last_cycle_time_us_ = result.cycleTime_us;
     last_instruction_count_ = result.instructionCount;
@@ -96,7 +100,9 @@ void ProgrammingMode::ExecuteWithLegacySimulation() {
       pair.second = false;
   }
 
-  std::vector<std::vector<bool>> rungPowerFlow(programCopy.rungs.size());
+  const size_t maxRungs = programCopy.rungs.size();
+  std::vector<std::vector<bool>> rungPowerFlow;
+  rungPowerFlow.reserve(maxRungs);
 
   for (size_t rungIndex = 0; rungIndex < programCopy.rungs.size();
        ++rungIndex) {
@@ -104,7 +110,7 @@ void ProgrammingMode::ExecuteWithLegacySimulation() {
     if (rung.isEndRung)
       break;
 
-    rungPowerFlow[rungIndex].resize(12, false);
+    rungPowerFlow.emplace_back(12, false);
     bool leftPowerRail = true;
     bool powerFlow = leftPowerRail;
 

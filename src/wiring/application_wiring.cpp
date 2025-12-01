@@ -1,3 +1,8 @@
+// application_wiring.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Wire drawing and editing.
+
 // src/Application_Wiring.cpp
 
 #include "imgui.h"
@@ -174,109 +179,22 @@ void Application::RenderWiringCanvas() {
          io.MousePos.y >= canvas_top_left_.y &&
          io.MousePos.y <= canvas_top_left_.y + canvas_size_.y);
 
-    bool frl_interaction_handled = false;
-    if (is_canvas_hovered && io.MouseWheel != 0) {
-      for (auto& comp : placed_components_) {
-        if (comp.type == ComponentType::FRL &&
-            mouse_world_pos.x >= comp.position.x &&
-            mouse_world_pos.x <= comp.position.x + comp.size.width &&
-            mouse_world_pos.y >= comp.position.y &&
-            mouse_world_pos.y <= comp.position.y + comp.size.height) {
-          float current_pressure = comp.internalStates.count("air_pressure")
-                                       ? comp.internalStates.at("air_pressure")
-                                       : 6.0f;
-          float step = io.KeyCtrl ? 0.1f : 0.5f;
+    // Handle FRL pressure adjustment
+    bool frl_interaction_handled = HandleFRLPressureAdjustment(mouse_world_pos, io);
 
-          if (io.MouseWheel > 0)
-            current_pressure += step;
-          else
-            current_pressure -= step;
-
-          current_pressure = std::max(0.0f, std::min(10.0f, current_pressure));
-          comp.internalStates["air_pressure"] = current_pressure;
-          frl_interaction_handled = true;
-          break;
-        }
-      }
-    }
-
+    // Handle zoom and pan
     bool wheel_handled = false;
-    if (is_canvas_hovered && io.MouseWheel != 0 && !io.KeyCtrl &&
-        !frl_interaction_handled) {
-      ImVec2 mouse_pos_before_zoom = ScreenToWorld(io.MousePos);
-      float zoom_speed = 0.15f;
-      if (io.MouseWheel > 0)
-        camera_zoom_ *= (1.0f + zoom_speed);
-      else
-        camera_zoom_ *= (1.0f - zoom_speed);
-      camera_zoom_ = std::max(0.05f, std::min(camera_zoom_, 10.0f));
-      ImVec2 mouse_pos_after_zoom = ScreenToWorld(io.MousePos);
-      camera_offset_.x += (mouse_pos_before_zoom.x - mouse_pos_after_zoom.x);
-      camera_offset_.y += (mouse_pos_before_zoom.y - mouse_pos_after_zoom.y);
-      wheel_handled = true;
-    }
-
-    float pan_sensitivity = 1.0f;
-    if (is_canvas_hovered && io.KeyCtrl &&
-        (io.MouseWheelH != 0 || io.MouseWheel != 0) &&
-        !frl_interaction_handled) {
-      float trackpad_sensitivity = 0.8f;
-      camera_offset_.x += io.MouseWheelH * 20.0f * trackpad_sensitivity;
-      camera_offset_.y += io.MouseWheel * 20.0f * trackpad_sensitivity;
-      wheel_handled = true;
-    }
-    if (is_canvas_hovered &&
-        (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ||
-         (io.KeyShift && ImGui::IsMouseDragging(ImGuiMouseButton_Left)))) {
-      camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
-      camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
-    }
-    if (is_canvas_hovered && io.KeyAlt &&
-        ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-      camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
-      camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
-    }
+    HandleZoomAndPan(is_canvas_hovered, io, frl_interaction_handled, wheel_handled);
+    
     if ((wheel_handled || frl_interaction_handled) && is_canvas_hovered) {
       ImGui::SetItemDefaultFocus();
     }
 
-    float grid_step = snap_settings_.gridSize;
-    ImVec2 world_top_left = ScreenToWorld(canvas_top_left_);
-    ImVec2 world_bottom_right =
-        ScreenToWorld(ImVec2(canvas_top_left_.x + canvas_size_.x,
-                             canvas_top_left_.y + canvas_size_.y));
-    for (float x = floorf(world_top_left.x / grid_step) * grid_step;
-         x < world_bottom_right.x; x += grid_step) {
-      draw_list->AddLine(WorldToScreen({x, world_top_left.y}),
-                         WorldToScreen({x, world_bottom_right.y}),
-                         IM_COL32(220, 220, 220, 80));
-    }
-    for (float y = floorf(world_top_left.y / grid_step) * grid_step;
-         y < world_bottom_right.y; y += grid_step) {
-      draw_list->AddLine(WorldToScreen({world_top_left.x, y}),
-                         WorldToScreen({world_bottom_right.x, y}),
-                         IM_COL32(220, 220, 220, 80));
-    }
+    // Render grid
+    RenderGrid(draw_list);
 
-    if (is_dragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-      if (is_canvas_hovered)
-        HandleComponentDrop(mouse_world_pos);
-      else {
-        is_dragging_ = false;
-        dragged_component_index_ = -1;
-      }
-    }
-
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && is_canvas_hovered) {
-      if (is_connecting_) {
-        is_connecting_ = false;
-        current_way_points_.clear();
-      } else {
-        Wire* wire_to_delete = FindWireAtPosition(mouse_world_pos);
-        if (wire_to_delete)
-          DeleteWire(wire_to_delete->id);
-      }
-    }
+    // Handle component drop and wire deletion
+    HandleComponentDropAndWireDelete(is_canvas_hovered, mouse_world_pos);
 
     if (current_tool_ == ToolType::SELECT) {
       if (wire_edit_mode_ == WireEditMode::MOVING_POINT) {
@@ -622,6 +540,131 @@ Wire* Application::FindWireAtPosition(ImVec2 worldPos, float tolerance) {
     }
   }
   return closestWire;
+}
+
+// ============================================================================
+// RenderWiringCanvas Helper Functions (Phase 6 Refactoring)
+// ============================================================================
+
+bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos, 
+                                               const ImGuiIO& io) {
+  if (!io.MouseWheel)
+    return false;
+    
+  for (auto& comp : placed_components_) {
+    if (comp.type == ComponentType::FRL &&
+        mouse_world_pos.x >= comp.position.x &&
+        mouse_world_pos.x <= comp.position.x + comp.size.width &&
+        mouse_world_pos.y >= comp.position.y &&
+        mouse_world_pos.y <= comp.position.y + comp.size.height) {
+      float current_pressure = comp.internalStates.count("air_pressure")
+                                   ? comp.internalStates.at("air_pressure")
+                                   : 6.0f;
+      float step = io.KeyCtrl ? 0.1f : 0.5f;
+
+      if (io.MouseWheel > 0)
+        current_pressure += step;
+      else
+        current_pressure -= step;
+
+      current_pressure = std::max(0.0f, std::min(10.0f, current_pressure));
+      comp.internalStates["air_pressure"] = current_pressure;
+      return true;
+    }
+  }
+  return false;
+}
+
+void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
+                                    bool frl_handled, bool& wheel_handled) {
+  // Zoom with mouse wheel
+  if (is_canvas_hovered && io.MouseWheel != 0 && !io.KeyCtrl && !frl_handled) {
+    ImVec2 mouse_pos_before_zoom = ScreenToWorld(io.MousePos);
+    float zoom_speed = 0.15f;
+    if (io.MouseWheel > 0)
+      camera_zoom_ *= (1.0f + zoom_speed);
+    else
+      camera_zoom_ *= (1.0f - zoom_speed);
+    camera_zoom_ = std::max(0.05f, std::min(camera_zoom_, 10.0f));
+    ImVec2 mouse_pos_after_zoom = ScreenToWorld(io.MousePos);
+    camera_offset_.x += (mouse_pos_before_zoom.x - mouse_pos_after_zoom.x);
+    camera_offset_.y += (mouse_pos_before_zoom.y - mouse_pos_after_zoom.y);
+    wheel_handled = true;
+  }
+
+  // Trackpad pan with Ctrl
+  if (is_canvas_hovered && io.KeyCtrl &&
+      (io.MouseWheelH != 0 || io.MouseWheel != 0) && !frl_handled) {
+    float trackpad_sensitivity = 0.8f;
+    camera_offset_.x += io.MouseWheelH * 20.0f * trackpad_sensitivity;
+    camera_offset_.y += io.MouseWheel * 20.0f * trackpad_sensitivity;
+    wheel_handled = true;
+  }
+  
+  // Pan with middle mouse or Shift+Left
+  float pan_sensitivity = 1.0f;
+  if (is_canvas_hovered &&
+      (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ||
+       (io.KeyShift && ImGui::IsMouseDragging(ImGuiMouseButton_Left)))) {
+    camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
+    camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
+  }
+  
+  // Pan with Alt+Right
+  if (is_canvas_hovered && io.KeyAlt &&
+      ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+    camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
+    camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
+  }
+}
+
+void Application::RenderGrid(ImDrawList* draw_list) {
+  float grid_step = snap_settings_.gridSize;
+  ImVec2 world_top_left = ScreenToWorld(canvas_top_left_);
+  ImVec2 world_bottom_right =
+      ScreenToWorld(ImVec2(canvas_top_left_.x + canvas_size_.x,
+                           canvas_top_left_.y + canvas_size_.y));
+  
+  // Vertical lines
+  for (float x = floorf(world_top_left.x / grid_step) * grid_step;
+       x < world_bottom_right.x; x += grid_step) {
+    draw_list->AddLine(WorldToScreen({x, world_top_left.y}),
+                       WorldToScreen({x, world_bottom_right.y}),
+                       IM_COL32(220, 220, 220, 80));
+  }
+  
+  // Horizontal lines
+  for (float y = floorf(world_top_left.y / grid_step) * grid_step;
+       y < world_bottom_right.y; y += grid_step) {
+    draw_list->AddLine(WorldToScreen({world_top_left.x, y}),
+                       WorldToScreen({world_bottom_right.x, y}),
+                       IM_COL32(220, 220, 220, 80));
+  }
+}
+
+void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
+                                                    ImVec2 mouse_world_pos) {
+  // Handle component drop
+  if (is_dragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    if (is_canvas_hovered)
+      HandleComponentDrop(mouse_world_pos);
+    else {
+      is_dragging_ = false;
+      dragged_component_index_ = -1;
+    }
+  }
+
+  // Handle wire deletion with right click
+  if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && is_canvas_hovered) {
+    if (is_connecting_) {
+      is_connecting_ = false;
+      current_way_points_.clear();
+    } else {
+      Wire* wire_to_delete = FindWireAtPosition(mouse_world_pos);
+      if (wire_to_delete)
+        DeleteWire(wire_to_delete->id);
+    }
+  }
 }
 
 }  // namespace plc

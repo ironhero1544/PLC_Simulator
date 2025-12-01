@@ -1,3 +1,8 @@
+// openplc_compiler_integration.h
+// Copyright 2024 PLC Emulator Project
+//
+// OpenPLC compiler interface.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_OPENPLC_COMPILER_INTEGRATION_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_OPENPLC_COMPILER_INTEGRATION_H_
 
@@ -75,6 +80,7 @@ class OpenPLCCompilerIntegration {
 
   /**
    * @brief LadderIR을 이용한 고정밀도 컴파일
+    * L추가erIR을 이용한 고정밀도 컴파일
    * 병렬(OR) 회로의 정확한 컴파일을 보장합니다.
    * @param ladderProgram 원본 래더 프로그램
    * @return 컴파일 결과
@@ -84,7 +90,9 @@ class OpenPLCCompilerIntegration {
 
   /**
    * @brief LadderIR 프로그램을 직접 컴파일
+    * L추가erIR 프로그램을 직접 컴파일
    * @param irProgram LadderIR 프로그램
+    * L추가erIR 프로그램
    * @return 컴파일 결과
    */
   CompilationResult CompileIRProgram(const LadderIRProgram& irProgram);
@@ -94,6 +102,7 @@ class OpenPLCCompilerIntegration {
    * @param result 컴파일 결과
    * @param outputPath 출력 파일 경로
    * @return 성공 시 true
+    * 성공 시 참
    */
   bool SaveGeneratedCode(const CompilationResult& result,
                          const std::string& outputPath);

@@ -1,4 +1,9 @@
 // component_manager.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of component manager.
+
+// component_manager.cpp
 // Component management implementation
 // 컴포넌트 관리 구현
 

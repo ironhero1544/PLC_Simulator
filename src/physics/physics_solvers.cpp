@@ -1,3 +1,8 @@
+// physics_solvers.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Numerical solvers for physics equations.
+
 // src/PhysicsSolvers.cpp
 // 실제 물리 법칙 기반 수치해석 솔버 구현
 // 키르히호프 법칙, 베르누이 방정식, 뉴턴 역학을 정확히 적용한 시뮬레이션
@@ -12,7 +17,6 @@
 
 namespace plc {
 
-// ========== 수학 유틸리티 함수들 ==========
 
 //   행렬 연산을 위한 기본 유틸리티
 // - C언어 스타일로 효율적인 수치연산 구현
@@ -33,7 +37,6 @@ float VectorNorm(const float* x, int n) {
   return std::sqrt(DotProduct(x, x, n));
 }
 
-// 행렬-벡터 곱셈: y = A*x
 void MatrixVectorMultiply(float** A, const float* x, float* y, int rows,
                           int cols) {
   for (int i = 0; i < rows; i++) {
@@ -44,28 +47,24 @@ void MatrixVectorMultiply(float** A, const float* x, float* y, int rows,
   }
 }
 
-// 벡터 복사: dest = src
 void VectorCopy(const float* src, float* dest, int n) {
   for (int i = 0; i < n; i++) {
     dest[i] = src[i];
   }
 }
 
-// 벡터 스케일링: x = alpha * x
 void VectorScale(float* x, float alpha, int n) {
   for (int i = 0; i < n; i++) {
     x[i] *= alpha;
   }
 }
 
-// 벡터 덧셈: z = x + y
 void VectorAdd(const float* x, const float* y, float* z, int n) {
   for (int i = 0; i < n; i++) {
     z[i] = x[i] + y[i];
   }
 }
 
-// 벡터 뺄셈: z = x - y
 void VectorSubtract(const float* x, const float* y, float* z, int n) {
   for (int i = 0; i < n; i++) {
     z[i] = x[i] - y[i];
@@ -74,11 +73,8 @@ void VectorSubtract(const float* x, const float* y, float* z, int n) {
 
 }  // namespace MathUtils
 
-// ========== 전기 네트워크 솔버 ==========
 
 // 키르히호프 법칙 기반 전기 네트워크 해석
-// 노드 분석법 사용: 각 노드에서 전류 보존 법칙 ΣI = 0
-// 컨덕턴스 행렬 방정식 [G][V] = [I]를 가우스-자이델 반복법으로 해결
 
 class ElectricalSolver {
  public:
@@ -126,7 +122,6 @@ class ElectricalSolver {
         if (isVoltageSource)
           continue;
 
-        // 가우스-자이델 업데이트: V_i = (I_i - Σ(j≠i) G_ij*V_j) / G_ii
         float sum = 0.0f;
         for (int j = 0; j < network->nodeCount; j++) {
           if (i != j) {
@@ -174,8 +169,6 @@ class ElectricalSolver {
 
  private:
   // 컨덕턴스 행렬 업데이트
-  // G_ij = -g_ij (i≠j, 엣지가 연결된 경우)
-  // G_ii = Σ(j≠i) g_ij (대각항은 연결된 모든 엣지 컨덕턴스의 합)
   static void UpdateConductanceMatrix(ElectricalNetwork* network) {
     // 행렬 초기화
     for (int i = 0; i < network->nodeCount; i++) {
@@ -196,11 +189,9 @@ class ElectricalSolver {
 
       if (i >= 0 && i < network->nodeCount && j >= 0 &&
           j < network->nodeCount) {
-        // 비대각항: G_ij = -g_ij
         network->conductanceMatrix[i][j] -= g;
         network->conductanceMatrix[j][i] -= g;
 
-        // 대각항: G_ii += g_ij
         network->conductanceMatrix[i][i] += g;
         network->conductanceMatrix[j][j] += g;
       }
@@ -213,7 +204,6 @@ class ElectricalSolver {
   }
 
   // 전류 벡터 업데이트
-  // I_i = 노드 i로 주입되는 전류 (전류원, 전압원의 내부전류 등)
   static void UpdateCurrentVector(ElectricalNetwork* network) {
     for (int i = 0; i < network->nodeCount; i++) {
       network->currentVector[i] = 0.0f;
@@ -235,7 +225,6 @@ class ElectricalSolver {
   }
 
   // 엣지 전류 계산 (옴의 법칙 적용)
-  // I_edge = (V_from - V_to) * G_edge = (V_from - V_to) / R_edge
   static void CalculateEdgeCurrents(ElectricalNetwork* network) {
     for (int e = 0; e < network->edgeCount; e++) {
       ElectricalEdge* edge = &network->edges[e];
@@ -263,7 +252,6 @@ class ElectricalSolver {
   }
 
   // 노드 전류 계산 (키르히호프 전류 법칙 검증용)
-  // 수렴한 해에서는 각 노드에서 ΣI = 0 이어야 함
   static void CalculateNodeCurrents(ElectricalNetwork* network) {
     for (int i = 0; i < network->nodeCount; i++) {
       network->nodes[i].netCurrent = 0.0f;
@@ -301,7 +289,6 @@ class ElectricalSolver {
   }
 };
 
-// ========== 공압 네트워크 솔버 ==========
 
 // 베르누이 방정식과 연속성 방정식 기반 공압 네트워크 해석
 // 비선형 연립방정식을 뉴턴-랩슨 방법으로 해결
@@ -310,9 +297,6 @@ class ElectricalSolver {
 class PneumaticSolver {
  public:
   // 뉴턴-랩슨 방법으로 비선형 공압 시스템 해결
-  // - 연속성 방정식: ṁ₁ = ṁ₂ (질량 보존)
-  // - 베르누이 방정식: P₁ + ½ρv₁² = P₂ + ½ρv₂² + ΔP_loss
-  // - 상태방정식: P = ρRT (이상기체)
   static int SolvePneumaticNetwork(PneumaticNetwork* network, float deltaTime) {
     (void)deltaTime;  // 현재 버전에서는 정적 상태 해석만 수행, 나중에 동적
                       // 해석에서 사용할 예정
@@ -338,7 +322,6 @@ class PneumaticSolver {
       // 잔여함수와 야코비안 계산
       CalculateResidualAndJacobian(network, residual, jacobian);
 
-      // 선형 시스템 해결: J * Δx = -F
       SolveLinearSystem(jacobian, residual, delta,
                         network->nodeCount + network->edgeCount);
 
@@ -402,7 +385,6 @@ class PneumaticSolver {
   }
 
   // 잔여함수와 야코비안 행렬 계산
-  // F(x) = 0 형태의 비선형 방정식계에서 F와 ∂F/∂x 계산
   static void CalculateResidualAndJacobian(PneumaticNetwork* network,
                                            float* residual, float** jacobian) {
     int n = network->nodeCount + network->edgeCount;
@@ -451,7 +433,6 @@ class PneumaticSolver {
 
       if (fromNode >= 0 && fromNode < network->nodeCount && toNode >= 0 &&
           toNode < network->nodeCount) {
-        // 베르누이 방정식: P₁ + ½ρv₁² = P₂ + ½ρv₂² + ΔP_friction
         float P1 = network->pressureVector[fromNode];
         float P2 = network->pressureVector[toNode];
         float mdot = network->massFlowVector[e];
@@ -459,14 +440,12 @@ class PneumaticSolver {
         // 압력강하 계산 (Darcy-Weisbach + 국소손실)
         float pressureDrop = CalculatePressureDrop(&network->edges[e], mdot);
 
-        // 베르누이 잔여식: P₁ - P₂ - ΔP = 0
         residual[network->nodeCount + e] = P1 - P2 - pressureDrop;
 
         // 야코비안 항목
         jacobian[network->nodeCount + e][fromNode] = 1.0f;  // ∂F/∂P₁
         jacobian[network->nodeCount + e][toNode] = -1.0f;   // ∂F/∂P₂
 
-        // ∂F/∂ṁ = -∂(ΔP)/∂ṁ
         float dPdm = CalculatePressureDropDerivative(&network->edges[e], mdot);
         jacobian[network->nodeCount + e][network->nodeCount + e] = -dPdm;
       }
@@ -474,7 +453,6 @@ class PneumaticSolver {
   }
 
   // 압력강하 계산 (Darcy-Weisbach 방정식)
-  // ΔP = f * (L/D) * (ρv²/2) + K * (ρv²/2)
   // 여기서 f는 마찰계수, K는 국소손실계수
   static float CalculatePressureDrop(PneumaticEdge* edge, float massFlowRate) {
     if (std::abs(massFlowRate) < 1e-9f)
@@ -487,10 +465,8 @@ class PneumaticSolver {
     // 밀도 추정 (표준 상태 기준)
     float rho = 1.225f;  // kg/m³ (20°C, 1atm 공기)
 
-    // 속도 계산: v = ṁ/(ρA)
     float velocity = std::abs(massFlowRate) / (rho * A);
 
-    // 레이놀즈 수 계산: Re = ρvD/μ
     float mu = 1.8e-5f;  // 동점성계수 [Pa⋅s]
     float Re = rho * velocity * D / mu;
     edge->reynoldsNumber = Re;
@@ -499,7 +475,6 @@ class PneumaticSolver {
     float roughness = edge->roughness * 1e-6f;  // μm → m
     float f;
     if (Re < 2300) {
-      // 층류: f = 64/Re
       f = 64.0f / Re;
     } else {
       // 난류: Swamee-Jain 방정식 근사
@@ -575,7 +550,6 @@ class PneumaticSolver {
   }
 
   // 해 업데이트 (뉴턴-랩슨 스텝)
-  // x_{k+1} = x_k + Δx
   static void UpdateSolution(PneumaticNetwork* network, float* delta) {
     // 압력 업데이트 (제한 적용)
     for (int i = 0; i < network->nodeCount; i++) {
@@ -606,11 +580,9 @@ class PneumaticSolver {
     for (int i = 0; i < network->nodeCount; i++) {
       PneumaticNode* node = &network->nodes[i];
 
-      // 상태방정식으로 밀도 계산: ρ = P/(RT)
       node->density =
           node->pressure / (network->gasConstant * node->temperature);
 
-      // 음속 계산: c = √(γRT)
       node->soundSpeed = std::sqrt(network->specificHeatRatio *
                                    network->gasConstant * node->temperature);
 
@@ -623,7 +595,6 @@ class PneumaticSolver {
     for (int e = 0; e < network->edgeCount; e++) {
       PneumaticEdge* edge = &network->edges[e];
 
-      // 체적유량 계산: Q = ṁ/ρ (표준 상태 기준)
       float rho_std = 1.225f;  // kg/m³
       edge->volumeFlowRate =
           edge->massFlowRate / rho_std * 60000.0f;  // m³/s → L/min
@@ -640,10 +611,8 @@ class PneumaticSolver {
   }
 };
 
-// ========== 기계 시스템 솔버 ==========
 
 // 뉴턴 역학 기반 기계 시스템 해석
-// 2차 미분방정식 M q̈ + C q̇ + K q = F를 룽게-쿠타 4차 방법으로 해결
 // 질량-스프링-댐퍼 네트워크의 동적 응답 계산
 
 class MechanicalSolver {
@@ -651,7 +620,6 @@ class MechanicalSolver {
   // 룽게-쿠타 4차 방법으로 운동방정식 해결
   // - 2차 미분방정식을 1차 연립방정식으로 변환
   // - 상태벡터: [q, q̇]ᵀ (위치, 속도)
-  // - 미분방정식: d/dt[q, q̇]ᵀ = [q̇, M⁻¹(F - Cq̇ - Kq)]ᵀ
   static int SolveMechanicalSystem(MechanicalSystem* system, float deltaTime) {
     (void)deltaTime;  // 현재 버전에서는 정적 상태 해석만 수행, 나중에 룽게-쿠타
                       // 적분에서 사용할 예정
@@ -674,28 +642,23 @@ class MechanicalSolver {
     // 현재 상태 벡터 구성
     PackStateVector(system, state);
 
-    // k1 = f(t, y)
     CalculateStateDerivative(system, state, k1);
 
-    // k2 = f(t + h/2, y + h*k1/2)
     for (int i = 0; i < 2 * dof; i++) {
       temp_state[i] = state[i] + deltaTime * k1[i] / 2.0f;
     }
     CalculateStateDerivative(system, temp_state, k2);
 
-    // k3 = f(t + h/2, y + h*k2/2)
     for (int i = 0; i < 2 * dof; i++) {
       temp_state[i] = state[i] + deltaTime * k2[i] / 2.0f;
     }
     CalculateStateDerivative(system, temp_state, k3);
 
-    // k4 = f(t + h, y + h*k3)
     for (int i = 0; i < 2 * dof; i++) {
       temp_state[i] = state[i] + deltaTime * k3[i];
     }
     CalculateStateDerivative(system, temp_state, k4);
 
-    // 최종 업데이트: y_{n+1} = y_n + h/6 * (k1 + 2*k2 + 2*k3 + k4)
     for (int i = 0; i < 2 * dof; i++) {
       state[i] +=
           deltaTime / 6.0f * (k1[i] + 2.0f * k2[i] + 2.0f * k3[i] + k4[i]);
@@ -846,18 +809,14 @@ class MechanicalSolver {
     }
   }
 
-  // 상태 미분 계산 d/dt[q, q̇] = [q̇, q̈]
-  // 운동방정식 M q̈ + C q̇ + K q = F에서 q̈ = M⁻¹(F - C q̇ - K q)
   static void CalculateStateDerivative(MechanicalSystem* system,
                                        const float* state, float* derivative) {
     int dof = 6 * system->nodeCount;
 
-    // 첫 번째 절반: dq/dt = q̇ (속도)
     for (int i = 0; i < dof; i++) {
       derivative[i] = state[dof + i];  // 속도 부분을 복사
     }
 
-    // 두 번째 절반: dq̇/dt = q̈ = M⁻¹(F - C q̇ - K q) (가속도)
 
     // 외력 벡터 업데이트
     UpdateForceVector(system);
@@ -875,12 +834,10 @@ class MechanicalSolver {
     MathUtils::MatrixVectorMultiply(system->dampingMatrix, &state[dof], Cqdot,
                                     dof, dof);
 
-    // rhs = F - C*q̇ - K*q
     for (int i = 0; i < dof; i++) {
       rhs[i] = system->forceVector[i] - Cqdot[i] - Kq[i];
     }
 
-    // q̈ = M⁻¹ * rhs (질량 행렬의 역행렬 곱셈)
     SolveMassMatrixSystem(system, rhs, &derivative[dof]);
 
     delete[] Kq;
@@ -925,7 +882,6 @@ class MechanicalSolver {
   }
 
   // 엣지 내력 계산 (스프링력, 댐핑력, 접촉력)
-  // F_spring = K * (x - x₀), F_damper = C * ẋ
   static void CalculateEdgeForces(MechanicalSystem* system,
                                   MechanicalEdge* edge) {
     int node1 = edge->base.fromNodeId;
@@ -952,10 +908,8 @@ class MechanicalSolver {
       float displacement = pos1 - pos2 - edge->naturalLength[dof];
       float relativeVelocity = vel1 - vel2;
 
-      // 스프링력: F = -k * (x - x₀)
       float springForce = -edge->springConstant[dof] * displacement;
 
-      // 댐핑력: F = -c * ẋ
       float damperForce = -edge->dampingCoefficient[dof] * relativeVelocity;
 
       // 총 내력
@@ -974,7 +928,6 @@ class MechanicalSolver {
     }
   }
 
-  // 질량 행렬 시스템 해결 M * q̈ = rhs
   // 질량 행렬이 대각 행렬이므로 직접 나눗셈으로 해결 가능
   static void SolveMassMatrixSystem(MechanicalSystem* system, const float* rhs,
                                     float* acceleration) {
@@ -1028,7 +981,6 @@ class MechanicalSolver {
 
 }  // namespace plc
 
-// ========== 통합 물리 솔버 인터페이스 ==========
 
 // C언어 스타일 함수 포인터를 통한 통합 인터페이스
 // 각 솔버를 독립적으로 호출할 수 있는 통일된 인터페이스 제공

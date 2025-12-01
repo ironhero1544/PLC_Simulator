@@ -1,3 +1,8 @@
+// programming_mode_ui.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Programming mode UI rendering.
+
 #include "plc_emulator/core/application.h"  // SaveProject 함수 호출용
 #include "plc_emulator/programming/programming_mode.h"
 

@@ -1,3 +1,8 @@
+// data_repository.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of data repository.
+
 // src/DataRepository.cpp
 // DataRepository 구현 - C언어 스타일 데이터 저장소
 
@@ -9,7 +14,6 @@
 
 namespace plc {
 
-// === ComponentRepository 구현 ===
 
 ComponentRepository* CreateComponentRepository(
     std::vector<PlacedComponent>* components) {
@@ -93,7 +97,6 @@ size_t ComponentRepo_GetComponentCount(ComponentRepository* repo) {
   return repo->components->size();
 }
 
-// === WiringRepository 구현 ===
 
 WiringRepository* CreateWiringRepository(std::vector<Wire>* wires) {
   if (!wires) {
@@ -208,7 +211,6 @@ bool WiringRepo_IsComponentConnected(WiringRepository* repo, int componentId,
   return false;
 }
 
-// === LadderRepository 구현 ===
 
 LadderRepository* CreateLadderRepository(
     plc::LadderProgram* program, std::map<std::string, bool>* deviceStates,
@@ -320,7 +322,6 @@ bool LadderRepo_SetCounterState(LadderRepository* repo, const char* address,
   return true;
 }
 
-// === IORepository 구현 (Phase 2) ===
 
 IORepository* CreateIORepository(IOMapping* mapping, MappingResult* result) {
   if (!mapping || !result) {

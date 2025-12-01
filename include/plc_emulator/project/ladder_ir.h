@@ -1,6 +1,12 @@
+// ladder_ir.h
+// Copyright 2024 PLC Emulator Project
+//
+// Intermediate representation for ladder logic.
+
 /**
  * @file LadderIR.h
  * @brief Ladder Intermediate Representation - 래더 다이어그램 중간 표현
+  * L추가er Intermedi에서e Represent에서i위 - 래더 다이어그램 중간 표현
  *
  * 이 파일은 UI 래더 다이어그램과 PLC 스택 머신 코드 사이의 중간 표현을
  * 정의합니다. 병렬(OR) 논리 회로의 정확한 변환을 위해 설계되었습니다.
@@ -31,26 +37,21 @@ struct VerticalConnection;
  * 래더 다이어그램의 각 요소를 중간 표현으로 변환할 때 사용되는 노드 타입들
  */
 enum class IRNodeType {
-  // === 기본 접촉 노드들 ===
   NORMALLY_OPEN,    // 일반 개방 접점 (NO)
   NORMALLY_CLOSED,  // 일반 폐쇄 접점 (NC)
 
-  // === 코일 노드들 ===
   OUTPUT_COIL,  // 출력 코일
   SET_COIL,     // 셋 코일 (S)
   RESET_COIL,   // 리셋 코일 (R)
 
-  // === 논리 연산 노드들 ===
   AND_BLOCK,  // AND 논리 블록 (직렬 연결)
   OR_BLOCK,   // OR 논리 블록 (병렬 연결)
 
-  // === 타이머/카운터 노드들 ===
   TIMER_ON,      // 온딜레이 타이머 (TON)
   TIMER_OFF,     // 오프딜레이 타이머 (TOF)
   COUNTER_UP,    // 업카운터 (CTU)
   COUNTER_DOWN,  // 다운카운터 (CTD)
 
-  // === 특수 노드들 ===
   EMPTY,           // 빈 노드
   VERTICAL_LINE,   // 세로선 (논리적 연결)
   HORIZONTAL_LINE  // 가로선 (전류 흐름)

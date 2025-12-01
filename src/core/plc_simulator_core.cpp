@@ -1,3 +1,8 @@
+// plc_simulator_core.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of core simulator.
+
 // src/PLCSimulatorCore.cpp
 // PLCSimulatorCore 구현 - 중앙 집중식 데이터 관리 및 모드 간 동기화
 
@@ -32,7 +37,6 @@ bool PLCSimulatorCore::Initialize() {
   // 기본 데이터 초기화
   InitializeDefaultData();
 
-  // === Phase 1: DataRepository와 EventSystem 실제 생성 ===
 
   // ComponentRepository 생성 (C언어 스타일)
   ComponentRepository* compRepo =
@@ -57,7 +61,6 @@ bool PLCSimulatorCore::Initialize() {
     std::cout << "LadderRepository initialized successfully." << std::endl;
   }
 
-  // === Phase 2: IOMapper 및 IORepository 생성 ===
 
   // IOMapper 생성
   IOMapper* ioMapper = CreateIOMapper();
@@ -90,7 +93,6 @@ bool PLCSimulatorCore::Initialize() {
 void PLCSimulatorCore::Shutdown() {
   ClearAllData();
 
-  // === Phase 1: Repository들 정리 (C언어 스타일 소멸자 호출) ===
 
   // DataRepository들 정리
   if (component_repo_) {
@@ -108,7 +110,6 @@ void PLCSimulatorCore::Shutdown() {
     std::cout << "LadderRepository destroyed." << std::endl;
   }
 
-  // === Phase 2: IOMapper 및 IORepository 정리 ===
 
   if (io_mapper_) {
     io_mapper_.reset();
@@ -129,7 +130,6 @@ void PLCSimulatorCore::Shutdown() {
   std::cout << "✅ PLCSimulatorCore shutdown completed." << std::endl;
 }
 
-// === 모드 간 동기화 함수들 ===
 
 void PLCSimulatorCore::SyncFromProgrammingMode(
     const ProgrammingMode* programmingMode) {
@@ -170,10 +170,8 @@ void PLCSimulatorCore::SyncToProgrammingMode(ProgrammingMode* programmingMode) {
             << std::endl;
 }
 
-// === 이벤트 시스템 (기본 구조) ===
 
 void PLCSimulatorCore::NotifyDataChanged() {
-  // === Phase 1: EventDispatcher를 통한 실제 이벤트 발송 ===
   if (event_dispatcher_) {
     EventData event = CreateDataChangedEvent();
     event_dispatcher_->Dispatch(event_dispatcher_.get(), &event);
@@ -183,7 +181,6 @@ void PLCSimulatorCore::NotifyDataChanged() {
 }
 
 void PLCSimulatorCore::NotifyModeChanged(Mode newMode) {
-  // === Phase 1: EventDispatcher를 통한 실제 이벤트 발송 ===
   if (event_dispatcher_) {
     // Mode enum을 int로 변환 (기존 코드와의 호환성)
     int oldModeInt = 0;  // 현재는 이전 모드를 추적하지 않음
@@ -198,7 +195,6 @@ void PLCSimulatorCore::NotifyModeChanged(Mode newMode) {
             << modeStr << std::endl;
 }
 
-// === 내부 헬퍼 함수들 ===
 
 void PLCSimulatorCore::InitializeDefaultData() {
   // 기본 디바이스 상태 초기화 (기존 Application과 동일)
@@ -234,7 +230,6 @@ void PLCSimulatorCore::ClearAllData() {
   std::cout << "PLCSimulatorCore: All data cleared." << std::endl;
 }
 
-// === Phase 2: I/O 매핑 시스템 구현 ===
 
 bool PLCSimulatorCore::UpdateIOMapping() {
   if (!io_mapper_) {

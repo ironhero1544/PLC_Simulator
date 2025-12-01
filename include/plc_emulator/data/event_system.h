@@ -1,3 +1,8 @@
+// event_system.h
+// Copyright 2024 PLC Emulator Project
+//
+// Event dispatching and handling system.
+
 // include/EventSystem.h
 // C언어 스타일 이벤트 시스템
 // 구조체 + 함수 포인터 기반 단순한 콜백 시스템
@@ -83,11 +88,9 @@ typedef struct EventDispatcher {
   void (*Clear)(struct EventDispatcher* dispatcher);
 } EventDispatcher;
 
-// === EventDispatcher 생성/소멸 함수들 ===
 EventDispatcher* CreateEventDispatcher();
 void DestroyEventDispatcher(EventDispatcher* dispatcher);
 
-// === 전역 구현 함수들 (C언어 스타일) ===
 bool EventDispatcher_Subscribe(EventDispatcher* dispatcher, EventType type,
                                EventCallback callback, void* userData);
 bool EventDispatcher_Unsubscribe(EventDispatcher* dispatcher, EventType type,
@@ -96,7 +99,6 @@ void EventDispatcher_Dispatch(EventDispatcher* dispatcher,
                               const EventData* eventData);
 void EventDispatcher_Clear(EventDispatcher* dispatcher);
 
-// === 편의 함수들 - 이벤트 데이터 생성 ===
 EventData CreateDataChangedEvent();
 EventData CreateModeChangedEvent(int oldMode, int newMode);
 EventData CreateComponentAddedEvent(int componentId, int componentType);
@@ -109,7 +111,6 @@ EventData CreateIOMappingUpdatedEvent(int mappingCount, int inputCount,
                                       int outputCount, bool success,
                                       void* mappingPtr);  // Phase 2
 
-// === 디버깅/로깅 함수들 ===
 const char* EventTypeToString(EventType type);
 void PrintEventData(const EventData* eventData);
 

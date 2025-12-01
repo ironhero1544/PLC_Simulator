@@ -1,4 +1,9 @@
 // component_manager.h
+// Copyright 2024 PLC Emulator Project
+//
+// Manages PLC components in the simulation.
+
+// component_manager.h
 // Component placement and lifecycle management
 // 컴포넌트 배치 및 생명주기 관리
 

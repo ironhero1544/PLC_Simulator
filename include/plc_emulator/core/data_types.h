@@ -1,3 +1,8 @@
+// data_types.h
+// Copyright 2024 PLC Emulator Project
+//
+// Common data types and structures.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_DATA_TYPES_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_DATA_TYPES_H_
 

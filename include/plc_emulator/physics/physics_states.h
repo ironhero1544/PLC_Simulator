@@ -1,5 +1,8 @@
+// physics_states.h
+//
+// State enumerations for physics engine.
+
 // include/PhysicsStates.h
-// [추론] 기존 std::map<std::string, float> internalStates를 타입 안전한
 // 구조체로 대체 각 컴포넌트별로 물리적으로 정확한 상태 변수들을 정의하여 타입
 // 안전성과 성능 향상
 
@@ -8,7 +11,6 @@
 
 namespace plc {
 
-// ========== 전기 컴포넌트 물리 상태 ==========
 
 // [추론] PLC 물리 상태: 실제 PLC의 전기적 특성을 모델링
 // - 입출력 전압/전류 정확히 추적
@@ -37,7 +39,6 @@ typedef struct PLCPhysicsState {
   float outputImpedance[16];     // 출력 임피던스 [Ω]
 } PLCPhysicsState;
 
-// [추론] 전원공급장치 물리 상태: 실제 SMPS의 전기적 특성
 // - 정전압 제어, 전류 제한, 리플 특성 모델링
 // - 부하 변동에 따른 출력 특성 변화 추적
 typedef struct PowerSupplyPhysicsState {
@@ -138,9 +139,8 @@ typedef struct SensorPhysicsState {
   float electromagneticNoise;  // 전자기 노이즈 레벨 [dBm]
 } SensorPhysicsState;
 
-// ========== 공압 컴포넌트 물리 상태 ==========
 
-// [추론] FRL 물리 상태: 공압 공급원의 압력 조정 및 필터링 특성
+
 // - 베르누이 방정식, 유량 방정식 기반 모델링
 // - 압력 조정기의 PID 제어 특성 반영
 typedef struct FRLPhysicsState {
@@ -171,7 +171,7 @@ typedef struct FRLPhysicsState {
   float settlingTime;  // 안정시간 [s]
 } FRLPhysicsState;
 
-// [추론] 매니폴드 물리 상태: 압력 분배기의 유동 특성
+
 // - 각 포트별 독립적 압력/유량 관리
 // - 연속성 방정식(질량보존) 기반 모델링
 typedef struct ManifoldPhysicsState {
@@ -196,7 +196,7 @@ typedef struct ManifoldPhysicsState {
   float flowResponseTime[4];      // 각 포트별 유량 응답시간 [ms]
 } ManifoldPhysicsState;
 
-// [추론] 단동 밸브 물리 상태: 전기-공압 변환 특성
+
 // - 솔레노이드의 전자기력과 스프링력의 평형 모델링
 // - 밸브 개폐에 따른 유량 특성 변화 추적
 typedef struct ValveSinglePhysicsState {
@@ -226,7 +226,6 @@ typedef struct ValveSinglePhysicsState {
   int operationCount;        // 동작 횟수
 } ValveSinglePhysicsState;
 
-// [추론] 복동 밸브 물리 상태: 2개 솔레노이드의 독립 제어 특성
 // - 메모리 기능(래칭), 중간위치 제어 가능성 고려
 // - A/B 양방향 압력 제어 및 크로스오버 특성 모델링
 typedef struct ValveDoublePhysicsState {
@@ -263,9 +262,8 @@ typedef struct ValveDoublePhysicsState {
   float responseTimeBA;      // B→A 응답시간 [ms]
 } ValveDoublePhysicsState;
 
-// ========== 기계 컴포넌트 물리 상태 ==========
 
-// [추론] 실린더 물리 상태: 공압-기계 에너지 변환의 핵심
+
 // - 뉴턴 운동법칙(F=ma) 기반 정확한 동역학 모델링
 // - 압력→힘→가속도→속도→위치의 물리적 연쇄 반응 추적
 // - 마찰, 관성, 탄성력 등 실제 물리 현상 반영
@@ -331,7 +329,6 @@ typedef struct CylinderPhysicsState {
   float maxAchievedSpeed;  // 최대 도달 속도 [mm/s]
 } CylinderPhysicsState;
 
-// ========== 유틸리티 구조체 ==========
 
 // [추론] 물리 상태 공통 유틸리티
 // - 모든 컴포넌트 상태를 통합 관리하기 위한 유니온
@@ -349,7 +346,6 @@ typedef union ComponentPhysicsState {
   CylinderPhysicsState cylinder;
 } ComponentPhysicsState;
 
-// [추론] 물리 상태 타입 식별자
 // - 유니온 사용 시 현재 활성화된 상태 타입 식별
 // - 타입 안전성 보장을 위한 런타임 타입 체크
 typedef enum PhysicsStateType {
@@ -366,7 +362,6 @@ typedef enum PhysicsStateType {
   PHYSICS_STATE_CYLINDER
 } PhysicsStateType;
 
-// [추론] 타입 안전한 물리 상태 래퍼
 // - 유니온 + 타입식별자 조합으로 안전한 상태 관리
 // - 잘못된 타입 접근 시 런타임 체크 가능
 typedef struct TypedPhysicsState {

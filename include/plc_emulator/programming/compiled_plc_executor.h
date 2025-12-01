@@ -1,3 +1,8 @@
+// compiled_plc_executor.h
+// Copyright 2024 PLC Emulator Project
+//
+// Executes compiled PLC programs.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_COMPILED_PLC_EXECUTOR_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_COMPILED_PLC_EXECUTOR_H_
 
@@ -60,6 +65,7 @@ class CompiledPLCExecutor {
   /**
    * @brief 컴파일된 C++ 코드 로드
    * @param compiledCode OpenPLCCompilerIntegration에서 생성된 C++ 코드
+    * OpenPLC컴파일rIntegr에서i위에서 생성된 C++ 코드
    * @return 로드 성공 여부
    */
   bool LoadCompiledCode(const std::string& compiledCode);
@@ -67,6 +73,7 @@ class CompiledPLCExecutor {
   /**
    * @brief 컴파일 결과에서 직접 로드
    * @param result OpenPLCCompilerIntegration::CompilationResult
+    * OpenPLC컴파일rIntegr에서i위::Compil에서i위Result
    * @return 로드 성공 여부
    */
   bool LoadFromCompilationResult(
@@ -153,6 +160,7 @@ class CompiledPLCExecutor {
   /**
    * @brief 실행 중인지 확인
    * @return 실행 중이면 true
+    * 실행 중이면 참
    */
   bool IsRunning() const { return is_running_; }
 
@@ -202,6 +210,7 @@ class CompiledPLCExecutor {
 
   /**
    * @brief 논리 연산 실행 (accumulator 관련)
+    * 논리 연산 실행 (ccumul에서또는 관련)
    * @param instruction 명령어
    * @return 실행 성공 여부
    */

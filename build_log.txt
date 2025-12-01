@@ -1,0 +1,10 @@
+[  7%] Built target miniz
+[ 20%] Built target imgui_lib
+[ 45%] Built target glfw
+[ 46%] Built target glad-generate-files
+[ 51%] Built target glad
+[ 53%] Building CXX object CMakeFiles/PLCSimulator.dir/src/physics/physics_engine.cpp.obj
+mingw32-make[3]: *** [CMakeFiles\PLCSimulator.dir\build.make:334: CMakeFiles/PLCSimulator.dir/src/physics/physics_engine.cpp.obj] Error 1
+mingw32-make[2]: *** [CMakeFiles\Makefile2:240: CMakeFiles/PLCSimulator.dir/all] Error 2
+mingw32-make[1]: *** [CMakeFiles\Makefile2:247: CMakeFiles/PLCSimulator.dir/rule] Error 2
+mingw32-make: *** [Makefile:181: PLCSimulator] Error 2

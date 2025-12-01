@@ -1,3 +1,8 @@
+// io_mapping.h
+// Copyright 2024 PLC Emulator Project
+//
+// I/O mapping data structures.
+
 // include/IOMapping.h
 // Phase 2: I/O 매핑 시스템 데이터 구조
 // 실배선 모드와 프로그래밍 모드를 연결하는 I/O 매핑 정보
@@ -12,7 +17,6 @@
 
 namespace plc {
 
-// === PLC 포트 정보 구조체 ===
 // FX3U PLC의 물리적 포트 정보를 나타냄
 
 struct PLCPortInfo {
@@ -28,7 +32,6 @@ struct PLCPortInfo {
       : portId(id), address(addr), type(portType), isInput(input) {}
 };
 
-// === 컴포넌트 매핑 정보 구조체 ===
 // 실배선의 물리 컴포넌트와 PLC 주소 간의 매핑 관계
 
 struct ComponentMapping {
@@ -54,7 +57,6 @@ struct ComponentMapping {
         componentRole(role) {}
 };
 
-// === I/O 매핑 전체 정보 구조체 ===
 // 실배선 모드에서 자동 생성되는 전체 I/O 매핑 정보
 
 struct IOMapping {
@@ -81,7 +83,6 @@ struct IOMapping {
     plcPorts.clear();
   }
 
-  // === 유틸리티 함수들 ===
 
   // 특정 PLC 주소의 매핑 찾기
   ComponentMapping* FindMappingByAddress(const std::string& address) {
@@ -153,7 +154,6 @@ struct IOMapping {
   }
 };
 
-// === I/O 매핑 연결 정보 구조체 ===
 // 배선 추적 중 발견되는 연결 정보
 
 struct ConnectionTrace {
@@ -174,7 +174,6 @@ struct ConnectionTrace {
   }
 };
 
-// === I/O 매핑 결과 구조체 ===
 // IOMapper의 분석 결과를 담는 구조체
 
 struct MappingResult {

@@ -1,3 +1,8 @@
+// ld_to_ladder_converter.h
+// Copyright 2024 PLC Emulator Project
+//
+// Converts LD format to ladder.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_LD_TO_LADDER_CONVERTER_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_LD_TO_LADDER_CONVERTER_H_
 
@@ -15,6 +20,7 @@ enum class LadderInstructionType;
 
 /**
  * @brief OpenPLC .ld 파일을 UI용 LadderProgram으로 역변환하는 클래스
+  * OpenPLC .ld 파일을 UI용 L추가erProgrm으로 역변환하는 클래스
  *
  * [추론] 래더 업로드 기능을 위한 역변환기
  * - .ld 파일 파싱 및 구조 분석
@@ -28,8 +34,10 @@ class LDToLadderConverter {
 
   /**
    * @brief .ld 파일을 LadderProgram으로 변환
+    * .ld 파일을 L추가erProgrm으로 변환
    * @param ldFilePath .ld 파일 경로
    * @param ladderProgram 출력될 LadderProgram 구조체
+    * 출력될 L추가erProgrm 구조체
    * @return 변환 성공 여부
    */
   bool ConvertFromLDFile(const std::string& ldFilePath,
@@ -37,8 +45,10 @@ class LDToLadderConverter {
 
   /**
    * @brief .ld 문자열을 LadderProgram으로 변환
+    * .ld 문자열을 L추가erProgrm으로 변환
    * @param ldContent .ld 파일 내용
    * @param ladderProgram 출력될 LadderProgram 구조체
+    * 출력될 L추가erProgrm 구조체
    * @return 변환 성공 여부
    */
   bool ConvertFromLDString(const std::string& ldContent,

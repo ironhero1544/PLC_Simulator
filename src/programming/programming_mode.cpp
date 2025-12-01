@@ -1,3 +1,8 @@
+// programming_mode.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of programming mode.
+
 #include "plc_emulator/programming/programming_mode.h"
 
 #include "plc_emulator/programming/compiled_plc_executor.h"
@@ -127,9 +132,6 @@ void ProgrammingMode::Update() {
   } else {
     // 🔥 **CRITICAL CHANGE**: UI 구조 직접 수정 금지!
     // [이전 코드] 직접 ladder_program_.rungs를 수정
-    // for (auto& rung : ladder_program_.rungs) {
-    //     for (auto& cell : rung.cells) {
-    //         cell.isActive = false;
     //     }
     // }
 
@@ -507,7 +509,6 @@ void ProgrammingMode::UpdateUIFromSimulatorState(const SimulatorState& state) {
   }
 }
 
-// === 신규: 시스템 입력(X) 단일 진입점 구현 ===
 void ProgrammingMode::UpdateInputsFromSystem(
     const std::map<std::string, bool>& inputs) {
   for (const auto& kv : inputs) {
@@ -518,7 +519,6 @@ void ProgrammingMode::UpdateInputsFromSystem(
   }
 }
 
-// === 신규: 프로그램 해시 계산 ===
 size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
   // 간단한 해시 조합기
   auto hash_combine = [](size_t& seed, size_t v) {
@@ -549,7 +549,6 @@ size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
   return seed;
 }
 
-// === 신규: T/C 초기화 구현 ===
 void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
   // 이미 존재하는 상태는 보존, 없으면 생성
   auto ensure_timer = [&](const std::string& addr,
@@ -727,7 +726,6 @@ bool ProgrammingMode::IsRecompileNeeded() const {
   return NeedsRecompilation();
 }
 
-// === GXWorks2 기본 정규화 구현 ===
 LadderProgram ProgrammingMode::NormalizeLadderGX2(const LadderProgram& src) {
   LadderProgram norm = DeepCopyLadderProgram(src);
   last_normalization_fix_count_ = 0;

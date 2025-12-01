@@ -1,3 +1,8 @@
+// memory_manager.h
+// Copyright 2024 PLC Emulator Project
+//
+// PLC memory regions (X, Y, M, D, T, C).
+
 #ifndef PLC_EMULATOR_MEMORY_MANAGER_H
 #define PLC_EMULATOR_MEMORY_MANAGER_H
 
@@ -38,6 +43,7 @@ struct MemoryRegion {
 
 /**
  * @brief Manages PLC memory regions (Input, Output, Internal, Timer, Counter, Data)
+  * Mges PLC 메모리 regi위s (Input, Output, Internl, Timer, Counter, D에서)
  * @details Provides centralized memory management for all PLC data types with bounds checking
  * 
  * PLC 메모리 영역(입력, 출력, 내부, 타이머, 카운터, 데이터)을 관리합니다.

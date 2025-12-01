@@ -1,3 +1,8 @@
+// application.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of main application class.
+
 // src/Application.cpp
 #include "plc_emulator/core/application.h"
 
@@ -387,7 +392,6 @@ void Application::RenderUI() {
   ImGui::End();
   ImGui::PopStyleVar(3);
 
-  // === Phase 4: 엔진 상태 패널 ===
   if (current_mode_ == Mode::PROGRAMMING && programming_mode_) {
     RenderPLCDebugPanel();
   }
@@ -453,7 +457,6 @@ void Application::RenderHeader() {
 
     if (ImGui::Button(is_plc_running_ ? "STOP" : "RUN", ImVec2(80, 30))) {
       if (!is_plc_running_) {
-        // === PLC STOP → RUN 전환 초기화 ===
         std::cout << "🚀 PLC RUN: Initializing PLC system..." << std::endl;
 
         // 1. 래더 프로그램 동기화
@@ -501,7 +504,6 @@ void Application::RenderHeader() {
         std::cout << "✅ PLC RUN: System initialized and ready for execution!"
                   << std::endl;
       } else {
-        // === PLC RUN → STOP 전환 처리 ===
         std::cout << "⏹️ PLC STOP: Stopping execution..." << std::endl;
 
         // 모든 출력 비활성화
@@ -739,11 +741,9 @@ void Application::SyncLadderProgramFromProgrammingMode() {
   plc_timer_states_ = programming_mode_->GetTimerStates();
   plc_counter_states_ = programming_mode_->GetCounterStates();
 
-  // === Phase 1: PLCSimulatorCore로도 동기화 ===
   if (simulator_core_) {
     simulator_core_->SyncFromProgrammingMode(programming_mode_.get());
 
-    // === Phase 2: I/O 매핑도 함께 업데이트 ===
     if (simulator_core_->UpdateIOMapping()) {
       printf("🔗 I/O Mapping updated from wiring connections.\n");
     } else {
@@ -753,7 +753,6 @@ void Application::SyncLadderProgramFromProgrammingMode() {
     printf("🔄 Data synchronized to PLCSimulatorCore as well.\n");
   }
 
-  // === Phase 4: CompiledPLCExecutor 자동 컴파일 및 로드 ===
   if (compiled_plc_executor_) {
     CompileAndLoadLadderProgram();
   }

@@ -1,3 +1,8 @@
+// compiled_plc_executor.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of PLC executor.
+
 #include "plc_emulator/programming/compiled_plc_executor.h"
 
 #include <algorithm>
@@ -11,6 +16,7 @@ namespace plc {
 
 /**
  * @brief Constructor with safe memory initialization
+  * C위구조체또는 와 함께 sfe 메모리 내itiliz에서i위
  *
  * MEMORY SAFETY INITIALIZATION:
  * Ensures all PLC memory structures are properly initialized to prevent
@@ -37,8 +43,11 @@ CompiledPLCExecutor::~CompiledPLCExecutor() {
 
 /**
  * @brief Load and parse compiled C++ code with comprehensive error handling
+  * 로드 및 파싱 컴파일d C++ code 와 함께 comprehensive 오류 h및l내g
  * @param compiledCode Generated C++ code from OpenPLC compiler
+  * Gener에서ed C++ code 부터 OpenPLC 컴파일r
  * @return true if successful, false on parsing errors
+  * 참 만약 성공ful, 거짓 위 prs내g 오류s
  *
  * CRITICAL COMPILATION ERROR PREVENTION:
  * This method handles the most common source of PLC execution failures -
@@ -86,7 +95,9 @@ bool CompiledPLCExecutor::LoadFromCompilationResult(
 
 /**
  * @brief Execute PLC scan cycle with comprehensive error handling and timing
+  * 실행 PLC s할 수 있다 cycle 와 함께 comprehensive 오류 h및l내g 및 tim내g
  * @return ExecutionResult containing success status, timing, and error
+  * Executi위Result c위t내내g 성공 st에서us, tim내g, 및 오류
  * information
  *
  * CRITICAL PLC SCAN CYCLE IMPLEMENTATION:
@@ -226,8 +237,11 @@ bool CompiledPLCExecutor::GetMemory(int address) const {
 
 /**
  * @brief Get device state with comprehensive bounds checking and error handling
+  * 가져오기 device st에서e 와 함께 comprehensive bounds 확인내g 및 오류 h및l내g
  * @param address Device address string (e.g., "X0", "Y15", "M999")
+  * Device 추가ress 문자열 (e.g., "X0", "Y15", "M999")
  * @return Device state or false if invalid address
+  * Device st에서e 또는 거짓 만약 내vlID 추가ress
  *
  * CRITICAL MEMORY SAFETY FEATURES:
  * This method implements multiple layers of protection against memory access
@@ -281,8 +295,11 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
 
 /**
  * @brief Set device state with memory protection and validation
+  * 설정 device st에서e 와 함께 메모리 protecti위 및 vlID에서i위
  * @param address Device address string (must be valid format)
+  * Device 추가ress 문자열 (해야 한다 이다 vlID 위한m에서)
  * @param state New device state
+  * New device st에서e
  *
  * MEMORY CORRUPTION PREVENTION:
  * This method implements the same safety features as GetDeviceState() for
@@ -336,6 +353,7 @@ void CompiledPLCExecutor::SetDeviceState(const std::string& address,
 
 /**
  * @brief Reset all PLC memory to safe initial state
+  * Re집합 ll PLC 메모리 sfe 내itil st에서e
  *
  * MEMORY SAFETY RESET:
  * This method provides complete memory initialization to prevent undefined
@@ -385,8 +403,11 @@ void CompiledPLCExecutor::ResetMemory() {
 
 /**
  * @brief Parse compiled C++ code into executable instructions
+  * 파싱 컴파일d C++ code 내 executble 명령s
  * @param code Generated C++ code from OpenPLC compiler
+  * Gener에서ed C++ code 부터 OpenPLC 컴파일r
  * @return true if parsing successful, false on syntax errors
+  * 참 만약 prs내g 성공ful, 거짓 위 syntx 오류s
  *
  * CRITICAL PARSING ERROR PREVENTION:
  * This method handles the complex task of converting generated C++ code
@@ -449,7 +470,6 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
 
     // INSTRUCTION TYPE ANALYSIS with error tolerance
     if (line.find(" = ") != std::string::npos) {
-      // ASSIGNMENT PARSING: target = expression
       size_t equalPos = line.find(" = ");
       std::string lhs = line.substr(0, equalPos);
       std::string rhs = line.substr(equalPos + 3);
@@ -520,7 +540,6 @@ bool CompiledPLCExecutor::ExecuteInstruction(
 
 bool CompiledPLCExecutor::ExecuteAssignment(
     const ParsedInstruction& instruction) {
-  // target = expression 형태의 할당문 실행
 
   // 1. 표현식 평가
   bool result = EvaluateExpression(instruction.operand1);
@@ -544,8 +563,11 @@ bool CompiledPLCExecutor::ExecuteAssignment(
 
 /**
  * @brief Get memory pointer for variable with bounds checking and validation
+  * 가져오기 메모리 포인터 위한 vrible 와 함께 bounds 확인내g 및 vlID에서i위
  * @param varName Variable name (e.g., "X[5]", "Y[10]", "M[100]", "accumulator")
+  * Vrible 이름 (e.g., "X[5]", "Y[10]", "M[100]", "ccumul에서또는")
  * @return Pointer to memory location or nullptr if invalid
+  * Po내ter 메모리 loc에서i위 또는 nullptr 만약 내vlID
  *
  * CRITICAL MEMORY SAFETY:
  * This method provides safe access to PLC memory through pointers while
@@ -621,9 +643,12 @@ bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
 
 /**
  * @brief Evaluate boolean expressions with recursive parsing and error handling
+  * Evlu에서e boole expressi위s 와 함께 recursive prs내g 및 오류 h및l내g
  * @param expression Boolean expression string (e.g., "X[11]", "accumulator &&
+  * Boole expressi위 문자열 (e.g., "X[11]", "ccumul에서또는 &&
  * !M[2]")
  * @return Evaluated boolean result
+  * Evlu에서ed boole result
  *
  * CRITICAL EXPRESSION EVALUATION SAFETY:
  * This method handles complex boolean expressions that could cause stack
@@ -726,7 +751,9 @@ int CompiledPLCExecutor::ExtractNumber(const std::string& str) {
 
 /**
  * @brief Set error state with logging and result tracking
+  * 설정 오류 st에서e 와 함께 logg내g 및 result trck내g
  * @param error Error message describing the failure
+  * Err또는 messge describ내g 실패
  *
  * ERROR STATE MANAGEMENT:
  * This method provides centralized error handling for the PLC executor,

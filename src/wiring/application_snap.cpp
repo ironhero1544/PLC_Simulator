@@ -1,3 +1,8 @@
+// application_snap.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Grid snapping functionality.
+
 // src/Application_Snap.cpp
 
 #include "imgui.h"

@@ -1,3 +1,8 @@
+// physics_engine.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of physics engine.
+
 // src/PhysicsEngine.cpp
 // 물리엔진 핵심 구현 - 실제 물리 법칙 기반 시뮬레이션
 // 기존 하드코딩된 물리 시뮬레이션을 완전히 대체하는 통합 물리엔진
@@ -14,7 +19,6 @@
 
 namespace plc {
 
-// ========== 내부 유틸리티 함수들 ==========
 
 namespace PhysicsEngineInternal {
 
@@ -193,7 +197,6 @@ class PerformanceTimer {
 
 }  // namespace PhysicsEngineInternal
 
-// ========== 생명주기 관리 함수 구현 ==========
 
 // 물리엔진 생성 함수 구현
 // - 메모리 할당 및 기본 초기화
@@ -356,31 +359,67 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
   return PHYSICS_ENGINE_SUCCESS;
 }
 
-int Initialize(PhysicsEngine* engine) {
-  if (!engine)
-    return PHYSICS_ENGINE_ERROR_INVALID_PARAMETER;
-  if (engine->isInitialized)
-    return PHYSICS_ENGINE_SUCCESS;
+// Helper functions for Initialize
+namespace {
 
-  using namespace PhysicsEngineInternal;
+using PhysicsEngineInternal::SafeAllocateArray;
+using PhysicsEngineInternal::SafeDeallocateArray;
+using PhysicsEngineInternal::Allocate2DArray;
+using PhysicsEngineInternal::Deallocate2DArray;
+using PhysicsEngineInternal::SetEngineError;
 
-  // 기본 네트워크 시스템 존재 확인
-  if (!engine->electricalNetwork || !engine->pneumaticNetwork ||
-      !engine->mechanicalSystem) {
-    SetEngineError(engine, PHYSICS_ENGINE_ERROR_NOT_INITIALIZED,
-                   "Network systems not created");
-    return PHYSICS_ENGINE_ERROR_NOT_INITIALIZED;
+void CleanupElectricalNetwork(ElectricalNetwork* elec) {
+  if (!elec) return;
+  SafeDeallocateArray(elec->nodes);
+  SafeDeallocateArray(elec->edges);
+  if (elec->adjacencyMatrix) {
+    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
   }
+  if (elec->conductanceMatrix) {
+    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
+  }
+  SafeDeallocateArray(elec->currentVector);
+  SafeDeallocateArray(elec->voltageVector);
+}
 
-  // 각 네트워크 시스템 초기화
-  std::memset(engine->electricalNetwork, 0, sizeof(ElectricalNetwork));
-  std::memset(engine->pneumaticNetwork, 0, sizeof(PneumaticNetwork));
-  std::memset(engine->mechanicalSystem, 0, sizeof(MechanicalSystem));
+void CleanupPneumaticNetwork(PneumaticNetwork* pneu) {
+  if (!pneu) return;
+  SafeDeallocateArray(pneu->nodes);
+  SafeDeallocateArray(pneu->edges);
+  if (pneu->adjacencyMatrix) {
+    Deallocate2DArray(pneu->adjacencyMatrix, pneu->maxNodes);
+  }
+  SafeDeallocateArray(pneu->massFlowVector);
+  SafeDeallocateArray(pneu->pressureVector);
+}
 
-  // 전기 네트워크 초기화 - 실패 시 정리
+void CleanupMechanicalSystem(MechanicalSystem* mech) {
+  if (!mech) return;
+  SafeDeallocateArray(mech->nodes);
+  SafeDeallocateArray(mech->edges);
+  if (mech->adjacencyMatrix) {
+    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
+  }
+  int dof = 6 * mech->maxNodes;
+  if (mech->massMatrix) {
+    Deallocate2DArray(mech->massMatrix, dof);
+  }
+  if (mech->dampingMatrix) {
+    Deallocate2DArray(mech->dampingMatrix, dof);
+  }
+  if (mech->stiffnessMatrix) {
+    Deallocate2DArray(mech->stiffnessMatrix, dof);
+  }
+  SafeDeallocateArray(mech->displacementVector);
+  SafeDeallocateArray(mech->velocityVector);
+  SafeDeallocateArray(mech->accelerationVector);
+  SafeDeallocateArray(mech->forceVector);
+}
+
+int InitializeElectricalNetwork(PhysicsEngine* engine) {
   ElectricalNetwork* elec = engine->electricalNetwork;
-  elec->maxNodes = engine->maxComponents * 32;  // 컴포넌트당 최대 32포트
-  elec->maxEdges = engine->maxComponents * 50;  // 와이어 여유분
+  elec->maxNodes = engine->maxComponents * 32;
+  elec->maxEdges = engine->maxComponents * 50;
 
   elec->nodes = SafeAllocateArray<ElectricalNode>(elec->maxNodes);
   if (!elec->nodes) {
@@ -391,7 +430,7 @@ int Initialize(PhysicsEngine* engine) {
 
   elec->edges = SafeAllocateArray<ElectricalEdge>(elec->maxEdges);
   if (!elec->edges) {
-    SafeDeallocateArray(elec->nodes);
+    CleanupElectricalNetwork(elec);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate electrical edges");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -399,8 +438,7 @@ int Initialize(PhysicsEngine* engine) {
 
   elec->adjacencyMatrix = Allocate2DArray<int>(elec->maxNodes, elec->maxNodes);
   if (!elec->adjacencyMatrix) {
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
+    CleanupElectricalNetwork(elec);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate electrical adjacency matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -409,9 +447,7 @@ int Initialize(PhysicsEngine* engine) {
   elec->conductanceMatrix =
       Allocate2DArray<float>(elec->maxNodes, elec->maxNodes);
   if (!elec->conductanceMatrix) {
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
+    CleanupElectricalNetwork(elec);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate electrical conductance matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -419,10 +455,7 @@ int Initialize(PhysicsEngine* engine) {
 
   elec->currentVector = SafeAllocateArray<float>(elec->maxNodes);
   if (!elec->currentVector) {
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
+    CleanupElectricalNetwork(elec);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate electrical current vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -430,11 +463,7 @@ int Initialize(PhysicsEngine* engine) {
 
   elec->voltageVector = SafeAllocateArray<float>(elec->maxNodes);
   if (!elec->voltageVector) {
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
+    CleanupElectricalNetwork(elec);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate electrical voltage vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -442,22 +471,18 @@ int Initialize(PhysicsEngine* engine) {
 
   elec->convergenceTolerance = engine->convergenceTolerance;
   elec->maxIterations = engine->maxIterations;
-  elec->groundNodeId = -1;  // 나중에 설정
+  elec->groundNodeId = -1;
 
-  //  공압 네트워크 초기화 - 실패 시 전기 네트워크도 정리
+  return PHYSICS_ENGINE_SUCCESS;
+}
+
+int InitializePneumaticNetwork(PhysicsEngine* engine) {
   PneumaticNetwork* pneu = engine->pneumaticNetwork;
   pneu->maxNodes = engine->maxComponents * 16;
   pneu->maxEdges = engine->maxComponents * 30;
 
   pneu->nodes = SafeAllocateArray<PneumaticNode>(pneu->maxNodes);
   if (!pneu->nodes) {
-    // 전기 네트워크 정리
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
-    SafeDeallocateArray(elec->voltageVector);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate pneumatic nodes");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -465,15 +490,7 @@ int Initialize(PhysicsEngine* engine) {
 
   pneu->edges = SafeAllocateArray<PneumaticEdge>(pneu->maxEdges);
   if (!pneu->edges) {
-    // 공압 네트워크 일부 정리
-    SafeDeallocateArray(pneu->nodes);
-    // 전기 네트워크 정리
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
-    SafeDeallocateArray(elec->voltageVector);
+    CleanupPneumaticNetwork(pneu);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate pneumatic edges");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -481,16 +498,7 @@ int Initialize(PhysicsEngine* engine) {
 
   pneu->adjacencyMatrix = Allocate2DArray<int>(pneu->maxNodes, pneu->maxNodes);
   if (!pneu->adjacencyMatrix) {
-    // 공압 네트워크 일부 정리
-    SafeDeallocateArray(pneu->nodes);
-    SafeDeallocateArray(pneu->edges);
-    // 전기 네트워크 정리
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
-    SafeDeallocateArray(elec->voltageVector);
+    CleanupPneumaticNetwork(pneu);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate pneumatic adjacency matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -498,17 +506,7 @@ int Initialize(PhysicsEngine* engine) {
 
   pneu->massFlowVector = SafeAllocateArray<float>(pneu->maxEdges);
   if (!pneu->massFlowVector) {
-    // 공압 네트워크 일부 정리
-    SafeDeallocateArray(pneu->nodes);
-    SafeDeallocateArray(pneu->edges);
-    Deallocate2DArray(pneu->adjacencyMatrix, pneu->maxNodes);
-    // 전기 네트워크 정리
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
-    SafeDeallocateArray(elec->voltageVector);
+    CleanupPneumaticNetwork(pneu);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate pneumatic mass flow vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -516,18 +514,7 @@ int Initialize(PhysicsEngine* engine) {
 
   pneu->pressureVector = SafeAllocateArray<float>(pneu->maxNodes);
   if (!pneu->pressureVector) {
-    // 공압 네트워크 일부 정리
-    SafeDeallocateArray(pneu->nodes);
-    SafeDeallocateArray(pneu->edges);
-    Deallocate2DArray(pneu->adjacencyMatrix, pneu->maxNodes);
-    SafeDeallocateArray(pneu->massFlowVector);
-    // 전기 네트워크 정리
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
-    SafeDeallocateArray(elec->voltageVector);
+    CleanupPneumaticNetwork(pneu);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate pneumatic pressure vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -536,35 +523,20 @@ int Initialize(PhysicsEngine* engine) {
   pneu->convergenceTolerance = engine->convergenceTolerance;
   pneu->maxIterations = engine->maxIterations;
   pneu->atmosphericPressure = PhysicsEngineDefaults::ATMOSPHERIC_PRESSURE;
-  pneu->ambientTemperature = 293.15f;  // 20°C
+  pneu->ambientTemperature = 293.15f;
   pneu->gasConstant = PhysicsEngineDefaults::GAS_CONSTANT;
   pneu->specificHeatRatio = PhysicsEngineDefaults::SPECIFIC_HEAT_RATIO;
 
-  // 기계 시스템 초기화 - 실패 시 전체 네트워크 정리
+  return PHYSICS_ENGINE_SUCCESS;
+}
+
+int InitializeMechanicalSystem(PhysicsEngine* engine) {
   MechanicalSystem* mech = engine->mechanicalSystem;
   mech->maxNodes = engine->maxComponents * 8;
   mech->maxEdges = engine->maxComponents * 20;
 
-  // 정리 매크로 정의 (코드 중복 방지)
-  auto CleanupAllNetworks = [&]() {
-    // 공압 네트워크 정리
-    SafeDeallocateArray(pneu->nodes);
-    SafeDeallocateArray(pneu->edges);
-    Deallocate2DArray(pneu->adjacencyMatrix, pneu->maxNodes);
-    SafeDeallocateArray(pneu->massFlowVector);
-    SafeDeallocateArray(pneu->pressureVector);
-    // 전기 네트워크 정리
-    SafeDeallocateArray(elec->nodes);
-    SafeDeallocateArray(elec->edges);
-    Deallocate2DArray(elec->adjacencyMatrix, elec->maxNodes);
-    Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
-    SafeDeallocateArray(elec->currentVector);
-    SafeDeallocateArray(elec->voltageVector);
-  };
-
   mech->nodes = SafeAllocateArray<MechanicalNode>(mech->maxNodes);
   if (!mech->nodes) {
-    CleanupAllNetworks();
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical nodes");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -572,8 +544,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->edges = SafeAllocateArray<MechanicalEdge>(mech->maxEdges);
   if (!mech->edges) {
-    SafeDeallocateArray(mech->nodes);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical edges");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -581,9 +552,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->adjacencyMatrix = Allocate2DArray<int>(mech->maxNodes, mech->maxNodes);
   if (!mech->adjacencyMatrix) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical adjacency matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -592,10 +561,7 @@ int Initialize(PhysicsEngine* engine) {
   int dof = 6 * mech->maxNodes;
   mech->massMatrix = Allocate2DArray<float>(dof, dof);
   if (!mech->massMatrix) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical mass matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -603,11 +569,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->dampingMatrix = Allocate2DArray<float>(dof, dof);
   if (!mech->dampingMatrix) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    Deallocate2DArray(mech->massMatrix, dof);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical damping matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -615,12 +577,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->stiffnessMatrix = Allocate2DArray<float>(dof, dof);
   if (!mech->stiffnessMatrix) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    Deallocate2DArray(mech->massMatrix, dof);
-    Deallocate2DArray(mech->dampingMatrix, dof);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical stiffness matrix");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -628,13 +585,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->displacementVector = SafeAllocateArray<float>(dof);
   if (!mech->displacementVector) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    Deallocate2DArray(mech->massMatrix, dof);
-    Deallocate2DArray(mech->dampingMatrix, dof);
-    Deallocate2DArray(mech->stiffnessMatrix, dof);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical displacement vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -642,14 +593,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->velocityVector = SafeAllocateArray<float>(dof);
   if (!mech->velocityVector) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    Deallocate2DArray(mech->massMatrix, dof);
-    Deallocate2DArray(mech->dampingMatrix, dof);
-    Deallocate2DArray(mech->stiffnessMatrix, dof);
-    SafeDeallocateArray(mech->displacementVector);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical velocity vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -657,15 +601,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->accelerationVector = SafeAllocateArray<float>(dof);
   if (!mech->accelerationVector) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    Deallocate2DArray(mech->massMatrix, dof);
-    Deallocate2DArray(mech->dampingMatrix, dof);
-    Deallocate2DArray(mech->stiffnessMatrix, dof);
-    SafeDeallocateArray(mech->displacementVector);
-    SafeDeallocateArray(mech->velocityVector);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical acceleration vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -673,16 +609,7 @@ int Initialize(PhysicsEngine* engine) {
 
   mech->forceVector = SafeAllocateArray<float>(dof);
   if (!mech->forceVector) {
-    SafeDeallocateArray(mech->nodes);
-    SafeDeallocateArray(mech->edges);
-    Deallocate2DArray(mech->adjacencyMatrix, mech->maxNodes);
-    Deallocate2DArray(mech->massMatrix, dof);
-    Deallocate2DArray(mech->dampingMatrix, dof);
-    Deallocate2DArray(mech->stiffnessMatrix, dof);
-    SafeDeallocateArray(mech->displacementVector);
-    SafeDeallocateArray(mech->velocityVector);
-    SafeDeallocateArray(mech->accelerationVector);
-    CleanupAllNetworks();
+    CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical force vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
@@ -693,6 +620,48 @@ int Initialize(PhysicsEngine* engine) {
   mech->gravity[2] = 0.0f;
   mech->timeStep = engine->deltaTime;
   mech->isStable = true;
+
+  return PHYSICS_ENGINE_SUCCESS;
+}
+
+}  // anonymous namespace
+
+int Initialize(PhysicsEngine* engine) {
+  if (!engine)
+    return PHYSICS_ENGINE_ERROR_INVALID_PARAMETER;
+  if (engine->isInitialized)
+    return PHYSICS_ENGINE_SUCCESS;
+
+  using namespace PhysicsEngineInternal;
+
+  if (!engine->electricalNetwork || !engine->pneumaticNetwork ||
+      !engine->mechanicalSystem) {
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_NOT_INITIALIZED,
+                   "Network systems not created");
+    return PHYSICS_ENGINE_ERROR_NOT_INITIALIZED;
+  }
+
+  std::memset(engine->electricalNetwork, 0, sizeof(ElectricalNetwork));
+  std::memset(engine->pneumaticNetwork, 0, sizeof(PneumaticNetwork));
+  std::memset(engine->mechanicalSystem, 0, sizeof(MechanicalSystem));
+
+  int result = InitializeElectricalNetwork(engine);
+  if (result != PHYSICS_ENGINE_SUCCESS) {
+    return result;
+  }
+
+  result = InitializePneumaticNetwork(engine);
+  if (result != PHYSICS_ENGINE_SUCCESS) {
+    CleanupElectricalNetwork(engine->electricalNetwork);
+    return result;
+  }
+
+  result = InitializeMechanicalSystem(engine);
+  if (result != PHYSICS_ENGINE_SUCCESS) {
+    CleanupPneumaticNetwork(engine->pneumaticNetwork);
+    CleanupElectricalNetwork(engine->electricalNetwork);
+    return result;
+  }
 
   engine->isInitialized = true;
 
@@ -828,7 +797,6 @@ int Destroy(PhysicsEngine* engine) {
 
 }  // namespace LifecycleFunctions
 
-// ========== [Phase 3: 상태 관리 개선] 상태 검증 함수들 ==========
 
 namespace StateValidationFunctions {
 
@@ -952,7 +920,6 @@ bool IsSafeToRunSimulation(PhysicsEngine* engine) {
 
 }  // namespace StateValidationFunctions
 
-// ========== 네트워크 구성 함수 구현 ==========
 
 // 배선 정보로부터 물리 네트워크 자동 구성
 // - 핵심 기능: Wire와 PlacedComponent를 분석하여 물리 네트워크 생성
@@ -1274,7 +1241,6 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         edge.resistivity = 1.7e-8f;    // 구리 비저항 [Ω⋅m]
         edge.temperature = 20.0f;      // 상온
 
-        // 저항 계산: R = ρ × L / A
         edge.resistance = (edge.resistivity * 1000.0f) *
                           (wireLength / 1000.0f) /
                           (edge.crossSectionArea / 1000000.0f);
@@ -1431,7 +1397,6 @@ int UpdateNetworkTopology(PhysicsEngine* engine) {
 
 }  // namespace NetworkingFunctions
 
-// ========== 외부 C 인터페이스 함수들 ==========
 
 extern "C" {
 
@@ -1505,7 +1470,6 @@ void DestroyPhysicsEngine(PhysicsEngine* engine) {
 
 }  // extern "C"
 
-// ========== 에러 메시지 변환 함수 ==========
 
 const char* PhysicsEngineErrorToString(PhysicsEngineError error) {
   switch (error) {

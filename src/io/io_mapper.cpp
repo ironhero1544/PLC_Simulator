@@ -1,3 +1,8 @@
+// io_mapper.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of I/O mapper.
+
 // src/IOMapper.cpp
 // Phase 2: I/O 매핑 시스템 구현 - 실배선 정보를 분석하여 자동 I/O 매핑 생성
 
@@ -11,7 +16,6 @@
 
 namespace plc {
 
-// === IOMapper 생성/초기화 함수들 ===
 
 IOMapper* CreateIOMapper() {
   IOMapper* mapper = new IOMapper();
@@ -95,7 +99,6 @@ void ShutdownIOMapper(IOMapper* mapper) {
   std::cout << "IOMapper shutdown completed." << std::endl;
 }
 
-// === 메인 매핑 추출 함수 ===
 
 MappingResult IOMapper_ExtractMapping(
     IOMapper* mapper, const std::vector<Wire>* wires,
@@ -114,7 +117,6 @@ MappingResult IOMapper_ExtractMapping(
 
   std::cout << "🔍 Starting I/O mapping extraction..." << std::endl;
 
-  // === 1단계: PLC 컴포넌트 찾기 ===
   PlacedComponent* plcComponent = mapper->FindPLCComponent(mapper, components);
   if (!plcComponent) {
     result.AddError("No PLC component found in the circuit");
@@ -125,7 +127,6 @@ MappingResult IOMapper_ExtractMapping(
   std::cout << "✅ Found PLC component (ID: " << plcComponent->instanceId << ")"
             << std::endl;
 
-  // === 2단계: 모든 연결 추적 ===
   std::vector<ConnectionTrace> connections = mapper->TraceAllConnections(
       mapper, plcComponent->instanceId, wires, components);
 
@@ -133,7 +134,6 @@ MappingResult IOMapper_ExtractMapping(
   std::cout << "🔗 Found " << connections.size() << " connections from PLC"
             << std::endl;
 
-  // === 3단계: 연결별 매핑 생성 ===
   int inputCounter = 0;
   int outputCounter = 0;
 
@@ -183,7 +183,6 @@ MappingResult IOMapper_ExtractMapping(
     }
   }
 
-  // === 4단계: 매핑 검증 및 완료 ===
   result.mapping.isValid = result.mapping.ValidateMapping();
   result.success = result.mapping.isValid && !result.HasErrors();
 
@@ -206,7 +205,6 @@ MappingResult IOMapper_ExtractMapping(
   return result;
 }
 
-// === PLC 컴포넌트 관련 함수들 ===
 
 PlacedComponent* IOMapper_FindPLCComponent(
     IOMapper* mapper, const std::vector<PlacedComponent>* components) {
@@ -226,7 +224,6 @@ bool IOMapper_IsValidPLCComponent(const PlacedComponent* component) {
   return component && component->type == ComponentType::PLC;
 }
 
-// === 배선 추적 관련 함수들 ===
 
 std::vector<ConnectionTrace> IOMapper_TraceAllConnections(
     IOMapper* mapper, int plcComponentId, const std::vector<Wire>* wires,
@@ -341,7 +338,6 @@ ConnectionTrace IOMapper_TraceSpecificConnection(
   return trace;
 }
 
-// === PLC 주소 생성 함수들 ===
 
 std::string IOMapper_GeneratePLCAddress(IOMapper* mapper, int portId,
                                         bool isInput, PortType type) {
@@ -390,7 +386,6 @@ int IOMapper_ParsePLCPortNumber(const std::string& address) {
   }
 }
 
-// === 검증 함수들 ===
 
 bool IOMapper_ValidateConnection(
     IOMapper* mapper, const Wire* wire,
@@ -430,7 +425,6 @@ bool IOMapper_CheckCircularConnection(IOMapper* mapper, int startComponentId,
   return false;  // 현재는 false 반환 (Phase 3에서 개선)
 }
 
-// === 유틸리티 함수들 ===
 
 std::vector<Wire*> IOMapper_FindWiresByComponent(const std::vector<Wire>* wires,
                                                  int componentId, int portId) {
@@ -542,7 +536,6 @@ bool IOMapper_IsPLCInputPort(const PlacedComponent* plcComponent, int portId) {
   return portId >= 0 && portId < 16;
 }
 
-// === 디버그 및 로깅 함수들 ===
 
 void IOMapper_PrintMappingResult(const MappingResult* result) {
   if (!result)

@@ -1,3 +1,8 @@
+// main.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Application entry point.
+
 
 
 // C++ 프로그램의 진입점인 main 함수를 구현합니다.

@@ -1,3 +1,8 @@
+// project_file_manager.h
+// Copyright 2024 PLC Emulator Project
+//
+// Project file save/load management.
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_PROJECT_FILE_MANAGER_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_PROJECT_FILE_MANAGER_H_
 

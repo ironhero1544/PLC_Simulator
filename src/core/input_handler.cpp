@@ -1,4 +1,9 @@
 // input_handler.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of input handler.
+
+// input_handler.cpp
 // Input handling implementation
 // 입력 처리 구현
 

@@ -1,3 +1,7 @@
+// physics_network.h
+//
+// Network structures for physics domains.
+
 // include/PhysicsNetwork.h
 // [추론] 물리 네트워크 그래프 구조 정의
 // 키르히호프 법칙, 베르누이 방정식, 뉴턴 역학을 적용하기 위한 네트워크 토폴로지
@@ -11,7 +15,6 @@
 
 namespace plc {
 
-// ========== 공통 네트워크 기본 구조 ==========
 
 // [추론] 네트워크 노드 기본 정보
 // - 모든 물리 네트워크에서 공통으로 사용되는 노드 식별 정보
@@ -34,12 +37,10 @@ typedef struct NetworkEdgeBase {
   bool isActive;   // 엣지 활성화 상태
 } NetworkEdgeBase;
 
-// ========== 전기 네트워크 구조 ==========
 
 // [추론] 전기 네트워크 노드
 // - 키르히호프 전압/전류 법칙 적용을 위한 전기적 특성
 // - 각 노드는 전위(전압)를 가지며, 엣지를 통해 전류가 흐름
-// - 노드에서의 전류 보존 법칙 (ΣI = 0) 적용
 typedef struct ElectricalNode {
   NetworkNodeBase base;  // 기본 노드 정보
 
@@ -73,7 +74,6 @@ typedef struct ElectricalNode {
 // [추론] 전기 네트워크 엣지
 // - 두 전기 노드 간의 저항성 연결 (옴의 법칙 적용)
 // - 와이어의 물리적 특성(길이, 단면적, 재질)을 전기적 특성으로 변환
-// - V = I × R 관계를 통해 전압강하 계산
 typedef struct ElectricalEdge {
   NetworkEdgeBase base;  // 기본 엣지 정보
 
@@ -136,7 +136,6 @@ typedef struct ElectricalNetwork {
   bool isConverged;            // 수렴 여부
 } ElectricalNetwork;
 
-// ========== 공압 네트워크 구조 ==========
 
 // [추론] 공압 네트워크 노드
 // - 베르누이 방정식, 연속성 방정식 적용을 위한 유체역학적 특성
@@ -269,7 +268,6 @@ typedef struct PneumaticNetwork {
   bool isConverged;            // 수렴 여부
 } PneumaticNetwork;
 
-// ========== 기계 시스템 구조 ==========
 
 // [추론] 기계 시스템 노드 (질점)
 // - 뉴턴 역학 법칙 적용을 위한 질량-위치-속도 상태
@@ -310,7 +308,6 @@ typedef struct MechanicalNode {
 
 // [추론] 기계 시스템 엣지 (연결요소)
 // - 두 질점 간의 탄성/점성 연결 (스프링-댐퍼)
-// - 훅의 법칙 F = kx, 점성 댐핑 F = cv 적용
 // - 비선형 스프링, 마찰력, 접촉력 등 복잡한 상호작용 모델링
 typedef struct MechanicalEdge {
   NetworkEdgeBase base;  // 기본 엣지 정보
@@ -366,7 +363,6 @@ typedef struct MechanicalEdge {
 
 // [추론] 기계 시스템 전체 구조
 // - 뉴턴 역학 F=ma를 적용하기 위한 질량-스프링-댐퍼 네트워크
-// - 라그랑주 방정식 d/dt(∂L/∂q̇) - ∂L/∂q = Q로 확장 가능
 // - 룽게-쿠타 방법으로 운동방정식 수치해석
 typedef struct MechanicalSystem {
   // 네트워크 토폴로지
@@ -383,7 +379,6 @@ typedef struct MechanicalSystem {
   int* nodeEdgeList;      // 각 노드별 연결된 엣지 리스트
   int* nodeEdgeCount;     // 각 노드별 연결된 엣지 개수
 
-  // 동역학 행렬 (M q̈ + C q̇ + K q = F)
   float** massMatrix;         // 질량 행렬 M [6*nodeCount][6*nodeCount]
   float** dampingMatrix;      // 댐핑 행렬 C [6*nodeCount][6*nodeCount]
   float** stiffnessMatrix;    // 강성 행렬 K [6*nodeCount][6*nodeCount]
@@ -409,7 +404,6 @@ typedef struct MechanicalSystem {
   bool isStable;               // 시스템 안정성 여부
 } MechanicalSystem;
 
-// ========== 네트워크 유틸리티 함수 포인터 ==========
 
 // [추론] C언어 스타일 네트워크 관리 함수들
 // - 각 네트워크의 생성, 해제, 업데이트를 위한 함수 포인터

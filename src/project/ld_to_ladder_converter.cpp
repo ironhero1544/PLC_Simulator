@@ -1,3 +1,8 @@
+// ld_to_ladder_converter.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of ladder converter.
+
 #include "plc_emulator/project/ld_to_ladder_converter.h"
 
 #include "plc_emulator/core/data_types.h"
@@ -339,7 +344,6 @@ void LDToLadderConverter::GenerateVerticalConnections(
   // 실제 구현에서는 .ld 파일의 연결선 정보를 분석해야 함
 }
 
-// ========== 유틸리티 메서드들 ==========
 
 std::string LDToLadderConverter::ExtractXMLTag(const std::string& xml,
                                                const std::string& tagName) {

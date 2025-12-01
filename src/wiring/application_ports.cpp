@@ -1,3 +1,8 @@
+// application_ports.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Port detection and connection logic.
+
 // src/Application_Ports.cpp
 
 #include "plc_emulator/core/application.h"

@@ -1,0 +1,5 @@
+[  1%] Building C object _deps/miniz-build/CMakeFiles/miniz.dir/miniz.c.obj
+mingw32-make[3]: *** [_deps\miniz-build\CMakeFiles\miniz.dir\build.make:79: _deps/miniz-build/CMakeFiles/miniz.dir/miniz.c.obj] Error 1
+mingw32-make[2]: *** [CMakeFiles\Makefile2:528: _deps/miniz-build/CMakeFiles/miniz.dir/all] Error 2
+mingw32-make[1]: *** [CMakeFiles\Makefile2:247: CMakeFiles/PLCSimulator.dir/rule] Error 2
+mingw32-make: *** [Makefile:181: PLCSimulator] Error 2

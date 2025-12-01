@@ -1,3 +1,8 @@
+// event_system.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of event system.
+
 // src/EventSystem.cpp
 // EventSystem 구현 - C언어 스타일 이벤트 시스템
 
@@ -9,7 +14,6 @@
 
 namespace plc {
 
-// === EventDispatcher 생성/소멸 ===
 
 EventDispatcher* CreateEventDispatcher() {
   EventDispatcher* dispatcher = new EventDispatcher();
@@ -36,7 +40,6 @@ void DestroyEventDispatcher(EventDispatcher* dispatcher) {
   }
 }
 
-// === EventDispatcher 구현 함수들 ===
 
 bool EventDispatcher_Subscribe(EventDispatcher* dispatcher, EventType type,
                                EventCallback callback, void* userData) {
@@ -128,7 +131,6 @@ void EventDispatcher_Clear(EventDispatcher* dispatcher) {
   }
 }
 
-// === 편의 함수들 - 이벤트 데이터 생성 ===
 
 EventData CreateDataChangedEvent() {
   EventData event;
@@ -200,7 +202,6 @@ EventData CreateIOMappingUpdatedEvent(int mappingCount, int inputCount,
   return event;
 }
 
-// === 디버깅/로깅 함수들 ===
 
 const char* EventTypeToString(EventType type) {
   switch (type) {

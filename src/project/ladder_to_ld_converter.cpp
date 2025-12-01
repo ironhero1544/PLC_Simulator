@@ -1,3 +1,8 @@
+// ladder_to_ld_converter.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of LD converter.
+
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 
 #include "plc_emulator/programming/programming_mode.h"  // 🔥 **IMPORTANT**: 실제 타입 정의 포함

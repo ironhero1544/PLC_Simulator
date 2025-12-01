@@ -1,3 +1,8 @@
+// application_physics.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Physics integration with application.
+
 // src/Application_Physics.cpp
 
 #include "plc_emulator/core/application.h"
@@ -32,6 +37,7 @@ namespace plc {
 
 /**
  * @brief Main physics simulation with PLC state independence
+  * M내 물리 시뮬레이션 와 함께 PLC st에서e 내dependence
  *
  * CRITICAL ACCESS VIOLATION PREVENTION:
  * This method was completely redesigned after resolving 0xC0000005 crashes
@@ -136,6 +142,7 @@ void Application::UpdatePhysics() {
 }
 /**
  * @brief Execute loaded ladder program using compiled PLC engine with error
+  * 실행 로드ed 래더 프로그램 us내g 컴파일d PLC 엔진 와 함께 오류
  * recovery
  *
  * LADDER EXECUTION ERROR HANDLING:
@@ -185,8 +192,11 @@ void Application::SimulateLoadedLadder() {
 
 /**
  * @brief Get PLC device state with dual-engine fallback mechanism
+  * 가져오기 PLC device st에서e 와 함께 dul-엔진 fllbck mech는m
  * @param address Device address (e.g., "X0", "Y1", "M5", "T0", "C1")
+  * Device 추가ress (e.g., "X0", "Y1", "M5", "T0", "C1")
  * @return Device state or false if invalid/not found
+  * Device st에서e 또는 거짓 만약 내vlID/not found
  *
  * CRITICAL ERROR PREVENTION:
  * This method implements a dual-engine approach to prevent total failure
@@ -231,8 +241,11 @@ bool Application::GetPlcDeviceState(const std::string& address) {
 
 /**
  * @brief Set PLC device state with dual-engine synchronization
+  * 설정 PLC device st에서e 와 함께 dul-엔진 synchr위iz에서i위
  * @param address Device address (must be non-empty)
+  * Device 추가ress (해야 한다 이다 n위-empty)
  * @param state New device state
+  * New device st에서e
  *
  * SYNCHRONIZATION STRATEGY:
  * Updates both compiled PLC engine and legacy maps to maintain consistency
@@ -549,6 +562,7 @@ void Application::SimulatePneumatic() {
 }
 /**
  * @brief Update cylinder actuators and sensor detection with crash prevention
+  * 업데이트 cyl내der ctu에서또는s 및 sens또는 detecti위 와 함께 cr로서h preventi위
  *
  * CRITICAL ACCESS VIOLATION FIXES:
  * This method was extensively redesigned to prevent crashes that occurred
@@ -718,6 +732,7 @@ void Application::UpdateActuators() {
 
 /**
  * @brief Basic physics simulation independent of PLC state
+  * B로서ic 물리 시뮬레이션 내dependent 의 PLC st에서e
  *
  * CRITICAL INDEPENDENCE DESIGN:
  * This method ensures that essential physics continues operating even when
@@ -875,10 +890,10 @@ void Application::UpdateBasicPhysics() {
   }
 }
 
-// ========== PHYSICS ENGINE INTEGRATION HELPER FUNCTIONS ==========
 
 /**
  * @brief Synchronize PLC outputs to physics engine with comprehensive error
+  * Synchr위ize PLC 출력s 물리 엔진 와 함께 comprehensive 오류
  * handling
  *
  * CRITICAL SYNCHRONIZATION PROCESS:

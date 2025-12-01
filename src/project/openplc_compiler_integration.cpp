@@ -1,3 +1,8 @@
+// openplc_compiler_integration.cpp
+// Copyright 2024 PLC Emulator Project
+//
+// Implementation of compiler integration.
+
 #include "plc_emulator/project/openplc_compiler_integration.h"
 
 #include "plc_emulator/programming/programming_mode.h"  // 🔥 **NEW**: LadderProgram 타입

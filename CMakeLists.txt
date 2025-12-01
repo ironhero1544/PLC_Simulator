@@ -161,8 +161,12 @@ endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LINK_LIBS})
 
-if(WIN32)
-    set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
+# Windows 콘솔 창 설정
+# Release 빌드에서는 콘솔 창 숨김, Debug 빌드에서는 콘솔 표시
+if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        WIN32_EXECUTABLE TRUE  # GUI 애플리케이션으로 설정 (콘솔 숨김)
+    )
 endif()
 
 # =============================================================================
@@ -217,38 +221,33 @@ else()
         -Werror             # 경고를 에러로 처리 (옵션)
         
         # Google C++ Style 권장 경고
-        -Wshadow            # 변수 섀도잉 경고
-        -Wnon-virtual-dtor  # 가상 소멸자 누락 경고
-        -Wold-style-cast    # C 스타일 캐스트 경고
-        -Wcast-align        # 정렬 문제 경고
-        -Wunused            # 사용하지 않는 변수 경고
-        -Woverloaded-virtual # 가상 함수 오버로딩 경고
-        # TODO: Fix conversion warnings after refactoring
-        # -Wconversion        # 암시적 형변환 경고
-        # -Wsign-conversion   # 부호 변환 경고
-        -Wformat=2          # printf 포맷 검사
-        -Wimplicit-fallthrough # switch fallthrough 경고
+        -Wshadow                    # 변수 섀도잉 경고
+        -Wnon-virtual-dtor          # 가상 소멸자 누락 경고
+        -Wold-style-cast            # C 스타일 캐스트 경고
+        -Wcast-align                # 정렬 문제 경고
+        -Wunused                    # 사용하지 않는 변수 경고
+        -Woverloaded-virtual        # 가상 함수 오버로딩 경고
+        -Wformat=2                  # printf 포맷 검사
+        -Wimplicit-fallthrough      # switch fallthrough 경고
         
         # 성능 최적화 (Release)
-        $<$<CONFIG:Release>:-O3>        # 최대 최적화
-        $<$<CONFIG:Release>:-DNDEBUG>   # assert 비활성화
+        $<$<CONFIG:Release>:-O3>                      # 최대 최적화
+        $<$<CONFIG:Release>:-DNDEBUG>                 # assert 비활성화
+        $<$<CONFIG:Release>:-Wno-array-bounds>        # 최적화로 인한 false positive 억제
+        $<$<CONFIG:Release>:-Wno-stringop-overflow>   # 최적화로 인한 false positive 억제
         
         # 디버그 정보 (Debug)
         $<$<CONFIG:Debug>:-O0>          # 최적화 비활성화
         $<$<CONFIG:Debug>:-g3>          # 최대 디버그 정보
         $<$<CONFIG:Debug>:-D_DEBUG>     # 디버그 매크로
-        
-        # AddressSanitizer (Debug 빌드 옵션)
-        # $<$<CONFIG:Debug>:-fsanitize=address>
-        # $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
     )
     
-    # 링커 최적화 (Release)
-    target_link_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:-s>         # 심볼 제거
-        # AddressSanitizer (Debug 빌드 옵션)
-        # $<$<CONFIG:Debug>:-fsanitize=address>
-    )
+    # 링커 설정 (필요시 추가)
+    # target_link_options(${PROJECT_NAME} PRIVATE
+    #     # Release: 최적화 옵션
+    #     $<$<CONFIG:Release>:-s>         # 심볼 제거 (파일 크기 감소)
+    #     $<$<CONFIG:Release>:-mwindows>  # GUI 애플리케이션 (콘솔 창 숨김)
+    # )
 endif()
 
 # =============================================================================
@@ -390,10 +389,22 @@ message(STATUS "")
 message(STATUS "To enable clang-tidy during build:")
 message(STATUS "  cmake -DENABLE_CLANG_TIDY=ON ..")
 message(STATUS "")
-message(STATUS "For strict warning-free builds (warnings as errors):")
-message(STATUS "  Already enabled with /WX (MSVC) or -Werror (GCC/Clang)")
+message(STATUS "For strict warning-free builds:")
+message(STATUS "  Warnings as errors enabled with /WX (MSVC) or -Werror (GCC/Clang)")
 message(STATUS "")
-message(STATUS "To build with AddressSanitizer (Debug mode):")
-message(STATUS "  Uncomment ASan options in CMakeLists.txt")
 message(STATUS "=============================================================================")
 message(STATUS "")
+
+# =============================================================================
+# 테스트 설정 (Testing Configuration)
+# =============================================================================
+
+option(BUILD_TESTING "Build the testing tree." OFF)
+
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+    message(STATUS "Testing enabled - tests will be built")
+endif()
+
+# =============================================================================

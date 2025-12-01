@@ -1,4 +1,9 @@
 // window_manager.h
+// Copyright 2024 PLC Emulator Project
+//
+// Manages GLFW window creation and events.
+
+// window_manager.h
 // Window management for PLC Emulator application
 // 윈도우 관리 및 초기화 담당
 
