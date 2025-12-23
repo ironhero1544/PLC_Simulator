@@ -8,13 +8,17 @@
 #include "miniz.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <iomanip>
 #include <iostream>
 #include <regex>
+#include <set>
 #include <sstream>
+#include <vector>
 
-// filesystem 호환성 처리
+// filesystem ??饔낅떽???嶺뚮슢梨뜹ㅇ????耀붾굝????鶯ㅺ동??筌믡룓愿??
 #if __cplusplus >= 201703L
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -25,7 +29,7 @@ namespace fs = std::filesystem;
 #ifdef _WIN32
 #include <windows.h>
 
-// 🔥 **NEW**: 숨겨진 PowerShell 실행 함수 (CMD 창 안 뜸)
+// ???**NEW**: ???????????용봾???PowerShell ???????? ?????(CMD ??????
 int ExecuteHiddenPowerShell(const std::string& command) {
   STARTUPINFOA si;
   PROCESS_INFORMATION pi;
@@ -33,23 +37,23 @@ int ExecuteHiddenPowerShell(const std::string& command) {
   ZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
   si.dwFlags = STARTF_USESHOWWINDOW;
-  si.wShowWindow = SW_HIDE;  // 창 숨기기
+  si.wShowWindow = SW_HIDE;  // ??????????????
   ZeroMemory(&pi, sizeof(pi));
 
-  // CreateProcess용 명령어 문자열 (수정 가능해야 함)
+  // CreateProcess???耀붾굝????癲ル슢??㎖?밤뀋???????癲?????(?????곌떽釉붾???????ル뒌???????嚥〓끃異?????
   std::string cmdLine = command;
 
-  // 프로세스 생성
-  BOOL success = CreateProcessA(nullptr,           // 실행 파일 경로
-                                &cmdLine[0],       // 명령줄
-                                nullptr,           // 프로세스 보안 속성
-                                nullptr,           // 스레드 보안 속성
-                                FALSE,             // 핸들 상속
-                                CREATE_NO_WINDOW,  // 창 없음
-                                nullptr,           // 환경 변수
-                                nullptr,           // 현재 디렉토리
-                                &si,               // 시작 정보
-                                &pi                // 프로세스 정보
+  // ?????獄쏅챶留??貫????饔낅떽?????癲?????ш끽維뽳쭩???
+  BOOL success = CreateProcessA(nullptr,           // ???????? ???????汝뷴젆?琉???????ぁ?
+                                &cmdLine[0],       // ?耀붾굝????癲ル슢??㎖?밤뀋?????嶺뚮Ĳ?뉔뇡?
+                                nullptr,           // ?????獄쏅챶留??貫????饔낅떽?????癲??????곕츥??????????????몃뒇??
+                                nullptr,           // ???????쇨덫????????곕츥??????????????몃뒇??
+                                FALSE,             // ??饔낅떽?????怨뚮옩鴉딅퀫?????????살몖??
+                                CREATE_NO_WINDOW,  // ?????????ㅻ쑄??
+                                nullptr,           // ?????????????곕츥????
+                                nullptr,           // ?????獄쏅챶留??????椰???????????
+                                &si,               // ???轅붽틓???壤굿??걜???饔낅떽????????
+                                &pi                // ?????獄쏅챶留??貫????饔낅떽?????癲???饔낅떽????????
   );
 
   if (!success) {
@@ -57,30 +61,30 @@ int ExecuteHiddenPowerShell(const std::string& command) {
     return -1;
   }
 
-  // 프로세스 완료 대기
+  // ?????獄쏅챶留??貫????饔낅떽?????癲??????獄쏅챶留??????
   WaitForSingleObject(pi.hProcess, INFINITE);
 
-  // 종료 코드 가져오기
+  // ???????욱떌???????諛몃마?????????ル뒌????饔낅떽?????嶺뚮ㅎ?닺짆?汝뷴젆?????
   DWORD exitCode;
   GetExitCodeProcess(pi.hProcess, &exitCode);
 
-  // 핸들 닫기
+  // ??饔낅떽?????怨뚮옩鴉딅퀫?????????
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
 
   return static_cast<int>(exitCode);
 }
 
-// 🔥 **NEW**: 간단한 ZIP 파일 생성 (Windows PowerShell 사용)
+// ???**NEW**: ?????ル뒌?????ZIP ?????????ш끽維뽳쭩???(Windows PowerShell ????
 bool CreateZipFileWindows(const std::string& zipPath,
                           const std::map<std::string, std::string>& files) {
-  // 1. 임시 디렉토리 생성
+  // 1. ?????獄쏅챶留덌┼???猿녿퉲?????椰???????????????ш끽維뽳쭩???
   char tempDir[MAX_PATH];
   GetTempPathA(MAX_PATH, tempDir);
   std::string tempPath = std::string(tempDir) + "PLCProject_temp\\";
   CreateDirectoryA(tempPath.c_str(), nullptr);
 
-  // 2. 파일들을 임시 디렉토리에 생성
+  // 2. ????????μ떜媛?걫????????獄쏅챶留덌┼???猿녿퉲?????椰????????????????ш끽維뽳쭩???
   for (const auto& [fileName, content] : files) {
     std::string tempFilePath = tempPath + fileName;
     std::ofstream tempFile(tempFilePath, std::ios::binary);
@@ -92,20 +96,20 @@ bool CreateZipFileWindows(const std::string& zipPath,
     }
   }
 
-  // 2.5 저장 대상 디렉터리 보장 및 기존 ZIP 삭제
-  // 부모 디렉터리 생성 (단일 단계)
+  // 2.5 ????????????椰?????????딅즶???????곕츥??????????????ZIP ????
+  // ?????堉온???????椰?????????딅즶??????ш끽維뽳쭩???(?????믩베???????????????
   auto ensure_parent_dir = [](const std::string& path) {
     size_t pos = path.find_last_of("/\\");
     if (pos != std::string::npos) {
       std::string dir = path.substr(0, pos);
       if (!dir.empty()) {
-        CreateDirectoryA(dir.c_str(), nullptr);  // 이미 있으면 실패해도 무시
+        CreateDirectoryA(dir.c_str(), nullptr);  // ???? ????μ떜媛?걫?롪퍊?붺댚??????????ㅼ뒩?????????癲ル슢캉????
       }
     }
   };
   ensure_parent_dir(zipPath);
 
-  // 3. 한글 경로 문제를 위해 짧은 경로명 변환
+  // 3. ??? ??汝뷴젆?琉???????ぁ????癲?????????癲ル슢??룸퀬苑??????ш내?℡ㅇ???耀붾굝????????? ??汝뷴젆?琉???????ぁ??????????곕츥????
   char shortZipPath[MAX_PATH] = {0};
   char shortTempPath[MAX_PATH] = {0};
 
@@ -113,19 +117,19 @@ bool CreateZipFileWindows(const std::string& zipPath,
   DWORD tempResult =
       GetShortPathNameA(tempPath.c_str(), shortTempPath, MAX_PATH);
 
-  // 짧은 경로명 변환이 실패하면 원본 경로 사용
+  // ?耀붾굝????????? ??汝뷴젆?琉???????ぁ??????????곕츥???????곌떽釉붾?????????ㅼ뒩??????????????汝뷴젆?琉???????ぁ?????
   std::string finalZipPath =
       (zipResult > 0) ? std::string(shortZipPath) : zipPath;
   std::string finalTempPath =
       (tempResult > 0) ? std::string(shortTempPath) : tempPath;
 
-  // 기존 파일이 있으면 삭제 (ZipFile.CreateFromDirectory는 덮어쓰기 불가)
+  // ??????????????????μ떜媛?걫?롪퍊?붺댚???????(ZipFile.CreateFromDirectory???????????⑤벡瑜???????Β?ル윲??)
   DWORD attrs = GetFileAttributesA(finalZipPath.c_str());
   if (attrs != INVALID_FILE_ATTRIBUTES) {
     DeleteFileA(finalZipPath.c_str());
   }
 
-  // PowerShell 명령어 생성 (더 안전한 방식)
+  // PowerShell ?耀붾굝????癲ル슢??㎖?밤뀋????????ш끽維뽳쭩???(??????μ떜媛?걫?繹먃????????밸븶??縕ユ쾮??
   std::string finalCmd =
       "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
       "-Command \"& {";
@@ -134,12 +138,12 @@ bool CreateZipFileWindows(const std::string& zipPath,
   finalCmd += finalTempPath + "', '" + finalZipPath + "'); exit 0; } ";
   finalCmd += "catch { Write-Error $_.Exception.Message; exit 1; } }\"";
 
-  // PowerShell 실행 (숨겨진 창으로)
+  // PowerShell ???????? (???????????용봾????耀붾굝??????????
   printf("[DEBUG] PowerShell CMD: %s\n", finalCmd.c_str());
   int result = ExecuteHiddenPowerShell(finalCmd);
   printf("[DEBUG] PowerShell Result: %d\n", result);
 
-  // 4. 임시 파일들 정리
+  // 4. ?????獄쏅챶留덌┼???猿녿퉲?????????饔낅떽?????????
   for (const auto& [fileName, content] : files) {
     std::string tempFilePath = tempPath + fileName;
     DeleteFileA(tempFilePath.c_str());
@@ -149,16 +153,16 @@ bool CreateZipFileWindows(const std::string& zipPath,
   return (result == 0);
 }
 
-// 🔥 **NEW**: ZIP 파일 압축 해제 (PowerShell 사용)
+// ???**NEW**: ZIP ???????饔낅떽??????????????ㅻ쑋??(PowerShell ????
 bool ExtractZipFileWindows(const std::string& zipPath,
                            std::map<std::string, std::string>& files) {
-  // 1. 임시 추출 디렉토리
+  // 1. ?????獄쏅챶留덌┼???猿녿퉲???????꾨굴???????椰???????????
   char tempDir[MAX_PATH];
   GetTempPathA(MAX_PATH, tempDir);
   std::string extractPath = std::string(tempDir) + "PLCProject_extract\\";
   CreateDirectoryA(extractPath.c_str(), nullptr);
 
-  // 2. 짧은 경로명 변환 (한글 경로 문제 해결)
+  // 2. ?耀붾굝????????? ??汝뷴젆?琉???????ぁ??????????곕츥????(??? ??汝뷴젆?琉???????ぁ????癲???????????Β?ｋ읃)
   char shortZipPath[MAX_PATH] = {0};
   char shortExtractPath[MAX_PATH] = {0};
 
@@ -166,13 +170,13 @@ bool ExtractZipFileWindows(const std::string& zipPath,
   DWORD extractResult =
       GetShortPathNameA(extractPath.c_str(), shortExtractPath, MAX_PATH);
 
-  // 짧은 경로명 변환이 실패하면 원본 경로 사용
+  // ?耀붾굝????????? ??汝뷴젆?琉???????ぁ??????????곕츥???????곌떽釉붾?????????ㅼ뒩??????????????汝뷴젆?琉???????ぁ?????
   std::string finalZipPath =
       (zipResult > 0) ? std::string(shortZipPath) : zipPath;
   std::string finalExtractPath =
       (extractResult > 0) ? std::string(shortExtractPath) : extractPath;
 
-  // 3. PowerShell로 압축 해제 (더 안전한 방식)
+  // 3. PowerShell????饔낅떽??????????????ㅻ쑋??(??????μ떜媛?걫?繹먃????????밸븶??縕ユ쾮??
   std::string powershellCmd =
       "powershell.exe -ExecutionPolicy Bypass -Command \"& {";
   powershellCmd += "Add-Type -AssemblyName System.IO.Compression.FileSystem; ";
@@ -181,13 +185,13 @@ bool ExtractZipFileWindows(const std::string& zipPath,
   powershellCmd += finalZipPath + "', '" + finalExtractPath + "'); exit 0; } ";
   powershellCmd += "catch { Write-Error $_.Exception.Message; exit 1; } }\"";
 
-  // PowerShell 실행 (숨겨진 창으로)
+  // PowerShell ???????? (???????????용봾????耀붾굝??????????
   printf("[DEBUG] Extract CMD: %s\n", powershellCmd.c_str());
   int result = ExecuteHiddenPowerShell(powershellCmd);
   printf("[DEBUG] Extract Result: %d\n", result);
 
   if (result == 0) {
-    // 4. 추출된 파일들을 읽어서 메모리에 로드
+    // 4. ??????꾨굴????????????μ떜媛?걫???????????耀붾굝????????????밸븶?????????癲????ル㎦??
     printf("[DEBUG] PowerShell extraction successful, reading files from: %s\n",
            extractPath.c_str());
 
@@ -231,13 +235,510 @@ bool ExtractZipFileWindows(const std::string& zipPath,
     printf("[DEBUG] PowerShell extraction failed with code: %d\n", result);
   }
 
-  // 정리
+  // ??饔낅떽?????????
   RemoveDirectoryA(extractPath.c_str());
   return false;
 }
 #endif
 
 namespace plc {
+
+namespace {
+std::string EscapeCSVField(const std::string& value) {
+  std::string out;
+  out.reserve(value.size() + 2);
+  for (char ch : value) {
+    if (ch == '"') {
+      out.push_back('"');
+    }
+    out.push_back(ch);
+  }
+  return out;
+}
+
+std::string JoinCSVLine(const std::vector<std::string>& fields) {
+  std::ostringstream line;
+  for (size_t i = 0; i < fields.size(); ++i) {
+    if (i > 0) {
+      line << "\t";
+    }
+    line << '"' << EscapeCSVField(fields[i]) << '"';
+  }
+  return line.str();
+}
+
+std::string TrimField(const std::string& value) {
+  size_t start = value.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    return "";
+  }
+  size_t end = value.find_last_not_of(" \t\r\n");
+  return value.substr(start, end - start + 1);
+}
+
+std::vector<std::string> SplitCSVLine(const std::string& line) {
+  std::vector<std::string> fields;
+  std::string field;
+  bool inQuotes = false;
+
+  for (size_t i = 0; i < line.size(); ++i) {
+    char ch = line[i];
+    if (ch == '"') {
+      if (inQuotes && i + 1 < line.size() && line[i + 1] == '"') {
+        field.push_back('"');
+        ++i;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch == '\t' && !inQuotes) {
+      fields.push_back(field);
+      field.clear();
+    } else {
+      field.push_back(ch);
+    }
+  }
+
+  fields.push_back(field);
+  for (auto& f : fields) {
+    f = TrimField(f);
+    if (f.size() >= 2 && f.front() == '"' && f.back() == '"') {
+      f = f.substr(1, f.size() - 2);
+    }
+  }
+
+  return fields;
+}
+
+bool TryParseInt(const std::string& text, int* value) {
+  if (!value || text.empty()) {
+    return false;
+  }
+  char* end = nullptr;
+  long parsed = std::strtol(text.c_str(), &end, 10);
+  if (!end || *end != '\0') {
+    return false;
+  }
+  if (parsed < std::numeric_limits<int>::min() ||
+      parsed > std::numeric_limits<int>::max()) {
+    return false;
+  }
+  *value = static_cast<int>(parsed);
+  return true;
+}
+
+std::string FormatDeviceAddress(const std::string& address) {
+  if (address.size() < 2) {
+    return address;
+  }
+
+  char type = address[0];
+  std::string digits = address.substr(1);
+  int value = 0;
+  if ((type == 'X' || type == 'Y') && TryParseInt(digits, &value)) {
+    std::ostringstream oss;
+    oss << type << std::setw(3) << std::setfill('0') << value;
+    return oss.str();
+  }
+
+  return address;
+}
+
+std::string NormalizePreset(const std::string& preset) {
+  if (preset.empty()) {
+    return "";
+  }
+  if (preset[0] == 'K' || preset[0] == 'k') {
+    return preset.substr(1);
+  }
+  return preset;
+}
+
+std::string BuildGX2CSV(const plc::LadderProgram& program,
+                        const std::string& projectName) {
+  std::vector<std::string> lines;
+  std::string name = projectName.empty() ? "Untitled Project" : projectName;
+  lines.push_back(JoinCSVLine({"(" + name + ")"}));
+  lines.push_back(JoinCSVLine({"PLC Information:", "FXCPU FX3U/FX3UC"}));
+  lines.push_back(JoinCSVLine({"Step No.", "Line Statement", "Instruction",
+                               "I/O(Device)", "Blank", "PI Statement",
+                               "Note"}));
+
+  int step = 0;
+
+  auto add_instruction = [&](const std::string& instruction,
+                             const std::string& device) {
+    lines.push_back(JoinCSVLine({std::to_string(step), "", instruction,
+                                 device, "", "", ""}));
+    step++;
+  };
+
+  auto add_instruction_with_note = [&](const std::string& instruction,
+                                       const std::string& device,
+                                       const std::string& note) {
+    lines.push_back(JoinCSVLine({std::to_string(step), "", instruction,
+                                 device, "", "", note}));
+    step++;
+  };
+
+  auto add_blank = [&](const std::string& device) {
+    lines.push_back(JoinCSVLine({"", "", "", device, "", "", ""}));
+  };
+
+  auto extract_rung = [&](const plc::Rung& rung,
+                          std::vector<plc::LadderInstruction>& contacts,
+                          plc::LadderInstruction& output,
+                          bool& hasOutput) {
+    contacts.clear();
+    hasOutput = false;
+
+    for (const auto& cell : rung.cells) {
+      if (cell.type == plc::LadderInstructionType::XIC ||
+          cell.type == plc::LadderInstructionType::XIO) {
+        contacts.push_back(cell);
+        continue;
+      }
+
+      if (cell.type == plc::LadderInstructionType::OTE ||
+          cell.type == plc::LadderInstructionType::SET ||
+          cell.type == plc::LadderInstructionType::RST ||
+          cell.type == plc::LadderInstructionType::TON ||
+          cell.type == plc::LadderInstructionType::CTU) {
+        output = cell;
+        hasOutput = true;
+        break;
+      }
+    }
+  };
+
+  struct OrGroup {
+    int x = 0;
+    std::vector<int> rungs;
+  };
+
+  std::set<int> groupedRungs;
+  std::vector<OrGroup> groups;
+  groups.reserve(program.verticalConnections.size());
+  for (const auto& conn : program.verticalConnections) {
+    if (!conn.rungs.empty()) {
+      OrGroup group;
+      group.x = conn.x;
+      group.rungs = conn.rungs;
+      groups.push_back(group);
+      for (int rungIndex : conn.rungs) {
+        groupedRungs.insert(rungIndex);
+      }
+    }
+  }
+
+  auto emit_contacts = [&](const std::vector<plc::LadderInstruction>& contacts,
+                           bool isFirstRung) {
+    if (contacts.empty()) {
+      add_instruction(isFirstRung ? "LD" : "OR", "M8000");
+      return;
+    }
+
+    for (size_t i = 0; i < contacts.size(); ++i) {
+      const auto& contact = contacts[i];
+      bool negated = (contact.type == plc::LadderInstructionType::XIO);
+      if (i == 0) {
+        if (isFirstRung) {
+          add_instruction(negated ? "LDI" : "LD",
+                          FormatDeviceAddress(contact.address));
+        } else {
+          add_instruction(negated ? "ORI" : "OR",
+                          FormatDeviceAddress(contact.address));
+        }
+      } else {
+        add_instruction(negated ? "ANI" : "AND",
+                        FormatDeviceAddress(contact.address));
+      }
+    }
+  };
+
+  auto emit_output = [&](const plc::LadderInstruction& output) {
+    std::string outAddress = FormatDeviceAddress(output.address);
+    switch (output.type) {
+      case plc::LadderInstructionType::SET:
+        add_instruction("SET", outAddress);
+        break;
+      case plc::LadderInstructionType::RST:
+      case plc::LadderInstructionType::RST_TMR_CTR:
+        add_instruction("RST", outAddress);
+        break;
+      case plc::LadderInstructionType::TON:
+      case plc::LadderInstructionType::CTU: {
+        add_instruction("OUT", outAddress);
+        std::string preset = NormalizePreset(output.preset);
+        if (!preset.empty()) {
+          add_blank("K" + preset);
+        }
+        break;
+      }
+      case plc::LadderInstructionType::OTE:
+      default:
+        add_instruction("OUT", outAddress);
+        break;
+    }
+  };
+
+  for (const auto& group : groups) {
+    plc::LadderInstruction output;
+    bool hasOutput = false;
+    bool firstRung = true;
+
+    for (int rungIndex : group.rungs) {
+      if (rungIndex < 0 || rungIndex >=
+                              static_cast<int>(program.rungs.size())) {
+        continue;
+      }
+      const auto& rung = program.rungs[static_cast<size_t>(rungIndex)];
+      if (rung.isEndRung) {
+        continue;
+      }
+
+      std::vector<plc::LadderInstruction> contacts;
+      plc::LadderInstruction rungOutput;
+      bool rungHasOutput = false;
+      extract_rung(rung, contacts, rungOutput, rungHasOutput);
+
+      if (!hasOutput && rungHasOutput) {
+        output = rungOutput;
+        hasOutput = true;
+      }
+
+      emit_contacts(contacts, firstRung);
+      firstRung = false;
+    }
+
+    if (!hasOutput) {
+      continue;
+    }
+
+    if (group.rungs.size() > 1) {
+      add_instruction_with_note("ORB", "",
+                                "VCX=" + std::to_string(group.x));
+    }
+    emit_output(output);
+  }
+
+  for (size_t i = 0; i < program.rungs.size(); ++i) {
+    const auto& rung = program.rungs[i];
+    if (rung.isEndRung) {
+      break;
+    }
+
+    if (groupedRungs.count(static_cast<int>(i)) > 0) {
+      continue;
+    }
+
+    std::vector<plc::LadderInstruction> contacts;
+    plc::LadderInstruction output;
+    bool hasOutput = false;
+    extract_rung(rung, contacts, output, hasOutput);
+
+    if (!hasOutput) {
+      continue;
+    }
+
+    emit_contacts(contacts, true);
+    emit_output(output);
+  }
+
+  lines.push_back(JoinCSVLine({std::to_string(step), "", "END", "", "", "", ""}));
+
+  std::ostringstream out;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    out << lines[i];
+    if (i + 1 < lines.size()) {
+      out << "\n";
+    }
+  }
+
+  return out.str();
+}
+
+bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
+  program.rungs.clear();
+  program.verticalConnections.clear();
+
+  std::istringstream stream(csvContent);
+  std::string line;
+  bool dataSection = false;
+
+  std::vector<std::vector<plc::LadderInstruction>> branches;
+  std::vector<plc::LadderInstruction> current;
+  std::vector<plc::LadderInstruction*> pendingPresetTargets;
+  int pending_or_x = -1;
+
+  auto flush_output = [&](const plc::LadderInstruction& output, int xHint) {
+    if (!current.empty()) {
+      branches.push_back(current);
+    }
+    if (branches.empty()) {
+      branches.push_back({});
+    }
+
+    int outputCol = 11;
+    int maxContacts = 0;
+    for (const auto& branch : branches) {
+      int count = static_cast<int>(branch.size());
+      if (count > maxContacts) {
+        maxContacts = count;
+      }
+    }
+    if (maxContacts > outputCol) {
+      outputCol = std::min(maxContacts, 11);
+    }
+
+    std::vector<int> rungIndices;
+    for (size_t branchIndex = 0; branchIndex < branches.size();
+         ++branchIndex) {
+      const auto& branch = branches[branchIndex];
+      plc::Rung rung;
+      rung.number = static_cast<int>(program.rungs.size());
+      rung.cells.assign(12, plc::LadderInstruction());
+
+      int cellIndex = 0;
+      for (const auto& contact : branch) {
+        if (cellIndex >= outputCol) {
+          break;
+        }
+        rung.cells[cellIndex] = contact;
+        cellIndex++;
+      }
+
+      for (int col = cellIndex; col < outputCol; ++col) {
+        rung.cells[col].type = plc::LadderInstructionType::HLINE;
+      }
+
+      if (branchIndex == 0 && outputCol < 12) {
+        rung.cells[outputCol] = output;
+        if ((output.type == plc::LadderInstructionType::TON ||
+             output.type == plc::LadderInstructionType::CTU) &&
+            output.preset.empty()) {
+          pendingPresetTargets.push_back(&rung.cells[outputCol]);
+        }
+      }
+
+      program.rungs.push_back(rung);
+      rungIndices.push_back(rung.number);
+    }
+
+    if (rungIndices.size() > 1) {
+      plc::VerticalConnection vc;
+      vc.x = xHint >= 0 ? xHint : 0;
+      vc.rungs = rungIndices;
+      program.verticalConnections.push_back(vc);
+    }
+
+    branches.clear();
+    current.clear();
+    pending_or_x = -1;
+  };
+
+  while (std::getline(stream, line)) {
+    auto fields = SplitCSVLine(line);
+    if (fields.empty()) {
+      continue;
+    }
+
+    if (!dataSection) {
+      if (fields.size() > 0 && fields[0] == "Step No.") {
+        dataSection = true;
+      }
+      continue;
+    }
+
+    if (fields.size() < 4) {
+      continue;
+    }
+
+    std::string instr = TrimField(fields[2]);
+    std::string device = TrimField(fields[3]);
+
+    if (instr.empty()) {
+      if (!device.empty() && (device[0] == 'K' || device[0] == 'k') &&
+          !pendingPresetTargets.empty()) {
+        std::string preset = device.substr(1);
+        for (auto* target : pendingPresetTargets) {
+          if (target) {
+            target->preset = preset;
+          }
+        }
+        pendingPresetTargets.clear();
+      }
+      continue;
+    }
+
+    if (instr == "END") {
+      break;
+    }
+
+    if (instr == "LD" || instr == "LDI" || instr == "AND" || instr == "ANI" ||
+        instr == "OR" || instr == "ORI") {
+      plc::LadderInstruction contact;
+      contact.type =
+          (instr == "LDI" || instr == "ANI" || instr == "ORI")
+              ? plc::LadderInstructionType::XIO
+              : plc::LadderInstructionType::XIC;
+      contact.address = device;
+
+      if (instr == "OR" || instr == "ORI") {
+        if (!current.empty()) {
+          branches.push_back(current);
+          current.clear();
+        }
+      }
+
+      current.push_back(contact);
+      continue;
+    }
+
+    if (instr == "ORB") {
+      pending_or_x = -1;
+      if (fields.size() > 6) {
+        std::string note = TrimField(fields[6]);
+        const std::string prefix = "VCX=";
+        if (note.rfind(prefix, 0) == 0) {
+          int value = 0;
+          if (TryParseInt(note.substr(prefix.size()), &value)) {
+            pending_or_x = value;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (instr == "OUT" || instr == "SET" || instr == "RST" || instr == "TON" ||
+        instr == "CTU") {
+      plc::LadderInstruction output;
+      output.address = device;
+      if ((instr == "OUT" || instr == "TON" || instr == "CTU") &&
+          !device.empty() && device[0] == 'T') {
+        output.type = plc::LadderInstructionType::TON;
+      } else if ((instr == "OUT" || instr == "CTU") && !device.empty() &&
+                 device[0] == 'C') {
+        output.type = plc::LadderInstructionType::CTU;
+      } else if (instr == "SET") {
+        output.type = plc::LadderInstructionType::SET;
+      } else if (instr == "RST") {
+        output.type = plc::LadderInstructionType::RST;
+      } else {
+        output.type = plc::LadderInstructionType::OTE;
+      }
+
+      flush_output(output, pending_or_x);
+      continue;
+    }
+  }
+
+  plc::Rung endRung;
+  endRung.isEndRung = true;
+  program.rungs.push_back(endRung);
+
+  return !program.rungs.empty();
+}
+}  // namespace
 
 ProjectFileManager::ProjectFileManager() {
   xml_serializer_ = std::make_unique<XMLSerializer>();
@@ -252,82 +753,46 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProject(
   SaveResult result;
   last_error_.clear();
 
-  LogDebug("🚀 Starting project save to: " + filePath);
+  LogDebug("[CSV] Starting project save to: " + filePath);
 
-  try {
-    // 1. XML 직렬화 (UI 구조 완전 보존)
-    xml_serializer_->SetDebugMode(debug_mode_);
-    auto xmlResult = xml_serializer_->SerializeToXML(program);
-    if (!xmlResult.success) {
-      result.success = false;
-      result.errorMessage =
-          "Failed to serialize ladder program: " + xmlResult.errorMessage;
-      SetError(result.errorMessage);
-      return result;
-    }
-
-    // 2. LD 프로그램 생성 (실행용)
-    ld_converter_->SetDebugMode(debug_mode_);
-    std::string ldContent = ld_converter_->ConvertToLDString(program);
-    if (ldContent.empty()) {
-      result.success = false;
-      result.errorMessage = "Failed to convert ladder to LD format: " +
-                            ld_converter_->GetLastError();
-      SetError(result.errorMessage);
-      return result;
-    }
-
-    // 3. 프로젝트 정보 생성
-    ProjectInfo info;
-    info.projectName =
-        projectName.empty() ? ExtractFileName(filePath) : projectName;
-    info.version = "1.0";
-    info.createdDate = GetCurrentDateTime();
-    info.lastModified = info.createdDate;
-    info.toolVersion = "PLC Simulator v1.0";
-    info.schemaVersion = "1.0";
-    info.layoutChecksum = CalculateChecksum(xmlResult.xmlContent);
-    info.programChecksum = CalculateChecksum(ldContent);
-
-    std::string manifestContent = GenerateManifest(info);
-
-    // 4. ZIP 파일 생성
-    std::map<std::string, std::string> files;
-    files["layout.xml"] = xmlResult.xmlContent;
-    files["program.ld"] = ldContent;
-    files["manifest.json"] = manifestContent;
-
-    if (!CreateZipFile(filePath, files)) {
-      result.success = false;
-      result.errorMessage = "Failed to create ZIP file: " + last_error_;
-      return result;
-    }
-
-    // 5. 결과 설정
-    result.success = true;
-    result.savedPath = filePath;
-
-    // 파일 크기 계산 (Windows Shell API 버전은 원래 경로 사용 가능)
-#if __cplusplus >= 201703L
-    result.compressedSize = fs::file_size(filePath);
-#else
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
-    if (file.is_open()) {
-      result.compressedSize = file.tellg();
-      file.close();
-    }
-#endif
-
-    result.info = info;
-
-    LogDebug("✅ Project saved successfully: " +
-             std::to_string(result.compressedSize) + " bytes");
-
-  } catch (const std::exception& e) {
+  std::string resolvedName =
+      projectName.empty() ? ExtractFileName(filePath) : projectName;
+  std::string csvContent = BuildGX2CSV(program, resolvedName);
+  if (csvContent.empty()) {
     result.success = false;
-    result.errorMessage = "Project save failed: " + std::string(e.what());
+    result.errorMessage = "Failed to serialize ladder program to CSV";
     SetError(result.errorMessage);
+    return result;
   }
+
+  std::ofstream file(filePath, std::ios::binary);
+  if (!file.is_open()) {
+    result.success = false;
+    result.errorMessage = "Cannot open output file: " + filePath;
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  file << csvContent;
+  file.flush();
+  std::streampos endPos = file.tellp();
+  file.close();
+
+  result.success = true;
+  result.savedPath = filePath;
+  result.compressedSize = endPos > 0 ? static_cast<size_t>(endPos) : 0;
+
+  result.info.projectName = resolvedName;
+  result.info.version = "1.0";
+  result.info.createdDate = GetCurrentDateTime();
+  result.info.lastModified = result.info.createdDate;
+  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.schemaVersion = "1.0";
+  result.info.layoutChecksum = CalculateChecksum(csvContent);
+  result.info.programChecksum = result.info.layoutChecksum;
+
+  LogDebug("[CSV] Project saved successfully: " +
+           std::to_string(result.compressedSize) + " bytes");
 
   return result;
 }
@@ -337,74 +802,42 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProject(
   LoadResult result;
   last_error_.clear();
 
-  LogDebug("📂 Starting project load from: " + filePath);
+  LogDebug("[CSV] Starting project load from: " + filePath);
 
-  try {
-    // 1. ZIP 파일 압축 해제
-    std::map<std::string, std::string> files;
-    if (!ExtractZipFile(filePath, files)) {
-      result.success = false;
-      result.errorMessage = "Failed to extract ZIP file: " + last_error_;
-      return result;
-    }
-
-    // 2. 필수 파일 존재 확인
-    if (files.find("layout.xml") == files.end()) {
-      result.success = false;
-      result.errorMessage = "Missing layout.xml file in project";
-      SetError(result.errorMessage);
-      return result;
-    }
-
-    if (files.find("manifest.json") == files.end()) {
-      LogDebug("⚠️ Missing manifest.json (backward compatibility mode)");
-    }
-
-    // 3. Manifest 파싱 (선택적)
-    if (files.find("manifest.json") != files.end()) {
-      if (!ParseManifest(files["manifest.json"], result.info)) {
-        LogDebug("⚠️ Failed to parse manifest, continuing...");
-      }
-    }
-
-    // 4. XML 역직렬화 (UI 구조 복원)
-    xml_serializer_->SetDebugMode(debug_mode_);
-    auto xmlResult = xml_serializer_->DeserializeFromXML(files["layout.xml"]);
-    if (!xmlResult.success) {
-      result.success = false;
-      result.errorMessage =
-          "Failed to deserialize ladder program: " + xmlResult.errorMessage;
-      SetError(result.errorMessage);
-      return result;
-    }
-
-    // 5. LD 프로그램 로드 (실행용, 선택적)
-    if (files.find("program.ld") != files.end()) {
-      result.ldProgram = files["program.ld"];
-    }
-
-    // 6. 결과 설정
-    result.success = true;
-    result.program = xmlResult.program;
-
-    // 체크섬 검증 (선택적)
-    if (result.info.layoutChecksum != 0) {
-      size_t actualChecksum = CalculateChecksum(files["layout.xml"]);
-      if (actualChecksum != result.info.layoutChecksum) {
-        LogDebug("⚠️ Layout checksum mismatch (file may be corrupted)");
-      }
-    }
-
-    LogDebug("✅ Project loaded successfully: " +
-             std::to_string(result.program.rungs.size()) + " rungs, " +
-             std::to_string(result.program.verticalConnections.size()) +
-             " connections");
-
-  } catch (const std::exception& e) {
+  std::ifstream file(filePath, std::ios::binary);
+  if (!file.is_open()) {
     result.success = false;
-    result.errorMessage = "Project load failed: " + std::string(e.what());
+    result.errorMessage = "Cannot open CSV file: " + filePath;
     SetError(result.errorMessage);
+    return result;
   }
+
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  std::string csvContent = buffer.str();
+  file.close();
+
+  LadderProgram program;
+  if (!ParseGX2CSV(csvContent, program)) {
+    result.success = false;
+    result.errorMessage = "Failed to parse GXWORKS2 CSV content";
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  result.success = true;
+  result.program = program;
+  result.info.projectName = ExtractFileName(filePath);
+  result.info.version = "1.0";
+  result.info.createdDate = "";
+  result.info.lastModified = "";
+  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.schemaVersion = "1.0";
+  result.info.layoutChecksum = CalculateChecksum(csvContent);
+  result.info.programChecksum = result.info.layoutChecksum;
+
+  LogDebug("[CSV] Project loaded successfully: " +
+           std::to_string(result.program.rungs.size()) + " rungs");
 
   return result;
 }
@@ -412,61 +845,58 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProject(
 ProjectFileManager::ProjectInfo ProjectFileManager::GetProjectInfo(
     const std::string& filePath) {
   ProjectInfo info;
+  info.projectName = ExtractFileName(filePath);
+  info.version = "1.0";
+  info.toolVersion = "PLC Simulator v1.0";
+  info.schemaVersion = "1.0";
 
-  std::map<std::string, std::string> files;
-  if (ExtractZipFile(filePath, files)) {
-    if (files.find("manifest.json") != files.end()) {
-      ParseManifest(files["manifest.json"], info);
-    }
+  std::ifstream file(filePath, std::ios::binary);
+  if (file.is_open()) {
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string csvContent = buffer.str();
+    info.layoutChecksum = CalculateChecksum(csvContent);
+    info.programChecksum = info.layoutChecksum;
   }
 
   return info;
 }
 
 bool ProjectFileManager::ValidateProjectFile(const std::string& filePath) {
-  try {
-    std::map<std::string, std::string> files;
-    if (!ExtractZipFile(filePath, files)) {
-      return false;
-    }
-
-    // 필수 파일 검사
-    if (files.find("layout.xml") == files.end()) {
-      return false;
-    }
-
-    // XML 유효성 검사
-    xml_serializer_->SetDebugMode(false);  // 검증 시에는 조용히
-    auto xmlResult = xml_serializer_->DeserializeFromXML(files["layout.xml"]);
-
-    return xmlResult.success;
-
-  } catch (const std::exception&) {
+  std::ifstream file(filePath, std::ios::binary);
+  if (!file.is_open()) {
     return false;
   }
+
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  std::string csvContent = buffer.str();
+
+  LadderProgram program;
+  return ParseGX2CSV(csvContent, program);
 }
 
 // =============================================================================
-// ZIP 관련 내부 함수들
+// ZIP ?????怨멸텛??????? ??????
 // =============================================================================
 
 bool ProjectFileManager::CreateZipFile(
     const std::string& filePath,
     const std::map<std::string, std::string>& files) {
-  LogDebug("🚀 Creating ZIP file using Windows Shell API: " + filePath);
+  LogDebug("[INFO] Creating ZIP file using Windows Shell API: " + filePath);
 
 #ifdef _WIN32
-  // Windows Shell API 사용
+  // Windows Shell API ????
   if (CreateZipFileWindows(filePath, files)) {
-    LogDebug("✅ ZIP file created successfully with Windows Shell API");
+    LogDebug("[INFO] ZIP file created successfully with Windows Shell API");
     return true;
   } else {
     SetError("Failed to create ZIP file using Windows Shell API");
     return false;
   }
 #else
-  // 다른 플랫폼에서는 원래 miniz 사용 (Windows 전용 프로젝트이므로 사용되지
-  // 않음)
+  // ???????낇뀘?????????關?쒎첎?嫄??怨몄굛????轅붽틓???????????miniz ????(Windows ?????獄쏅챶留???????獄쏅챶留??貫????????Β?ル윲?????????????
+  // ???????깅즿??
   SetError("Windows-only project: Shell API not available on this platform");
   return false;
 #endif
@@ -474,13 +904,13 @@ bool ProjectFileManager::CreateZipFile(
 
 bool ProjectFileManager::ExtractZipFile(
     const std::string& filePath, std::map<std::string, std::string>& files) {
-  LogDebug("📂 Extracting ZIP file using Windows Shell API: " + filePath);
+  LogDebug("[INFO] Extracting ZIP file using Windows Shell API: " + filePath);
 
 #ifdef _WIN32
-  // Windows Shell API 사용
+  // Windows Shell API ????
   if (ExtractZipFileWindows(filePath, files)) {
-    LogDebug("✅ ZIP file extracted successfully with Windows Shell API");
-    LogDebug("📊 Files extracted: " + std::to_string(files.size()));
+    LogDebug("[INFO] ZIP file extracted successfully with Windows Shell API");
+    LogDebug("[INFO] Files extracted: " + std::to_string(files.size()));
     for (const auto& [fileName, content] : files) {
       LogDebug("   - " + fileName + " (" + std::to_string(content.size()) +
                " bytes)");
@@ -491,15 +921,15 @@ bool ProjectFileManager::ExtractZipFile(
     return false;
   }
 #else
-  // 다른 플랫폼에서는 원래 miniz 사용 (Windows 전용 프로젝트이므로 사용되지
-  // 않음)
+  // ???????낇뀘?????????關?쒎첎?嫄??怨몄굛????轅붽틓???????????miniz ????(Windows ?????獄쏅챶留???????獄쏅챶留??貫????????Β?ル윲?????????????
+  // ???????깅즿??
   SetError("Windows-only project: Shell API not available on this platform");
   return false;
 #endif
 }
 
 // =============================================================================
-// 프로젝트 내용 생성
+// ?????獄쏅챶留??貫????????Β?ル윲?????????ㅻ쑄??????ш끽維뽳쭩???
 // =============================================================================
 
 std::string ProjectFileManager::GenerateManifest(const ProjectInfo& info) {
@@ -548,11 +978,11 @@ bool ProjectFileManager::ParseManifest(const std::string& manifestContent,
 }
 
 // =============================================================================
-// 유틸리티 함수들
+// ????壤굿??Β??????얠뺏???鰲?????????
 // =============================================================================
 
 size_t ProjectFileManager::CalculateChecksum(const std::string& content) {
-  // 간단한 해시 함수 (CRC32 대신)
+  // ?????ル뒌???????????源낆┰???????(CRC32 ????
   std::hash<std::string> hasher;
   return hasher(content);
 }
@@ -567,13 +997,10 @@ std::string ProjectFileManager::GetCurrentDateTime() {
 }
 
 std::string ProjectFileManager::ExtractFileName(const std::string& filePath) {
-#if __cplusplus >= 201703L
-  fs::path path(filePath);
-  return path.stem().string();  // 확장자 제외한 파일명
-#else
-  // C++14 호환: 수동으로 파일명 추출
+  // Avoid std::filesystem::path conversions to prevent locale issues on
+  // non-ASCII paths. Use a manual parse instead.
   size_t lastSlash = filePath.find_last_of("/\\");
-  size_t lastDot = filePath.find_last_of(".");
+  size_t lastDot = filePath.find_last_of('.');
 
   std::string filename = (lastSlash != std::string::npos)
                              ? filePath.substr(lastSlash + 1)
@@ -585,7 +1012,6 @@ std::string ProjectFileManager::ExtractFileName(const std::string& filePath) {
   }
 
   return filename;
-#endif
 }
 
 void ProjectFileManager::LogDebug(const std::string& message) {
@@ -602,7 +1028,7 @@ void ProjectFileManager::SetError(const std::string& error) {
 }
 
 // =============================================================================
-// 간단한 JSON 헬퍼 함수들
+// ?????ル뒌?????JSON ??????????
 // =============================================================================
 
 std::string ProjectFileManager::CreateSimpleJSON(
@@ -626,7 +1052,7 @@ std::map<std::string, std::string> ProjectFileManager::ParseSimpleJSON(
     const std::string& jsonContent) {
   std::map<std::string, std::string> result;
 
-  // 매우 간단한 JSON 파싱 (정규 표현식 사용)
+  // ?耀붾굝????????????ル뒌?????JSON ?????(????????????????
   std::regex pattern("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"");
   std::sregex_iterator iter(jsonContent.begin(), jsonContent.end(), pattern);
   std::sregex_iterator end;

@@ -7,6 +7,7 @@
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_LADDER_TO_LD_CONVERTER_H_
 
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -93,19 +94,19 @@ class LadderToLDConverter {
   std::string last_error_;
   bool debug_mode_ = false;
 
+  struct DeviceSet {
+    std::set<int> x_inputs;
+    std::set<int> y_outputs;
+    std::set<int> m_bits;
+    std::set<int> t_timers;
+    std::set<int> c_counters;
+  };
+
   /**
    * @brief .ld 파일 헤더 생성 (I/O 변수 선언 등)
    * @return 헤더 문자열
    */
-  std::string GenerateLDHeader();
-
-  /**
-   * @brief 수직 연결을 OR 블록으로 변환
-   * @param program 래더 프로그램
-   * @param ldContent 출력할 .ld 내용
-   */
-  void ConvertVerticalConnections(const LadderProgram& program,
-                                  std::string& ldContent);
+  std::string GenerateLDHeader(const DeviceSet& devices);
 
   /**
    * @brief 개별 rung을 .ld 형식으로 변환
@@ -128,7 +129,7 @@ class LadderToLDConverter {
    * @param address FX3U 주소 (예: "X11", "Y5", "M100")
    * @return OpenPLC 주소 (예: "%IX0.11", "%QX0.5", "%MX100")
    */
-  std::string ConvertAddress(const std::string& address);
+  std::string ConvertAddress(const std::string& address) const;
 
   /**
    * @brief 래더 명령어 타입을 OpenPLC .ld 명령어로 변환
@@ -142,18 +143,9 @@ class LadderToLDConverter {
    * @param message 로그 메시지
    */
   void DebugLog(const std::string& message);
-
-  /**
-   * @brief OR 블록 그룹 생성 (수직 연결 분석)
-   * @param program 래더 프로그램
-   * @return OR 블록 그룹 목록
-   */
-  struct ORGroup {
-    std::vector<int> rungIndices;  // 연결된 rung 인덱스들
-    std::string outputAddress;     // 출력 주소
-    int outputColumn;              // 출력 위치
-  };
-  std::vector<ORGroup> AnalyzeORGroups(const LadderProgram& program);
+  DeviceSet CollectUsedDevices(const LadderProgram& program) const;
+  void AppendOutputInstruction(const LadderInstruction& output,
+                               std::string& ldContent) const;
 };
 
 }  // namespace plc

@@ -2,6 +2,10 @@
 // Copyright 2024 PLC Emulator Project
 //
 // Ladder diagram editor and simulator.
+// programming_mode.h
+// Copyright 2024 PLC Emulator Project
+//
+// Ladder diagram editor and simulator.
 
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
@@ -277,7 +281,7 @@ class ProgrammingMode {
   bool IsUsingCompiledEngine() const { return use_compiled_engine_; }
   bool HasCompiledCodeLoaded() const { return !current_compiled_code_.empty(); }
   const char* GetEngineType() const {
-    return use_compiled_engine_ ? "Compiled(OpenPLC)" : "Legacy";
+    return use_compiled_engine_ ? "Compiled(OpenPLC)" : "Disabled";
   }
   bool IsRecompileNeeded() const;  // 내부 NeedsRecompilation() 래퍼
   const std::string& GetLastCompileError() const { return last_compile_error_; }
@@ -350,7 +354,6 @@ class ProgrammingMode {
 
   // 🔥 **NEW**: OpenPLC 엔진 통합 관련 함수들
   void ExecuteWithOpenPLCEngine();     // OpenPLC 엔진으로 시뮬레이션
-  void ExecuteWithLegacySimulation();  // 기존 수동 시뮬레이션 (백업용)
   bool CompileLadderToOpenPLC();       // 레더 → .ld → C++ → OpenPLC 로드
   void SyncPhysicsToOpenPLC();         // 물리 상태 → OpenPLC 입력
   void SyncOpenPLCToDevices();         // OpenPLC 출력 → 디바이스 상태
@@ -401,6 +404,8 @@ class ProgrammingMode {
   std::unique_ptr<LadderToLDConverter> ld_converter_;
   bool use_compiled_engine_;           // OpenPLC 엔진 사용 여부
   std::string current_compiled_code_;  // 현재 컴파일된 C++ 코드
+  bool compile_failed_ = false;
+  size_t last_failed_hash_ = 0;
 
   // 🔥 **NEW**: 안전한 UI 동기화를 위한 상태 관리
   bool is_editing_in_progress_ = false;   // 현재 편집 중인지 여부

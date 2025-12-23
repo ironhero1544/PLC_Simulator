@@ -1,25 +1,25 @@
 cmake_minimum_required(VERSION 3.20)
 project(PLCSimulator)
 
-# CMake 호환성 정책 설정
+# CMake
 cmake_policy(SET CMP0077 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
-# C++ 표준 설정
+# C++
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)  # -std=c++20 사용, -std=gnu++20 방지
+set(CMAKE_CXX_EXTENSIONS OFF)  # -std=c++20  -std=gnu++20 
 
 # Export compile_commands.json for clang-tidy, clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 빌드 타입 기본값 설정
+# 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
     message(STATUS "Build type not specified: defaulting to Release")
 endif()
 
-# 출력 디렉토리 설정
+#  
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -36,7 +36,7 @@ endif()
 
 include(FetchContent)
 
-# CMake 최소 버전 정책을 강제로 설정
+# CMake 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 if(CMAKE_VERSION VERSION_LESS 3.5)
     cmake_policy(VERSION 3.5)
@@ -138,7 +138,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
         ${miniz_SOURCE_DIR}
 )
 
-# ImGui를 시스템 헤더로 처리하여 경고 비활성화
+# ImGui 
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
         ${imgui_SOURCE_DIR}
         ${imgui_SOURCE_DIR}/backends
@@ -153,108 +153,100 @@ set(LINK_LIBS
 )
 
 if(WIN32)
-    # Windows API 라이브러리 (PowerShell .NET 방식 사용)
+    # Windows API (PowerShell .NET 
     list(APPEND LINK_LIBS 
-        comdlg32     # 파일 다이얼로그
+        comdlg32     #      
     )
 endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LINK_LIBS})
 
-# Windows 콘솔 창 설정
-# Release 빌드에서는 콘솔 창 숨김, Debug 빌드에서는 콘솔 표시
+# Windows 
+# Release , Debug 
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        WIN32_EXECUTABLE TRUE  # GUI 애플리케이션으로 설정 (콘솔 숨김)
+        WIN32_EXECUTABLE TRUE  # GUI   ()
     )
 endif()
 
 # =============================================================================
-# 컴파일러 경고 및 최적화 설정 (Google C++ Style Guide 준수)
+#   (Google C++ Style Guide 
 # =============================================================================
 
 if(MSVC)
-    # MSVC (Visual Studio) 컴파일러 설정
+    # MSVC (Visual Studio)  
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4                 # 경고 레벨 4 (높음)
-        /WX                 # 경고를 에러로 처리 (옵션)
-        /permissive-        # 표준 준수 모드
-        /Zc:__cplusplus     # __cplusplus 매크로 올바른 값 설정
-        /Zc:inline          # 인라인 함수 처리 개선
-        /utf-8              # 소스 파일 UTF-8 인코딩
-        
-        # 성능 최적화 (Release)
-        $<$<CONFIG:Release>:/O2>        # 속도 최적화
-        $<$<CONFIG:Release>:/GL>        # 전체 프로그램 최적화
-        
-        # 디버그 정보 (Debug)
-        $<$<CONFIG:Debug>:/Od>          # 최적화 비활성화
-        $<$<CONFIG:Debug>:/Zi>          # 디버그 정보 생성
-        $<$<CONFIG:Debug>:/RTC1>        # 런타임 체크
+        /W4                 #  4 ()
+        /WX                 # (
+        /permissive-        #  
+        /Zc:__cplusplus     # __cplusplus 
+        /Zc:inline          #  
+        /utf-8              #   UTF-8         
+        #  (Release)
+        $<$<CONFIG:Release>:/O2>        #          $<$<CONFIG:Release>:/GL>        #          
+        #  (Debug)
+        $<$<CONFIG:Debug>:/Od>          # 
+        $<$<CONFIG:Debug>:/Zi>          #  
+        $<$<CONFIG:Debug>:/RTC1>        # 
     )
     
     target_compile_definitions(${PROJECT_NAME} PRIVATE
-        _CRT_SECURE_NO_WARNINGS         # CRT 보안 경고 억제
-        NOMINMAX                        # Windows.h min/max 매크로 비활성화
-        WIN32_LEAN_AND_MEAN            # Windows 헤더 최소화
-        _UNICODE                        # 유니코드 빌드
+        _CRT_SECURE_NO_WARNINGS         # CRT 
+        NOMINMAX                        # Windows.h min/max 
+        WIN32_LEAN_AND_MEAN            # Windows          _UNICODE                        # 
         UNICODE
         
-        # 빌드 타입별 정의
+        # 
         $<$<CONFIG:Debug>:_DEBUG>
         $<$<CONFIG:Release>:NDEBUG>
     )
     
-    # 링커 최적화 (Release)
+    # (Release)
     target_link_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:/LTCG>      # 링크 타임 코드 생성
-        $<$<CONFIG:Release>:/OPT:REF>   # 참조되지 않는 함수 제거
-        $<$<CONFIG:Release>:/OPT:ICF>   # 동일 함수 병합
+        $<$<CONFIG:Release>:/LTCG>      # 
+        $<$<CONFIG:Release>:/OPT:REF>   #    
+        $<$<CONFIG:Release>:/OPT:ICF>   #   
     )
     
 else()
-    # GCC/Clang 컴파일러 설정
+    # GCC/Clang  
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall               # 기본 경고 활성화
-        -Wextra             # 추가 경고
-        -Wpedantic          # 표준 준수 검사
-        -Werror             # 경고를 에러로 처리 (옵션)
+        -Wall               #         -Wextra             #  
+        -Wpedantic          #          -Werror             # (
         
-        # Google C++ Style 권장 경고
-        -Wshadow                    # 변수 섀도잉 경고
-        -Wnon-virtual-dtor          # 가상 소멸자 누락 경고
-        -Wold-style-cast            # C 스타일 캐스트 경고
-        -Wcast-align                # 정렬 문제 경고
-        -Wunused                    # 사용하지 않는 변수 경고
-        -Woverloaded-virtual        # 가상 함수 오버로딩 경고
-        -Wformat=2                  # printf 포맷 검사
-        -Wimplicit-fallthrough      # switch fallthrough 경고
+        # Google C++ Style 
+        -Wshadow                    #  
+        -Wnon-virtual-dtor          #  
+        -Wold-style-cast            # C 
+        -Wcast-align                #  
+        -Wunused                    #   
+        -Woverloaded-virtual        #  
+        -Wformat=2                  # printf         -Wimplicit-fallthrough      # switch fallthrough 
         
-        # 성능 최적화 (Release)
-        $<$<CONFIG:Release>:-O3>                      # 최대 최적화
-        $<$<CONFIG:Release>:-DNDEBUG>                 # assert 비활성화
-        $<$<CONFIG:Release>:-Wno-array-bounds>        # 최적화로 인한 false positive 억제
-        $<$<CONFIG:Release>:-Wno-stringop-overflow>   # 최적화로 인한 false positive 억제
+        #  (Release)
+        $<$<CONFIG:Release>:-O3>                      #          $<$<CONFIG:Release>:-DNDEBUG>                 # assert 
+        $<$<CONFIG:Release>:-Wno-array-bounds>        #   false positive 
+        $<$<CONFIG:Release>:-Wno-stringop-overflow>   #   false positive 
         
-        # 디버그 정보 (Debug)
-        $<$<CONFIG:Debug>:-O0>          # 최적화 비활성화
-        $<$<CONFIG:Debug>:-g3>          # 최대 디버그 정보
-        $<$<CONFIG:Debug>:-D_DEBUG>     # 디버그 매크로
+        #  (Debug)
+        $<$<CONFIG:Debug>:-O0>          # 
+        $<$<CONFIG:Debug>:-g3>          #  
+        $<$<CONFIG:Debug>:-D_DEBUG>     #     
     )
     
-    # 링커 설정 (필요시 추가)
+    #  ()
     # target_link_options(${PROJECT_NAME} PRIVATE
-    #     # Release: 최적화 옵션
-    #     $<$<CONFIG:Release>:-s>         # 심볼 제거 (파일 크기 감소)
-    #     $<$<CONFIG:Release>:-mwindows>  # GUI 애플리케이션 (콘솔 창 숨김)
+    #     # Release: 
+    #     $<$<CONFIG:Release>:-s>         #  ( 
+    #     $<$<CONFIG:Release>:-mwindows>  # GUI ()
     # )
 endif()
 
 # =============================================================================
-# clang-format 통합 (코드 포매팅)
+# clang-format  (
 # =============================================================================
 
-# 모든 소스 파일 수집
+#   
 file(GLOB_RECURSE ALL_SOURCE_FILES
     ${CMAKE_SOURCE_DIR}/src/*.cpp
     ${CMAKE_SOURCE_DIR}/src/*.cc
@@ -262,13 +254,13 @@ file(GLOB_RECURSE ALL_SOURCE_FILES
     ${CMAKE_SOURCE_DIR}/include/plc_emulator/*.hpp
 )
 
-# clang-format 찾기
+# clang-format 
 find_program(CLANG_FORMAT NAMES clang-format)
 
 if(CLANG_FORMAT)
     message(STATUS "clang-format found: ${CLANG_FORMAT}")
     
-    # format 타겟: 모든 소스 파일 포매팅
+    # format    
     add_custom_target(format
         COMMAND ${CLANG_FORMAT} -i -style=file ${ALL_SOURCE_FILES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -276,7 +268,7 @@ if(CLANG_FORMAT)
         VERBATIM
     )
     
-    # format-check 타겟: 포매팅 검사만 (CI/CD용)
+    # format-check  (CI/CD
     add_custom_target(format-check
         COMMAND ${CLANG_FORMAT} --dry-run --Werror -style=file ${ALL_SOURCE_FILES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -291,7 +283,7 @@ else()
 endif()
 
 # =============================================================================
-# clang-tidy 통합 (정적 분석)
+# clang-tidy  ( 
 # =============================================================================
 
 find_program(CLANG_TIDY NAMES clang-tidy)
@@ -299,7 +291,7 @@ find_program(CLANG_TIDY NAMES clang-tidy)
 if(CLANG_TIDY)
     message(STATUS "clang-tidy found: ${CLANG_TIDY}")
     
-    # clang-tidy 자동 실행 (빌드 시)
+    # clang-tidy   (
     option(ENABLE_CLANG_TIDY "Enable clang-tidy checks during build" OFF)
     
     if(ENABLE_CLANG_TIDY)
@@ -311,7 +303,7 @@ if(CLANG_TIDY)
         message(STATUS "clang-tidy enabled for build")
     endif()
     
-    # tidy 타겟: 수동으로 clang-tidy 실행
+    # tidy   clang-tidy 
     add_custom_target(tidy
         COMMAND ${CLANG_TIDY}
             -p ${CMAKE_BINARY_DIR}
@@ -326,7 +318,7 @@ else()
 endif()
 
 # =============================================================================
-# cppcheck 통합 (정적 분석)
+# cppcheck  ( 
 # =============================================================================
 
 find_program(CPPCHECK NAMES cppcheck)
@@ -355,7 +347,7 @@ else()
 endif()
 
 # =============================================================================
-# 빌드 정보 출력
+#  
 # =============================================================================
 
 message(STATUS "=============================================================================")
@@ -375,7 +367,7 @@ message(STATUS "  cppcheck:             ${CPPCHECK}")
 message(STATUS "=============================================================================")
 
 # =============================================================================
-# 사용자 가이드
+# 
 # =============================================================================
 
 message(STATUS "")
@@ -396,7 +388,7 @@ message(STATUS "================================================================
 message(STATUS "")
 
 # =============================================================================
-# 테스트 설정 (Testing Configuration)
+#  (Testing Configuration)
 # =============================================================================
 
 option(BUILD_TESTING "Build the testing tree." OFF)

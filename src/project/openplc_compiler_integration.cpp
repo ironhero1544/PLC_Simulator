@@ -237,7 +237,19 @@ bool OpenPLCCompilerIntegration::ParseInstructions(const std::string& content) {
     ldInst.lineNumber = lineNumber;
 
     // LD/AND/OR + optional NOT 처리
-    if (instr == "LD" || instr == "AND" || instr == "OR") {
+    if (instr == "LDN" || instr == "ANDN" || instr == "ORN") {
+      if (tokens.size() < 2) {
+        continue;
+      }
+      if (instr == "LDN") {
+        ldInst.type = LDInstruction::LDN;
+      } else if (instr == "ANDN") {
+        ldInst.type = LDInstruction::ANDN;
+      } else {
+        ldInst.type = LDInstruction::ORN;
+      }
+      ldInst.operand = tokens[1];
+    } else if (instr == "LD" || instr == "AND" || instr == "OR") {
       if (tokens.size() < 2) {
         // 피연산자 없음: 무시
         continue;

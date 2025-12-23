@@ -160,6 +160,7 @@ void ProgrammingMode::ConfirmInstruction() {
 
   rung.cells[targetCell] = newInstruction;
   UpdateHorizontalLines(selected_rung_);
+  MarkDirty();
 }
 
 void ProgrammingMode::DeleteCurrentInstruction() {
@@ -170,6 +171,7 @@ void ProgrammingMode::DeleteCurrentInstruction() {
   ladder_program_.rungs[selected_rung_].cells[selected_cell_] =
       LadderInstruction();
   UpdateHorizontalLines(selected_rung_);
+  MarkDirty();
 }
 
 void ProgrammingMode::EditCurrentInstruction() {
@@ -210,6 +212,7 @@ void ProgrammingMode::AddNewRung() {
   for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
     ladder_program_.rungs[i].number = i;
   }
+  MarkDirty();
 }
 
 // [MODIFIED] 룽 삭제 시 연결된 세로선을 함께 제거하고, 나머지 세로선의 인덱스를
@@ -265,11 +268,13 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
       ladder_program_.rungs[i].number = i;
     }
   }
+  MarkDirty();
 }
 
 void ProgrammingMode::InsertHorizontalLine() {
   ladder_program_.rungs[selected_rung_].cells[selected_cell_].type =
       LadderInstructionType::HLINE;
+  MarkDirty();
 }
 
 void ProgrammingMode::UpdateHorizontalLines(int rungIndex) {
@@ -345,6 +350,7 @@ void ProgrammingMode::ConfirmVerticalConnection() {
   ladder_program_.verticalConnections.push_back(newConnection);
 
   show_vertical_dialog_ = false;
+  MarkDirty();
 }
 
 }  // namespace plc

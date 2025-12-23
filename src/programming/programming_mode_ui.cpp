@@ -3,7 +3,7 @@
 //
 // Programming mode UI rendering.
 
-#include "plc_emulator/core/application.h"  // SaveProject 함수 호출용
+#include "plc_emulator/core/application.h"  // SaveProject ???????轅붽???????
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
@@ -31,7 +31,7 @@ void ProgrammingMode::RenderProgrammingModeUI(bool isPlcRunning) {
 }
 
 void ProgrammingMode::RenderProgrammingHeader() {
-  // Application 클래스에서 관리하므로 비워둠
+  // Application ??????????�롫?�鴉?��????????곸궔?????�롫?�揶?�???�롫?�繹�?��????????�롫�??????????
 }
 
 void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
@@ -42,14 +42,14 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("쓰기 (F3)", ImVec2(100, 30));
+      ImGui::Button("Edit (F3)", ImVec2(100, 30));
       ImGui::PopStyleVar();
     } else {
       ImGui::PushStyleColor(ImGuiCol_Button,
                             !is_monitor_mode_
                                 ? ImVec4(0.4f, 0.6f, 0.8f, 1.0f)
                                 : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-      if (ImGui::Button("쓰기 (F3)", ImVec2(100, 30))) {
+      if (ImGui::Button("Edit (F3)", ImVec2(100, 30))) {
         is_monitor_mode_ = false;
       }
       ImGui::PopStyleColor();
@@ -60,7 +60,7 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
     ImGui::PushStyleColor(ImGuiCol_Button,
                           is_monitor_mode_ ? ImVec4(0.4f, 0.6f, 0.8f, 1.0f)
                                           : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-    if (ImGui::Button("모니터 (F2)", ImVec2(100, 30))) {
+    if (ImGui::Button("Monitor (F2)", ImVec2(100, 30))) {
       is_monitor_mode_ = true;
     }
     ImGui::PopStyleColor();
@@ -69,81 +69,73 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning || is_monitor_mode_) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("컴파일", ImVec2(100, 30));
+      ImGui::Button("Save", ImVec2(100, 30));
       ImGui::PopStyleVar();
     } else {
-      if (ImGui::Button("컴파일", ImVec2(100, 30))) {
-        std::cout << "🔄 [DEBUG] 컴파일 버튼 클릭됨!" << std::endl;
-        // 🔥 **NEW**: .plcproj 프로젝트 파일로 저장
+      if (ImGui::Button("Save", ImVec2(100, 30))) {
+
+        // ???**NEW**: .csv ??????�롫????�?λ????????�롫???????????�롫????????
         if (application_) {
-          std::cout << "🔄 [DEBUG] application_ 포인터 유효함" << std::endl;
+          std::cout << "[DEBUG] application_ available" << std::endl;
 #ifdef _WIN32
           OPENFILENAMEA ofn;
-          CHAR szFile[260] = "project.plcproj";
+          CHAR szFile[260] = "project.csv";
           ZeroMemory(&ofn, sizeof(ofn));
           ofn.lStructSize = sizeof(ofn);
           ofn.hwndOwner = NULL;
           ofn.lpstrFile = szFile;
           ofn.nMaxFile = sizeof(szFile);
           ofn.lpstrFilter =
-              "PLC Project Files (*.plcproj)\0*.plcproj\0All Files "
+              "PLC Ladder CSV (*.csv)\0*.csv\0All Files "
               "(*.*)\0*.*\0";
           ofn.nFilterIndex = 1;
           ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-          std::cout << "🔄 [DEBUG] 파일 저장 다이얼로그 표시 중..."
-                    << std::endl;
+          std::cout << "[DEBUG] Save dialog opened" << std::endl;
           if (GetSaveFileNameA(&ofn) == TRUE) {
-            std::cout << "🔄 [DEBUG] 파일 다이얼로그에서 파일 선택됨"
-                      << std::endl;
+            std::cout << "[DEBUG] Save dialog confirmed" << std::endl;
             std::string savePath = ofn.lpstrFile;
-            if (savePath.find(".plcproj") == std::string::npos) {
-              savePath += ".plcproj";
+            if (savePath.find(".csv") == std::string::npos) {
+              savePath += ".csv";
             }
 
-            // 🔥 프로젝트 파일로 저장 (XML + ZIP 형식)
-            std::cout << "🔄 [DEBUG] 저장 시작: " << savePath << std::endl;
-            std::cout << "🔄 [DEBUG] application_ 포인터: "
-                      << (application_ ? "OK" : "NULL") << std::endl;
+            // ?????????�롫????�?λ????????�롫???????????�롫????????(XML + ZIP ??轅붽????????�롫???
+            std::cout << "[DEBUG] Save path: " << savePath << std::endl;
+            std::cout << "[DEBUG] application_: " << (application_ ? "OK" : "NULL") << std::endl;
+
 
             bool success = application_->SaveProject(savePath, "PLC_Project");
             if (success) {
-              std::cout << "✅ 프로젝트 저장 완료: " << savePath
-                        << " (verticalConnections 포함)" << std::endl;
-              std::cout << "📁 [DEBUG] 저장된 파일 경로: " << savePath
-                        << std::endl;
+              std::cout << "[INFO] Project saved: " << savePath << std::endl;
+
+
             } else {
-              std::cout << "❌ 프로젝트 저장 실패: " << savePath << std::endl;
-              std::cout
-                  << "💡 [TIP] 한글 경로 문제일 수 있습니다. "
-                     "C:\\temp\\project.plcproj 같은 영문 경로를 시도해보세요."
-                  << std::endl;
+              std::cout << "[ERROR] Project save failed: " << savePath << std::endl;
+              std::cout << "[TIP] Try a simple path like C:\\temp\\project.csv" << std::endl;
+
+
             }
           } else {
-            std::cout << "🔄 [DEBUG] 파일 다이얼로그가 취소됨" << std::endl;
+            std::cout << "[DEBUG] Save dialog cancelled" << std::endl;
           }
 #else
-          // 기본 파일명으로 저장
-          std::cout << "🔄 [DEBUG] 기본 파일명으로 저장: project.plcproj"
-                    << std::endl;
-          std::cout << "🔄 [DEBUG] application_ 포인터: "
+          // ?????�롫�????????????�롫?????�롫??????�롫�???????????
+            std::cout << "[DEBUG] Save path: " << savePath << std::endl;
+            std::cout << "[DEBUG] Save path: " << savePath << std::endl;
                     << (application_ ? "OK" : "NULL") << std::endl;
 
           bool success =
-              application_->SaveProject("project.plcproj", "PLC_Project");
+              application_->SaveProject("project.csv", "PLC_Project");
           if (success) {
-            std::cout << "✅ 프로젝트 저장 완료: project.plcproj "
-                         "(verticalConnections 포함)"
-                      << std::endl;
+            std::cout << "[INFO] Project saved: project.csv" << std::endl;
+
           } else {
-            std::cout << "❌ 프로젝트 저장 실패: project.plcproj" << std::endl;
-            std::cout << "💡 [TIP] 한글 경로 문제일 수 있습니다. 영문 경로를 "
-                         "시도해보세요."
-                      << std::endl;
+            std::cout << "[ERROR] Project save failed: project.csv" << std::endl;
+            std::cout << "[TIP] Try a simple path like C:\\temp\\project.csv" << std::endl;
+
           }
 #endif
         } else {
-          std::cout << "❌ [DEBUG] application_ 포인터가 NULL입니다!"
-                    << std::endl;
+          std::cout << "[DEBUG] application_ is NULL" << std::endl;
         }
       }
     }
@@ -173,7 +165,7 @@ void ProgrammingMode::RenderLadderEditor() {
                         ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
     RenderColumnHeader();
     RenderLadderDiagram();
-    // 세로선 렌더링은 각 룽에서 개별적으로 처리하도록 변경
+    // ??轅붽??????�띿�????????????????? ??????�멥?�揶?????????�늉?????????�롫????�?????????�롫????壤굿??戮㏐�??????�롫???????????�롫????�쐻???
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
@@ -241,13 +233,13 @@ void ProgrammingMode::RenderLadderDiagram() {
 }
 
 void ProgrammingMode::RenderVerticalConnections() {
-  // [DEPRECATED] 이 함수는 더 이상 사용되지 않습니다.
-  // 세로선 렌더링은 이제 각 룽에서 개별적으로 처리됩니다.
+  // [DEPRECATED] ??????????????????????? ????????????�롫???
+  // ??轅붽??????�띿�????????????????? ??????�롫??????????�멥?�揶?????????�늉?????????�롫????�?????????�롫????壤굿??戮㏐�????꿔꺂??????
 }
 
-// [PPT: 새로운 내용 1 - 룽별 세로선 렌더링 시스템]
-// 각 룽에서 해당하는 세로선 부분만 그려서 정확한 위치와 올바른 렌더링 순서를
-// 보장합니다.
+// [PPT: ?????????????�롫???�뼹??1 - ????�멥?�揶?????轅붽??????�띿�?????????????????
+// ??????�멥?�揶?????????????�롫?????�뉩??????轅붽??????�띿�????????????????�롫????�????�롫�???�쐻??????�롫?????????轅붽????�쐻????�뒩?????????�롫????? ????????????????????
+// ????�롫????????꿔꺂??????
 void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
                                                        float cellAreaWidth) {
   if (ladder_program_.verticalConnections.empty())
@@ -260,9 +252,9 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
   float rungNumberWidth = 80.0f;
   float railWidth = 22.0f;
 
-  // [PPT: 수업 내용] for문을 사용하여 현재 룽과 관련된 세로선 연결을 찾습니다.
+  // [PPT: ???꿔꺂????????????�롫???�뼹?? for???????�롫�?????????꿔꺂??????�롫�????????�롫????????�멥?�揶????????곸궔????????�롫?????轅붽??????�띿�?????????�롫?�獒??????�롫??????????????�롫???
   for (const auto& connection : ladder_program_.verticalConnections) {
-    // 현재 룽이 이 세로선 연결에 포함되는지 확인
+    // ??????�롫????????�멥?�揶???????轅붽??????�띿�?????????�롫?�獒???????????�롫?????�뉩????γ?볥?�???? ??轅붽?????????
     bool isThisRungInConnection = false;
     for (int connectedRung : connection.rungs) {
       if (connectedRung == rungIndex) {
@@ -274,20 +266,20 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
     if (!isThisRungInConnection)
       continue;
 
-    // [PPT: 새로운 내용 2 - React 프로토타입과 동일한 상대 좌표 계산]
-    // 룽 내부의 상대 좌표를 사용하여 정확한 세로선 위치를 계산합니다.
+    // [PPT: ?????????????�롫???�뼹??2 - React ??????�롫????�?λ???????????�롫???????????�쿋?????? ?????믩틲?????�?��??????�롫�???
+    // ??????????? ?????믩틲??????�롫�???????????꿔꺂??????�롫�????轅붽????�쐻????�뒩?????轅붽??????�띿�?????????�롫???????�?��??????�롫�?????꿔꺂??????
     float lineX = windowPos.x + contentMin.x + rungNumberWidth + railWidth +
                   (connection.x / 12.0f) * cellAreaWidth;
 
-    float rungCenterY = windowPos.y + contentMin.y + 25.0f;  // 룽 중앙 Y 위치
+    float rungCenterY = windowPos.y + contentMin.y + 25.0f;  // ???????밸쐻????�롫????Y ??????�롫????
 
-    // [PPT: 수업 내용] if-else 조건문으로 모니터 모드에 따라 색상을 결정합니다.
+    // [PPT: ???꿔꺂????????????�롫???�뼹?? if-else ????�롫??????????�????�????�?��???뤸납????�??룸뜤?????�롫?????????�뇡???????�롫?????????�뇡??????????�롫???????μ?�媛?????�롫??????棺堉?�??????꿔꺂??????
     ImU32 lineColor = is_monitor_mode_ ? IM_COL32(107, 114, 128, 255)
-                                      :                  // React의 #6B7280
-                          IM_COL32(156, 163, 175, 255);  // React의 #9CA3AF
+                                      :                  // React??#6B7280
+                          IM_COL32(156, 163, 175, 255);  // React??#9CA3AF
 
-    // 현재 룽에서의 세로선 부분 그리기
-    // 위아래로 연장되어야 하는지 확인
+    // ??????�롫????????�멥?�揶?????꿔꺂??????�롫?????轅붽??????�띿�??????????????????�롫??????????�롫�???�쐻?
+    // ??????�롫???????????????????꿔꺂??????�롫�????????�롫?????�뉩????γ?볥?�???? ??轅붽?????????
     std::vector<int> sortedRungs = connection.rungs;
     std::sort(sortedRungs.begin(), sortedRungs.end());
 
@@ -297,22 +289,22 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
     float lineStartY = rungCenterY;
     float lineEndY = rungCenterY;
 
-    // 위쪽으로 연장 필요한지 확인
+    // ??????�롫?�筌???�롫????????�롫�?????????????????�롫?????? ??轅붽?????????
     if (rungIndex > minRung) {
-      lineStartY = windowPos.y + contentMin.y - 2.5f;  // 룽 위쪽 끝
+      lineStartY = windowPos.y + contentMin.y - 2.5f;  // ????????�롫?�筌???�롫?????
     }
 
-    // 아래쪽으로 연장 필요한지 확인
+    // ??????�롫???????�롫???????�롫?�筌???????????????????�롫?????? ??轅붽?????????
     if (rungIndex < maxRung) {
       lineEndY =
-          windowPos.y + contentMin.y + 52.5f;  // 룽 아래쪽 끝 (50px + 2.5px)
+          windowPos.y + contentMin.y + 52.5f;  // ????????�롫???????�롫?????(50px + 2.5px)
     }
 
-    // 세로선 그리기
+    // ??轅붽??????�띿�????????�롫??????????�롫�???�쐻?
     draw_list->AddLine(ImVec2(lineX, lineStartY), ImVec2(lineX, lineEndY),
                        lineColor, 2.0f);
 
-    // 현재 룽의 중앙에 연결점 표시
+    // ??????�롫????????�멥?�揶????????밸쐻????�롫???????????�롫?�獒?????????
     draw_list->AddCircleFilled(ImVec2(lineX, rungCenterY), 2.0f, lineColor);
   }
 }
@@ -334,9 +326,9 @@ void ProgrammingMode::RenderRung(int rungIndex) {
         availableWidth - rungNumberWidth - (railWidth * 2) - deleteButtonWidth;
     float cellWidth = cellAreaWidth / 12.0f;
 
-    // [PPT: 새로운 내용 1 - 룽별 세로선 렌더링]
-    // 각 룽에서 해당하는 세로선 부분을 개별적으로 그려서 정확한 위치와 레이어를
-    // 보장합니다.
+    // [PPT: ?????????????�롫???�뼹??1 - ????�멥?�揶?????轅붽??????�띿�??????????
+    // ??????�멥?�揶?????????????�롫?????�뉩??????轅붽??????�띿�????????????????�롫????�????????�늉?????????�롫????�???????????�롫?????????轅붽????�쐻????�뒩?????????�롫????? ????�싲�?��??�엺?????
+    // ????�롫????????꿔꺂??????
     RenderVerticalConnectionsForRung(rungIndex, cellAreaWidth);
 
     ImGui::SetCursorPos(ImVec2(10, 15));
@@ -344,7 +336,7 @@ void ProgrammingMode::RenderRung(int rungIndex) {
     snprintf(num, 5, "%04d", ladder_program_.rungs[rungIndex].number);
     ImGui::TextUnformatted(num);
     ImGui::SameLine(80);
-    ImGui::TextUnformatted("├");
+    ImGui::TextUnformatted("|");
     ImGui::SameLine(102);
 
     for (int i = 0; i < 12; ++i) {
@@ -353,7 +345,7 @@ void ProgrammingMode::RenderRung(int rungIndex) {
         ImGui::SameLine(0, 1);
     }
     ImGui::SameLine(0, 5);
-    ImGui::TextUnformatted("┤");
+    ImGui::TextUnformatted("|");
     if (!is_monitor_mode_) {
       ImGui::SameLine();
       if (ImGui::Button("X", ImVec2(28, 35))) {
@@ -396,7 +388,7 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
     ImGui::TextUnformatted("END");
 
     ImGui::SetCursorPos(ImVec2(80, 15));
-    ImGui::TextUnformatted("├");
+    ImGui::TextUnformatted("|");
 
     float line_y = p_min.y + 25.0f;
     float line_start_x = p_min.x + 102.0f;
@@ -416,7 +408,7 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
     draw_list->AddText(textPos, IM_COL32_BLACK, endText);
 
     ImGui::SetCursorPos(ImVec2(line_end_x + 5, 15));
-    ImGui::TextUnformatted("┤");
+    ImGui::TextUnformatted("|");
 
     if (!is_monitor_mode_) {
       ImGui::SameLine();
@@ -493,7 +485,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
       GetUsedDevices(usedM, usedT, usedC);
 
       if (!usedT.empty() || !usedC.empty()) {
-        ImGui::Text("타이머 / 카운터");
+        ImGui::Text("Timers / Counters");
         ImGui::Separator();
 
         for (const auto& addr : usedT) {
@@ -514,7 +506,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
                 0, ImGui::GetContentRegionAvail().x - buttonColumnWidth);
 
             ImGui::Text("%s", addr.c_str());
-            ImGui::Text("현재: %d / 설정: %d", timer.value, timer.preset);
+            ImGui::Text("Timer: %d / Preset: %d", timer.value, timer.preset);
 
             ImGui::NextColumn();
             const char* statusText =
@@ -555,7 +547,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
                 0, ImGui::GetContentRegionAvail().x - buttonColumnWidth);
 
             ImGui::Text("%s", addr.c_str());
-            ImGui::Text("현재: %d / 설정: %d", counter.value, counter.preset);
+            ImGui::Text("Counter: %d / Preset: %d", counter.value, counter.preset);
 
             ImGui::NextColumn();
             const char* statusText = counter.done ? "DONE" : "COUNTING";
@@ -579,7 +571,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
       }
 
       if (!usedM.empty()) {
-        ImGui::Text("내부 릴레이 (M)");
+        ImGui::Text("Memory (M)");
         ImGui::Separator();
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5, 5));
         for (size_t i = 0; i < usedM.size(); ++i) {
@@ -604,24 +596,24 @@ void ProgrammingMode::RenderDeviceMonitor() {
   ImGui::PopStyleColor();
 }
 void ProgrammingMode::RenderKeyboardHelp() {
-  ImGui::Text("키보드 단축키");
-  ImGui::BulletText("F5: A접점 (NO)");
-  ImGui::BulletText("F6: B접점 (NC)");
-  ImGui::BulletText("F7: 코일 (OUT)");
-  ImGui::BulletText("F9: 가로선");
-  ImGui::BulletText("Shift+F9: 세로선");
-  ImGui::BulletText("Del: 삭제");
-  ImGui::BulletText("Insert: 새 룽 추가");
+  ImGui::Text("Keyboard Shortcuts");
+  ImGui::BulletText("F5: XIC (NO)");
+  ImGui::BulletText("F6: XIO (NC)");
+  ImGui::BulletText("F7: Coil (OUT)");
+  ImGui::BulletText("F9: Add vertical");
+  ImGui::BulletText("Shift+F9: Remove vertical");
+  ImGui::BulletText("Del: Delete");
+  ImGui::BulletText("Insert: Add");
 }
 
 void ProgrammingMode::RenderCursorInfo() {
-  ImGui::Text("커서 위치");
-  ImGui::Text("룽: %04d, 셀: %d", selected_rung_, selected_cell_);
+  ImGui::Text("Cursor Info");
+  ImGui::Text("Rung %04d, Cell: %d", selected_rung_, selected_cell_);
 }
 
 void ProgrammingMode::RenderSimulationControl() {
-  ImGui::Text("시뮬레이션 제어");
-  ImGui::Text("입력 (X0-X15)");
+  ImGui::Text("Input Controls");
+  ImGui::Text("Inputs (X0-X15)");
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5, 5));
   for (int i = 0; i < 16; i++) {
     std::string address = "X" + std::to_string(i);
@@ -638,7 +630,7 @@ void ProgrammingMode::RenderSimulationControl() {
   }
   ImGui::PopStyleVar();
   ImGui::Spacing();
-  ImGui::Text("출력 (Y0-Y15)");
+  ImGui::Text("Outputs (Y0-Y15)");
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5, 5));
   for (int i = 0; i < 16; i++) {
     std::string address = "Y" + std::to_string(i);
@@ -662,32 +654,32 @@ void ProgrammingMode::RenderStatusBar(bool isPlcRunning) {
     ImGui::SetCursorPosY(5);
     ImGui::Columns(4, "StatusColumns", false);
 
-    ImGui::Text("모드: %s", is_monitor_mode_ ? "모니터" : "쓰기");
+    ImGui::Text("Mode: %s", is_monitor_mode_ ? "Monitor" : "Edit");
     ImGui::NextColumn();
 
     if (!is_monitor_mode_) {
-      ImGui::Text("커서: %04d: X%d", selected_rung_, selected_cell_);
+      ImGui::Text("Cursor: %04d: X%d", selected_rung_, selected_cell_);
     } else {
-      ImGui::Text("스텝: %zu", ladder_program_.rungs.size() > 0
+      ImGui::Text("Steps: %zu", ladder_program_.rungs.size() > 0
                                    ? ladder_program_.rungs.size() - 1
                                    : 0);
     }
     ImGui::NextColumn();
 
     if (!ladder_program_.verticalConnections.empty()) {
-      std::string verticalInfo = "세로선: ";
+      std::string verticalInfo = "Vertical: ";
       for (size_t i = 0; i < ladder_program_.verticalConnections.size(); i++) {
         const auto& conn = ladder_program_.verticalConnections[i];
         if (i > 0)
           verticalInfo += ", ";
         char connInfo[50];
-        snprintf(connInfo, 50, "X%d↔X%d(R%04d-%04d)", conn.x - 1, conn.x,
-                 conn.startRung(), conn.endRung());
+        snprintf(connInfo, 50, "X%d (R%04d-%04d)", conn.x, conn.startRung(), conn.endRung());
+
         verticalInfo += connInfo;
       }
       ImGui::Text("%s", verticalInfo.c_str());
     } else {
-      ImGui::Text("세로선: 0개");
+      ImGui::Text("No vertical connections");
     }
     ImGui::NextColumn();
 
@@ -726,7 +718,7 @@ void ProgrammingMode::RenderAddressPopup() {
     }
 
     if (pending_instruction_type_ == LadderInstructionType::OTE) {
-      ImGui::TextDisabled("예: Y0, T1 K10, C2 K5, SET M0, RST Y0");
+      ImGui::TextDisabled("Example: Y0, T1 K10, C2 K5, SET M0, RST Y0");
     }
 
     ImGui::Spacing();
@@ -750,20 +742,19 @@ void ProgrammingMode::RenderVerticalDialog() {
 
   if (ImGui::BeginPopupModal("Vertical Connection", &show_vertical_dialog_,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("세로선 연결 (X%d ↔ X%d 사이)", selected_cell_ - 1,
-                selected_cell_);
+    ImGui::Text("Vertical connection (X%d to X%d)", selected_cell_ - 1, selected_cell_);
     ImGui::Spacing();
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.95f, 0.95f, 0.95f, 1.0f));
     if (ImGui::BeginChild("PositionInfo", ImVec2(350, 60), true)) {
-      ImGui::Text("시작 룽: %04d", selected_rung_);
-      ImGui::Text("시작 위치: X%d ↔ X%d", selected_cell_ - 1, selected_cell_);
+      ImGui::Text("Start rung: %04d", selected_rung_);
+    ImGui::Text("Vertical connection (X%d to X%d)", selected_cell_ - 1, selected_cell_);
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
-    ImGui::Text("현재 룽에서 아래로 연결할 줄 수:");
+    ImGui::Text("Vertical connection info");
 
     if (ImGui::IsWindowAppearing()) {
       ImGui::SetKeyboardFocusHere();
@@ -785,16 +776,16 @@ void ProgrammingMode::RenderVerticalDialog() {
     }
 
     ImGui::Spacing();
-    ImGui::Text("종료 룽: %04d", selected_rung_ + vertical_line_count_);
+    ImGui::Text("End rung: %04d", selected_rung_ + vertical_line_count_);
 
     ImGui::Spacing();
-    if (ImGui::Button("연결", ImVec2(120, 0))) {
+    if (ImGui::Button("Confirm", ImVec2(120, 0))) {
       ConfirmVerticalConnection();
       ImGui::CloseCurrentPopup();
       show_vertical_dialog_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("취소", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
       ImGui::CloseCurrentPopup();
       show_vertical_dialog_ = false;
     }
@@ -812,13 +803,13 @@ const char* ProgrammingMode::GetInstructionSymbol(
     LadderInstructionType type) const {
   switch (type) {
     case LadderInstructionType::XIC:
-      return "┤ ├";
+      return "LD";
     case LadderInstructionType::XIO:
-      return "┤/├";
+      return "LDN";
     case LadderInstructionType::OTE:
       return "( )";
     case LadderInstructionType::HLINE:
-      return "───";
+      return "---";
     case LadderInstructionType::SET:
       return "(S)";
     case LadderInstructionType::RST:

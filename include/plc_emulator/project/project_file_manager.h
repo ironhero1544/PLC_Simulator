@@ -17,14 +17,14 @@
 namespace plc {
 
 /**
- * @brief .plcproj 프로젝트 파일 관리자
+ * @brief .csv ?꾨줈?앺듃 ?뚯씪 愿由ъ옄
  *
- * .plcproj 파일 구조:
- * - layout.xml: 완전한 LadderProgram 직렬화 (UI 구조 보존)
- * - program.ld: 실행용 OpenPLC 명령어
- * - manifest.json: 프로젝트 메타데이터 및 체크섬
+ * .csv ?뚯씪 援ъ“:
+ * - layout.xml: ?꾩쟾??LadderProgram 吏곷젹??(UI 援ъ“ 蹂댁〈)
+ * - program.ld: ?ㅽ뻾??OpenPLC 紐낅졊??
+ * - manifest.json: ?꾨줈?앺듃 硫뷀??곗씠??諛?泥댄겕??
  *
- * 이 클래스는 miniz 라이브러리를 사용하여 ZIP 압축/해제를 수행합니다.
+ * ???대옒?ㅻ뒗 miniz ?쇱씠釉뚮윭由щ? ?ъ슜?섏뿬 ZIP ?뺤텞/?댁젣瑜??섑뻾?⑸땲??
  */
 class ProjectFileManager {
  public:
@@ -59,46 +59,46 @@ class ProjectFileManager {
   ~ProjectFileManager();
 
   /**
-   * @brief 프로젝트를 .plcproj 파일로 저장
-   * @param program 래더 프로그램
-   * @param filePath 저장할 파일 경로
-   * @param projectName 프로젝트 이름 (선택적)
-   * @return 저장 결과
+   * @brief ?꾨줈?앺듃瑜?.csv ?뚯씪濡????
+   * @param program ?섎뜑 ?꾨줈洹몃옩
+   * @param filePath ??ν븷 ?뚯씪 寃쎈줈
+   * @param projectName ?꾨줈?앺듃 ?대쫫 (?좏깮??
+   * @return ???寃곌낵
    */
   SaveResult SaveProject(const LadderProgram& program,
                          const std::string& filePath,
                          const std::string& projectName = "");
 
   /**
-   * @brief .plcproj 파일에서 프로젝트 로드
-   * @param filePath 로드할 파일 경로
-   * @return 로드 결과
+   * @brief .csv ?뚯씪?먯꽌 ?꾨줈?앺듃 濡쒕뱶
+   * @param filePath 濡쒕뱶???뚯씪 寃쎈줈
+   * @return 濡쒕뱶 寃곌낵
    */
   LoadResult LoadProject(const std::string& filePath);
 
   /**
-   * @brief 프로젝트 파일 정보 조회 (압축 해제 없이)
-   * @param filePath 파일 경로
-   * @return 프로젝트 정보
+   * @brief ?꾨줈?앺듃 ?뚯씪 ?뺣낫 議고쉶 (?뺤텞 ?댁젣 ?놁씠)
+   * @param filePath ?뚯씪 寃쎈줈
+   * @return ?꾨줈?앺듃 ?뺣낫
    */
   ProjectInfo GetProjectInfo(const std::string& filePath);
 
   /**
-   * @brief 프로젝트 파일 유효성 검사
-   * @param filePath 파일 경로
-   * @return 유효성 검사 결과
+   * @brief ?꾨줈?앺듃 ?뚯씪 ?좏슚??寃??
+   * @param filePath ?뚯씪 寃쎈줈
+   * @return ?좏슚??寃??寃곌낵
    */
   bool ValidateProjectFile(const std::string& filePath);
 
   /**
-   * @brief 디버그 모드 설정
-   * @param enable 디버그 모드 활성화 여부
+   * @brief ?붾쾭洹?紐⑤뱶 ?ㅼ젙
+   * @param enable ?붾쾭洹?紐⑤뱶 ?쒖꽦???щ?
    */
   void SetDebugMode(bool enable) { debug_mode_ = enable; }
 
   /**
-   * @brief 마지막 에러 메시지 반환
-   * @return 에러 메시지
+   * @brief 留덉?留??먮윭 硫붿떆吏 諛섑솚
+   * @return ?먮윭 硫붿떆吏
    */
   const std::string& GetLastError() const { return last_error_; }
 
@@ -108,27 +108,27 @@ class ProjectFileManager {
   std::unique_ptr<XMLSerializer> xml_serializer_;
   std::unique_ptr<LadderToLDConverter> ld_converter_;
 
-  // ZIP 관련 내부 함수들
+  // ZIP 愿???대? ?⑥닔??
   bool CreateZipFile(const std::string& filePath,
                      const std::map<std::string, std::string>& files);
   bool ExtractZipFile(const std::string& filePath,
                       std::map<std::string, std::string>& files);
 
-  // 프로젝트 내용 생성
+  // ?꾨줈?앺듃 ?댁슜 ?앹꽦
   std::string GenerateManifest(const ProjectInfo& info);
   std::string GenerateLDProgram(const LadderProgram& program);
 
-  // 프로젝트 내용 파싱
+  // ?꾨줈?앺듃 ?댁슜 ?뚯떛
   bool ParseManifest(const std::string& manifestContent, ProjectInfo& info);
 
-  // 유틸리티 함수들
+  // ?좏떥由ы떚 ?⑥닔??
   size_t CalculateChecksum(const std::string& content);
   std::string GetCurrentDateTime();
   std::string ExtractFileName(const std::string& filePath);
   void LogDebug(const std::string& message);
   void SetError(const std::string& error);
 
-  // JSON 헬퍼 함수들 (간단한 JSON 생성/파싱)
+  // JSON ?ы띁 ?⑥닔??(媛꾨떒??JSON ?앹꽦/?뚯떛)
   std::string CreateSimpleJSON(
       const std::map<std::string, std::string>& keyValues);
   std::map<std::string, std::string> ParseSimpleJSON(

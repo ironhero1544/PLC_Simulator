@@ -10,251 +10,74 @@
 
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
+#include <limits>
 
 namespace plc {
 
-void ProgrammingMode::SimulateLadderProgram() {
-  if (use_compiled_engine_ && plc_executor_) {
-    ExecuteWithOpenPLCEngine();
-  } else {
-    ExecuteWithLegacySimulation();
+namespace {
+bool TryParseIndex(const std::string& text, int* value) {
+  if (!value || text.empty()) {
+    return false;
   }
+
+  char* end = nullptr;
+  long parsed = std::strtol(text.c_str(), &end, 10);
+  if (!end || *end != '\0') {
+    return false;
+  }
+  if (parsed < std::numeric_limits<int>::min() ||
+      parsed > std::numeric_limits<int>::max()) {
+    return false;
+  }
+
+  *value = static_cast<int>(parsed);
+  return true;
+}
+}  // namespace
+
+void ProgrammingMode::SimulateLadderProgram() {
+  if (!plc_executor_) {
+    return;
+  }
+
+  if (NeedsRecompilation()) {
+    use_compiled_engine_ = false;
+    if (!CompileLadderToOpenPLC()) {
+      return;
+    }
+  }
+
+  if (!use_compiled_engine_) {
+    return;
+  }
+
+  ExecuteWithOpenPLCEngine();
 }
 
 void ProgrammingMode::ExecuteWithOpenPLCEngine() {
-  try {
-    // STEP 1: Recompilation check with UI structure protection
-    if (NeedsRecompilation()) {
-      LadderProgram programCopy = DeepCopyLadderProgram(ladder_program_);
-      (void)programCopy;  // 구조 보호 목적의 딥카피 (현 시점에서 미사용)
+  SyncPhysicsToOpenPLC();
 
-      if (!CompileLadderToOpenPLC()) {
-        std::cerr << "[PLC ERROR] OpenPLC compilation failed, switching to "
-                     "legacy simulation"
-                  << std::endl;
-        use_compiled_engine_ = false;
-        ExecuteWithLegacySimulation();
-        return;
-      }
-    }
+  auto result = plc_executor_->ExecuteScanCycle();
 
-    // STEP 2: Input synchronization with error detection
-    SyncPhysicsToOpenPLC();
-
-    // STEP 3: Execute OpenPLC scan cycle with timeout protection
-    auto result = plc_executor_->ExecuteScanCycle();
-
-    last_scan_success_ = result.success;
-    last_cycle_time_us_ = result.cycleTime_us;
-    last_instruction_count_ = result.instructionCount;
-    if (!result.success) {
-      last_scan_error_ = result.errorMessage;
-    } else {
-      last_scan_error_.clear();
-    }
-
-    if (result.success) {
-      // STEP 4: Output synchronization with state validation
-      SyncOpenPLCToDevices();
-
-      SimulatorState currentState = GetCurrentStateSnapshot();
-      UpdateUIFromSimulatorState(currentState);
-
-      static int successCount = 0;
-      if (successCount % 300 == 0) {
-        std::cout << "[OpenPLC] Scan cycle success: " << result.cycleTime_us
-                  << "us" << std::endl;
-      }
-      successCount++;
-
-    } else {
-      std::cerr << "[PLC ERROR] OpenPLC scan cycle failed: "
-                << result.errorMessage << std::endl;
-      std::cerr << "[PLC RECOVERY] Switching to legacy simulation to maintain "
-                   "operation"
-                << std::endl;
-      use_compiled_engine_ = false;
-      ExecuteWithLegacySimulation();
-    }
-
-  } catch (const std::exception& e) {
-    last_scan_success_ = false;
-    last_scan_error_ = e.what();
-    std::cerr << "[PLC CRITICAL ERROR] OpenPLC engine exception: " << e.what()
-              << std::endl;
-    std::cerr << "[PLC RECOVERY] Emergency fallback to legacy simulation"
-              << std::endl;
+  last_scan_success_ = result.success;
+  last_cycle_time_us_ = result.cycleTime_us;
+  last_instruction_count_ = result.instructionCount;
+  if (!result.success) {
+    last_scan_error_ = result.errorMessage;
     use_compiled_engine_ = false;
-    ExecuteWithLegacySimulation();
+    return;
   }
+
+  last_scan_error_.clear();
+
+  SyncOpenPLCToDevices();
+
+  SimulatorState currentState = GetCurrentStateSnapshot();
+  UpdateUIFromSimulatorState(currentState);
 }
 
-void ProgrammingMode::ExecuteWithLegacySimulation() {
-  // GXWorks2 정규화 적용본으로 시뮬레이션 (UI 구조는 불변)
-  LadderProgram programCopy = gx2_normalization_enabled_
-                                  ? NormalizeLadderGX2(ladder_program_)
-                                  : DeepCopyLadderProgram(ladder_program_);
 
-  for (auto& pair : device_states_) {
-    if (pair.first[0] == 'Y')
-      pair.second = false;
-  }
-
-  const size_t maxRungs = programCopy.rungs.size();
-  std::vector<std::vector<bool>> rungPowerFlow;
-  rungPowerFlow.reserve(maxRungs);
-
-  for (size_t rungIndex = 0; rungIndex < programCopy.rungs.size();
-       ++rungIndex) {
-    auto& rung = programCopy.rungs[rungIndex];
-    if (rung.isEndRung)
-      break;
-
-    rungPowerFlow.emplace_back(12, false);
-    bool leftPowerRail = true;
-    bool powerFlow = leftPowerRail;
-
-    for (size_t cellIndex = 0; cellIndex < rung.cells.size(); ++cellIndex) {
-      auto& cell = rung.cells[cellIndex];
-
-      bool verticalPowerInput = false;
-      for (const auto& connection : programCopy.verticalConnections) {
-        if (connection.x == static_cast<int>(cellIndex)) {
-          for (int connectedRung : connection.rungs) {
-            if (connectedRung >= 0 &&
-                connectedRung < static_cast<int>(rungIndex) &&
-                connectedRung < static_cast<int>(rungPowerFlow.size()) &&
-                !rungPowerFlow[connectedRung].empty() &&
-                cellIndex < rungPowerFlow[connectedRung].size()) {
-              if (rungPowerFlow[connectedRung][cellIndex]) {
-                verticalPowerInput = true;
-                break;
-              }
-            }
-          }
-          if (verticalPowerInput)
-            break;
-        }
-      }
-
-      powerFlow = powerFlow || verticalPowerInput;
-
-      if (cell.type == LadderInstructionType::EMPTY) {
-        rungPowerFlow[rungIndex][cellIndex] = powerFlow;
-        cell.isActive = false;
-        continue;
-      }
-
-      bool inputPower = powerFlow;
-      bool outputPower = false;
-
-      switch (cell.type) {
-        case LadderInstructionType::XIC:
-          outputPower = inputPower && GetDeviceState(cell.address);
-          cell.isActive = inputPower && GetDeviceState(cell.address);
-          break;
-        case LadderInstructionType::XIO:
-          outputPower = inputPower && !GetDeviceState(cell.address);
-          cell.isActive = inputPower && !GetDeviceState(cell.address);
-          break;
-        case LadderInstructionType::OTE:
-          if (inputPower)
-            SetDeviceState(cell.address, true);
-          cell.isActive = inputPower;
-          outputPower = false;
-          break;
-        case LadderInstructionType::SET:
-          if (inputPower)
-            SetDeviceState(cell.address, true);
-          cell.isActive = inputPower;
-          outputPower = false;
-          break;
-        case LadderInstructionType::RST:
-          if (inputPower)
-            SetDeviceState(cell.address, false);
-          cell.isActive = inputPower;
-          outputPower = false;
-          break;
-        case LadderInstructionType::TON: {
-          auto it = timer_states_.find(cell.address);
-          if (it != timer_states_.end()) {
-            TimerState& timer = it->second;
-            if (inputPower) {
-              if (!timer.enabled) {
-                timer.enabled = true;
-                timer.value = 0;
-              }
-              if (timer.enabled && !timer.done) {
-                timer.value++;
-                if (timer.value >= timer.preset) {
-                  timer.done = true;
-                }
-              }
-            } else {
-              timer.enabled = false;
-              timer.value = 0;
-              timer.done = false;
-            }
-          }
-          cell.isActive = inputPower;
-          outputPower = false;
-          break;
-        }
-        case LadderInstructionType::CTU: {
-          auto it = counter_states_.find(cell.address);
-          if (it != counter_states_.end()) {
-            CounterState& counter = it->second;
-            if (inputPower && !counter.lastPower) {
-              if (!counter.done) {
-                counter.value++;
-                if (counter.value >= counter.preset) {
-                  counter.done = true;
-                }
-              }
-            }
-            counter.lastPower = inputPower;
-          }
-          cell.isActive = inputPower;
-          outputPower = false;
-          break;
-        }
-        case LadderInstructionType::RST_TMR_CTR: {
-          if (inputPower) {
-            if (!cell.address.empty() && cell.address[0] == 'T') {
-              auto it = timer_states_.find(cell.address);
-              if (it != timer_states_.end()) {
-                it->second.value = 0;
-                it->second.done = false;
-                it->second.enabled = false;
-              }
-            } else if (!cell.address.empty() && cell.address[0] == 'C') {
-              auto it = counter_states_.find(cell.address);
-              if (it != counter_states_.end()) {
-                it->second.value = 0;
-                it->second.done = false;
-                it->second.lastPower = false;
-              }
-            }
-          }
-          cell.isActive = inputPower;
-          outputPower = false;
-          break;
-        }
-        case LadderInstructionType::HLINE:
-          outputPower = inputPower;
-          cell.isActive = inputPower;
-          break;
-        default:
-          outputPower = inputPower;
-          cell.isActive = inputPower;
-          break;
-      }
-
-      powerFlow = outputPower;
-      rungPowerFlow[rungIndex][cellIndex] = powerFlow;
-    }
-  }
-}
 
 bool ProgrammingMode::GetDeviceState(const std::string& address) const {
   if (address.empty())
@@ -282,66 +105,94 @@ bool ProgrammingMode::GetDeviceState(const std::string& address) const {
 void ProgrammingMode::SetDeviceState(const std::string& address, bool state) {
   if (!address.empty()) {
     device_states_[address] = state;
+    if (!plc_executor_)
+      return;
+
+    switch (address[0]) {
+      case 'X':
+      case 'Y':
+      case 'M':
+        plc_executor_->SetDeviceState(address, state);
+        break;
+      case 'T':
+        timer_states_[address].done = state;
+        break;
+      case 'C':
+        counter_states_[address].done = state;
+        break;
+      default:
+        break;
+    }
   }
 }
 
 bool ProgrammingMode::CompileLadderToOpenPLC() {
-  try {
-    // GXWorks2 정규화 적용본으로 LD 생성
-    const LadderProgram& srcProg = gx2_normalization_enabled_
-                                       ? NormalizeLadderGX2(ladder_program_)
-                                       : ladder_program_;
-    std::string ldCode = ld_converter_->ConvertToLDString(srcProg);
-    if (ldCode.empty()) {
-      last_compile_error_ = "Ladder to LD conversion failed";
-      std::cerr << "[COMPILE ERROR] Ladder to LD conversion failed"
-                << std::endl;
-      return false;
-    }
+  use_compiled_engine_ = false;
 
-    std::ofstream ldFile("temp_ladder_program.ld");
-    if (!ldFile) {
-      last_compile_error_ = "Failed to create temporary LD file";
-      std::cerr << "[COMPILE ERROR] Failed to create temporary LD file"
-                << std::endl;
-      return false;
-    }
-    ldFile << ldCode;
-    ldFile.close();
-
-    OpenPLCCompilerIntegration compiler;
-    auto result = compiler.CompileLDFile("temp_ladder_program.ld");
-
-    if (!result.success) {
-      last_compile_error_ = result.errorMessage;
-      std::cerr << "[COMPILE ERROR] OpenPLC compilation failed: "
-                << result.errorMessage << std::endl;
-      return false;
-    }
-
-    if (!plc_executor_->LoadCompiledCode(result.generatedCode)) {
-      last_compile_error_ = "Failed to load compiled code into OpenPLC engine";
-      std::cerr
-          << "[COMPILE ERROR] Failed to load compiled code into OpenPLC engine"
-          << std::endl;
-      return false;
-    }
-
-    // 상태 갱신: 컴파일된 코드/해시/더티 플래그
-    current_compiled_code_ = result.generatedCode;
-    last_compiled_hash_ = ComputeProgramHash(ladder_program_);
-    is_dirty_ = false;
-    last_compile_error_.clear();
-
-    std::cout << "[COMPILE] OpenPLC engine loaded successfully ("
-              << result.generatedCode.length() << " chars)" << std::endl;
-    return true;
-
-  } catch (const std::exception& e) {
-    last_compile_error_ = e.what();
-    std::cerr << "[COMPILE] Exception occurred: " << e.what() << std::endl;
+  const LadderProgram& srcProg = gx2_normalization_enabled_
+                                     ? NormalizeLadderGX2(ladder_program_)
+                                     : ladder_program_;
+  std::string ldCode = ld_converter_->ConvertToLDString(srcProg);
+  if (ldCode.empty()) {
+    last_compile_error_ = "Ladder to LD conversion failed";
+    std::cerr << "[COMPILE ERROR] Ladder to LD conversion failed"
+              << std::endl;
+    compile_failed_ = true;
+    last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    current_compiled_code_.clear();
     return false;
   }
+
+  std::ofstream ldFile("temp_ladder_program.ld");
+  if (!ldFile) {
+    last_compile_error_ = "Failed to create temporary LD file";
+    std::cerr << "[COMPILE ERROR] Failed to create temporary LD file"
+              << std::endl;
+    compile_failed_ = true;
+    last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    current_compiled_code_.clear();
+    return false;
+  }
+  ldFile << ldCode;
+  ldFile.close();
+
+  OpenPLCCompilerIntegration compiler;
+  auto result = compiler.CompileLDFile("temp_ladder_program.ld");
+
+  if (!result.success) {
+    last_compile_error_ = result.errorMessage;
+    std::cerr << "[COMPILE ERROR] OpenPLC compilation failed: "
+              << result.errorMessage << std::endl;
+    compile_failed_ = true;
+    last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    current_compiled_code_.clear();
+    return false;
+  }
+
+  if (!plc_executor_->LoadCompiledCode(result.generatedCode)) {
+    last_compile_error_ = "Failed to load compiled code into OpenPLC engine";
+    std::cerr
+        << "[COMPILE ERROR] Failed to load compiled code into OpenPLC engine"
+        << std::endl;
+    compile_failed_ = true;
+    last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    current_compiled_code_.clear();
+    return false;
+  }
+
+  plc_executor_->ResetMemory();
+
+  current_compiled_code_ = result.generatedCode;
+  last_compiled_hash_ = ComputeProgramHash(ladder_program_);
+  is_dirty_ = false;
+  last_compile_error_.clear();
+  compile_failed_ = false;
+  last_failed_hash_ = 0;
+  use_compiled_engine_ = true;
+
+  std::cout << "[COMPILE] OpenPLC engine loaded successfully ("
+            << result.generatedCode.length() << " chars)" << std::endl;
+  return true;
 }
 
 void ProgrammingMode::SyncPhysicsToOpenPLC() {
@@ -350,14 +201,8 @@ void ProgrammingMode::SyncPhysicsToOpenPLC() {
     bool state = pair.second;
 
     if (!address.empty() && address[0] == 'X') {
-      // Bounds check: only X0-X15 are valid for current FX3U mapping
       int idx = -1;
-      try {
-        idx = std::stoi(address.substr(1));
-      } catch (...) {
-        idx = -1;
-      }
-      if (idx >= 0 && idx < 16) {
+      if (TryParseIndex(address.substr(1), &idx) && idx >= 0 && idx < 16) {
         plc_executor_->SetDeviceState(address, state);
       }
     }
@@ -414,10 +259,14 @@ void ProgrammingMode::UpdateVisualActiveStates() {
 }
 
 bool ProgrammingMode::NeedsRecompilation() const {
-  // 더티 플래그, 빈 코드, 해시 변경 모두 고려
-  if (is_dirty_ || current_compiled_code_.empty())
-    return true;
   size_t currentHash = ComputeProgramHash(ladder_program_);
+  if (compile_failed_ && current_compiled_code_.empty() &&
+      currentHash == last_failed_hash_) {
+    return false;
+  }
+  if (is_dirty_ || current_compiled_code_.empty()) {
+    return true;
+  }
   return currentHash != last_compiled_hash_;
 }
 
