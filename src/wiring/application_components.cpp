@@ -1,5 +1,4 @@
 // application_components.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Component rendering functions.
 
@@ -713,7 +712,7 @@ void Application::RenderValveSingleComponent(ImDrawList* draw_list,
   if (zoom > 0.5f) {
     draw_list->AddText(
         ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 40 * zoom),
-        IM_COL32(50, 50, 50, 255), "3/2WAY");
+        IM_COL32(50, 50, 50, 255), "5/2WAY");
   }
 }
 
@@ -754,7 +753,7 @@ void Application::RenderValveDoubleComponent(ImDrawList* draw_list,
   if (zoom > 0.5f) {
     draw_list->AddText(
         ImVec2(screen_pos.x + 20 * zoom, screen_pos.y + 40 * zoom),
-        IM_COL32(50, 50, 50, 255), "3/2WAY");
+        IM_COL32(50, 50, 50, 255), "5/2WAY");
   }
 }
 

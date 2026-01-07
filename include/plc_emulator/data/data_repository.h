@@ -1,5 +1,4 @@
 // data_repository.h
-// Copyright 2024 PLC Emulator Project
 //
 // Central data storage for simulation state.
 

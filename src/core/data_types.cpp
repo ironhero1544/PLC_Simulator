@@ -1,5 +1,4 @@
 // data_types.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Implementation of common data types.
 

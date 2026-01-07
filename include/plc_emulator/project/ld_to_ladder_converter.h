@@ -1,5 +1,4 @@
 // ld_to_ladder_converter.h
-// Copyright 2024 PLC Emulator Project
 //
 // Converts LD format to ladder.
 

@@ -1,5 +1,4 @@
 // memory_manager.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Implementation of PLC memory manager.
 

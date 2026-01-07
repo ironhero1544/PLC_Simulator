@@ -1,5 +1,4 @@
 // data_repository.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Implementation of data repository.
 

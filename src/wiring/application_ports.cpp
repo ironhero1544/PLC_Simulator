@@ -1,5 +1,4 @@
 // application_ports.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Port detection and connection logic.
 
@@ -98,12 +97,6 @@ Position GetPortRelativePositionById(const PlacedComponent& comp, int portId) {
 }
 bool Application::IsValidWireConnection(const Port& fromPort,
                                         const Port& toPort) {
-  if (current_tool_ == ToolType::ELECTRIC &&
-      fromPort.type != PortType::ELECTRIC)
-    return false;
-  if (current_tool_ == ToolType::PNEUMATIC &&
-      fromPort.type != PortType::PNEUMATIC)
-    return false;
   if (fromPort.type != toPort.type)
     return false;
   return true;

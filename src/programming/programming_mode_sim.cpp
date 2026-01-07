@@ -1,5 +1,4 @@
-// programming_mode_sim.cpp
-// Copyright 2024 PLC Emulator Project
+﻿// programming_mode_sim.cpp
 //
 // Ladder simulation functions.
 
@@ -43,9 +42,9 @@ void ProgrammingMode::SimulateLadderProgram() {
 
   if (NeedsRecompilation()) {
     use_compiled_engine_ = false;
-    if (!CompileLadderToOpenPLC()) {
-      return;
-    }
+    last_scan_success_ = false;
+    last_scan_error_ = "Recompile needed";
+    return;
   }
 
   if (!use_compiled_engine_) {
@@ -72,6 +71,7 @@ void ProgrammingMode::ExecuteWithOpenPLCEngine() {
   last_scan_error_.clear();
 
   SyncOpenPLCToDevices();
+  SyncOpenPLCToTimersCounters();
 
   SimulatorState currentState = GetCurrentStateSnapshot();
   UpdateUIFromSimulatorState(currentState);
@@ -133,12 +133,14 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
                                      ? NormalizeLadderGX2(ladder_program_)
                                      : ladder_program_;
   std::string ldCode = ld_converter_->ConvertToLDString(srcProg);
+  last_ld_code_ = ldCode;
   if (ldCode.empty()) {
     last_compile_error_ = "Ladder to LD conversion failed";
     std::cerr << "[COMPILE ERROR] Ladder to LD conversion failed"
               << std::endl;
     compile_failed_ = true;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
     current_compiled_code_.clear();
     return false;
   }
@@ -150,6 +152,7 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
               << std::endl;
     compile_failed_ = true;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
     current_compiled_code_.clear();
     return false;
   }
@@ -165,6 +168,7 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
               << result.errorMessage << std::endl;
     compile_failed_ = true;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
     current_compiled_code_.clear();
     return false;
   }
@@ -176,6 +180,7 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
         << std::endl;
     compile_failed_ = true;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
+    UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
     current_compiled_code_.clear();
     return false;
   }
@@ -187,6 +192,8 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
   is_dirty_ = false;
   last_compile_error_.clear();
   compile_failed_ = false;
+  compile_error_rungs_.clear();
+  compile_error_rung_hashes_.clear();
   last_failed_hash_ = 0;
   use_compiled_engine_ = true;
 
@@ -227,6 +234,46 @@ void ProgrammingMode::SyncOpenPLCToDevices() {
     auto itM = device_states_.find(mAddr);
     if (itM == device_states_.end() || itM->second != mState) {
       device_states_[mAddr] = mState;
+    }
+  }
+}
+
+void ProgrammingMode::SyncOpenPLCToTimersCounters() {
+  if (!plc_executor_) {
+    return;
+  }
+
+  for (auto& pair : timer_states_) {
+    const std::string& address = pair.first;
+    if (address.size() < 2)
+      continue;
+    int idx = -1;
+    if (!TryParseIndex(address.substr(1), &idx) || idx < 0 || idx >= 256)
+      continue;
+    TimerState& timer = pair.second;
+    timer.value = plc_executor_->GetTimerValue(idx);
+    timer.enabled = plc_executor_->GetTimerEnabled(idx);
+    if (timer.preset > 0) {
+      timer.done = (timer.value >= timer.preset);
+    } else {
+      timer.done = timer.enabled;
+    }
+  }
+
+  for (auto& pair : counter_states_) {
+    const std::string& address = pair.first;
+    if (address.size() < 2)
+      continue;
+    int idx = -1;
+    if (!TryParseIndex(address.substr(1), &idx) || idx < 0 || idx >= 256)
+      continue;
+    CounterState& counter = pair.second;
+    counter.value = plc_executor_->GetCounterValue(idx);
+    counter.lastPower = plc_executor_->GetCounterLastPower(idx);
+    if (counter.preset > 0) {
+      counter.done = (counter.value >= counter.preset);
+    } else {
+      counter.done = (counter.value > 0);
     }
   }
 }

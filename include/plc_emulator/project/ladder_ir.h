@@ -1,5 +1,4 @@
 // ladder_ir.h
-// Copyright 2024 PLC Emulator Project
 //
 // Intermediate representation for ladder logic.
 
@@ -11,8 +10,6 @@
  * 이 파일은 UI 래더 다이어그램과 PLC 스택 머신 코드 사이의 중간 표현을
  * 정의합니다. 병렬(OR) 논리 회로의 정확한 변환을 위해 설계되었습니다.
  *
- * @author Claude Code Analysis Engine
- * @date 2025-01-08
  */
 
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_LADDER_IR_H_

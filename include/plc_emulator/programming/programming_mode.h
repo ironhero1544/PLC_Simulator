@@ -1,10 +1,4 @@
-// programming_mode.h
-// Copyright 2024 PLC Emulator Project
-//
-// Ladder diagram editor and simulator.
-// programming_mode.h
-// Copyright 2024 PLC Emulator Project
-//
+﻿// programming_mode.h
 // Ladder diagram editor and simulator.
 
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
@@ -23,7 +17,7 @@
  * FORWARD DECLARATIONS: Prevent circular dependencies
  */
 namespace plc {
-class Application;  // Application 전방 선언
+class Application;  // Application ?꾨갑 ?좎뼵
 class CompiledPLCExecutor;
 class LadderToLDConverter;
 }  // namespace plc
@@ -65,19 +59,19 @@ struct CounterState {
 };
 
 struct SimulatorState {
-  std::map<std::string, bool> deviceStates;           // X, Y, M 디바이스 상태
-  std::map<std::string, TimerState> timerStates;      // T 타이머 상태
-  std::map<std::string, CounterState> counterStates;  // C 카운터 상태
-  uint64_t seqNo = 0;                                 // 상태 시퀀스 번호
-  std::chrono::steady_clock::time_point timestamp;    // 상태 타임스탬프
+  std::map<std::string, bool> deviceStates;           // X, Y, M ?붾컮?댁뒪 ?곹깭
+  std::map<std::string, TimerState> timerStates;      // T ??대㉧ ?곹깭
+  std::map<std::string, CounterState> counterStates;  // C 移댁슫???곹깭
+  uint64_t seqNo = 0;                                 // ?곹깭 ?쒗??踰덊샇
+  std::chrono::steady_clock::time_point timestamp;    // ?곹깭 ??꾩뒪?ы봽
 
   SimulatorState() : timestamp(std::chrono::steady_clock::now()) {}
 
   /**
    * @brief Deep copy constructor
-    * Deep copy c위구조체또는
+    * Deep copy c?꾧뎄議곗껜?먮뒗
    * @param other Source state to copy from
-    * Source st에서e copy 부터
+    * Source st?먯꽌e copy 遺??
    */
   SimulatorState(const SimulatorState& other)
       : deviceStates(other.deviceStates),
@@ -88,11 +82,11 @@ struct SimulatorState {
 
   /**
    * @brief Assignment operator with timestamp update
-    * Assignment oper에서또는 와 함께 timestmp 업데이트
+    * Assignment oper?먯꽌?먮뒗 ? ?④퍡 timestmp ?낅뜲?댄듃
    * @param other Source state to assign from
-    * Source st에서e 로서sign 부터
+    * Source st?먯꽌e 濡쒖꽌sign 遺??
    * @return Reference to this object
-    * Reference 이 객체
+    * Reference ??媛앹껜
    */
   SimulatorState& operator=(const SimulatorState& other) {
     if (this != &other) {
@@ -107,11 +101,11 @@ struct SimulatorState {
 
   /**
    * @brief Update device state with automatic sequence tracking
-    * 업데이트 device st에서e 와 함께 um에서ic sequence trck내g
+    * ?낅뜲?댄듃 device st?먯꽌e ? ?④퍡 um?먯꽌ic sequence trck?큙
    * @param address Device address to update
-    * Device 추가ress 업데이트
+    * Device 異붽?ress ?낅뜲?댄듃
    * @param state New device state
-    * New device st에서e
+    * New device st?먯꽌e
    */
   void UpdateDeviceState(const std::string& address, bool state) {
     deviceStates[address] = state;
@@ -140,17 +134,17 @@ struct VerticalConnection {
 
   /**
    * @brief Get starting rung number
-    * 가져오기 strt내g rung 번호
+    * 媛?몄삤湲?strt?큙 rung 踰덊샇
    * @return First rung number or 0 if empty
-    * First rung 번호 또는 0 만약 empty
+    * First rung 踰덊샇 ?먮뒗 0 留뚯빟 empty
    */
   int startRung() const { return rungs.empty() ? 0 : rungs.front(); }
 
   /**
    * @brief Get ending rung number
-    * 가져오기 end내g rung 번호
+    * 媛?몄삤湲?end?큙 rung 踰덊샇
    * @return Last rung number or 0 if empty
-    * L로서t rung 번호 또는 0 만약 empty
+    * L濡쒖꽌t rung 踰덊샇 ?먮뒗 0 留뚯빟 empty
    */
   int endRung() const { return rungs.empty() ? 0 : rungs.back(); }
 };
@@ -170,109 +164,109 @@ class ProgrammingMode {
  public:
   /**
    * @brief Constructor with optional application reference
-    * C위구조체또는 와 함께 opti위l pplic에서i위 참조
+    * C?꾧뎄議곗껜?먮뒗 ? ?④퍡 opti?꼕 pplic?먯꽌i??李몄“
    * @param app Pointer to Application instance for project operations
-    * Po내ter Applic에서i위 인스턴스 위한 project oper에서i위s
+    * Po?큧er Applic?먯꽌i???몄뒪?댁뒪 ?꾪븳 project oper?먯꽌i?꼜
    */
   ProgrammingMode(plc::Application* app = nullptr);
 
   /**
    * @brief Initialize programming mode components and state
-    * 초기화 프로그램m내g mode 컴포넌트s 및 st에서e
+    * 珥덇린???꾨줈洹몃옩m?큙 mode 而댄룷?뚰듃s 諛?st?먯꽌e
    */
   void Initialize();
 
   /**
    * @brief Update programming mode logic and state
-    * 업데이트 프로그램m내g mode logic 및 st에서e
+    * ?낅뜲?댄듃 ?꾨줈洹몃옩m?큙 mode logic 諛?st?먯꽌e
    */
   void Update();
 
   /**
    * @brief Update with PLC running state for conditional behavior
-    * 업데이트 와 함께 PLC runn내g st에서e 위한 c위diti위l 이다hvi또는
+    * ?낅뜲?댄듃 ? ?④퍡 PLC runn?큙 st?먯꽌e ?꾪븳 c?꼋iti?꼕 ?대떎hvi?먮뒗
    * @param isPlcRunning Current PLC execution state
-    * Current PLC executi위 st에서e
+    * Current PLC executi??st?먯꽌e
    */
   void UpdateWithPlcState(bool isPlcRunning);
 
   /**
    * @brief Handle keyboard input for ladder editing
-    * 처리 keybord 입력 위한 래더 edit내g
+    * 泥섎━ keybord ?낅젰 ?꾪븳 ?섎뜑 edit?큙
    * @param key Key code of pressed key
-    * Key code 의 pressed key
+    * Key code ??pressed key
    */
   void HandleKeyboardInput(int key);
 
   /**
    * @brief Render complete programming mode user interface
-    * 렌더링 complete 프로그램m내g mode user 내terfce
+    * ?뚮뜑留?complete ?꾨줈洹몃옩m?큙 mode user ?큧erfce
    * @param isPlcRunning Current PLC execution state for UI context
-    * Current PLC executi위 st에서e 위한 UI c위text
+    * Current PLC executi??st?먯꽌e ?꾪븳 UI c?꼝ext
    */
   void RenderProgrammingModeUI(bool isPlcRunning);
 
   /**
    * @brief Set monitor mode for read-only ladder viewing
-    * 설정 m위it또는 mode 위한 red-위ly 래더 view내g
+    * ?ㅼ젙 m?꼒t?먮뒗 mode ?꾪븳 red-?꼕y ?섎뜑 view?큙
    * @param monitor True for monitor mode, false for edit mode
-    * True 위한 m위it또는 mode, 거짓 위한 edit mode
+    * True ?꾪븳 m?꼒t?먮뒗 mode, 嫄곗쭞 ?꾪븳 edit mode
    */
   void SetMonitorMode(bool monitor) { is_monitor_mode_ = monitor; }
 
   /**
    * @brief Save current ladder program to OpenPLC .ld format
-    * 저장 current 래더 프로그램 OpenPLC .ld 위한m에서
+    * ???current ?섎뜑 ?꾨줈洹몃옩 OpenPLC .ld ?꾪븳m?먯꽌
    * @param filepath Target file path for .ld output
-    * Tr가져오기 파일 경로 위한 .ld 출력
+    * Tr媛?몄삤湲??뚯씪 寃쎈줈 ?꾪븳 .ld 異쒕젰
    */
   void SaveLadderProgramToLD(const std::string& filepath);
 
   /**
    * @brief Test compilation of .ld file using OpenPLC compiler
-    * Test compil에서i위 의 .ld 파일 us내g OpenPLC 컴파일r
+    * Test compil?먯꽌i????.ld ?뚯씪 us?큙 OpenPLC 而댄뙆?펢
    * @param ldFilepath Path to .ld file to compile and test
-    * P에서h .ld 파일 컴파일 및 test
+    * P?먯꽌h .ld ?뚯씪 而댄뙆??諛?test
    */
   void TestCompileLDFile(const std::string& ldFilepath);
 
   /**
    * @brief Get current ladder program (read-only access)
-    * 가져오기 current 래더 프로그램 (red-위ly ccess)
+    * 媛?몄삤湲?current ?섎뜑 ?꾨줈洹몃옩 (red-?꼕y ccess)
    * @return Const reference to current ladder program
-    * C위st 참조 current 래더 프로그램
+    * C?꼜t 李몄“ current ?섎뜑 ?꾨줈洹몃옩
    */
   const LadderProgram& GetLadderProgram() const;
 
   /**
    * @brief Set new ladder program with state synchronization
-    * 설정 new 래더 프로그램 와 함께 st에서e synchr위iz에서i위
+    * ?ㅼ젙 new ?섎뜑 ?꾨줈洹몃옩 ? ?④퍡 st?먯꽌e synchr?꼒z?먯꽌i??
    * @param program New ladder program to load
-    * New 래더 프로그램 로드
+    * New ?섎뜑 ?꾨줈洹몃옩 濡쒕뱶
    */
   void SetLadderProgram(const LadderProgram& program);
 
   /**
    * @brief Get current device states (read-only access)
-    * 가져오기 current device st에서es (red-위ly ccess)
+    * 媛?몄삤湲?current device st?먯꽌es (red-?꼕y ccess)
    * @return Const reference to device state map
-    * C위st 참조 device st에서e 맵
+    * C?꼜t 李몄“ device st?먯꽌e 留?
    */
   const std::map<std::string, bool>& GetDeviceStates() const;
 
   /**
    * @brief Get current timer states (read-only access)
-    * 가져오기 current timer st에서es (red-위ly ccess)
+    * 媛?몄삤湲?current timer st?먯꽌es (red-?꼕y ccess)
    * @return Const reference to timer state map
-    * C위st 참조 timer st에서e 맵
+    * C?꼜t 李몄“ timer st?먯꽌e 留?
    */
   const std::map<std::string, TimerState>& GetTimerStates() const;
 
   /**
    * @brief Get current counter states (read-only access)
-    * 가져오기 current 개수er st에서es (red-위ly ccess)
+    * 媛?몄삤湲?current 媛쒖닔er st?먯꽌es (red-?꼕y ccess)
    * @return Const reference to counter state map
-    * C위st 참조 개수er st에서e 맵
+    * C?꼜t 李몄“ 媛쒖닔er st?먯꽌e 留?
    */
   const std::map<std::string, CounterState>& GetCounterStates() const;
 
@@ -283,9 +277,9 @@ class ProgrammingMode {
   const char* GetEngineType() const {
     return use_compiled_engine_ ? "Compiled(OpenPLC)" : "Disabled";
   }
-  bool IsRecompileNeeded() const;  // 내부 NeedsRecompilation() 래퍼
+  bool IsRecompileNeeded() const;  // ?대? NeedsRecompilation() ?섑띁
   const std::string& GetLastCompileError() const { return last_compile_error_; }
-  // 스캔 결과 요약
+  // ?ㅼ틪 寃곌낵 ?붿빟
   bool GetLastScanSuccess() const { return last_scan_success_; }
   int GetLastCycleTimeUs() const { return last_cycle_time_us_; }
   int GetLastInstructionCount() const { return last_instruction_count_; }
@@ -302,7 +296,7 @@ class ProgrammingMode {
 
  private:
   plc::Application*
-      application_;  // Application 포인터 (SaveProject/LoadProject 호출용)
+      application_;  // Application ?ъ씤??(SaveProject/LoadProject ?몄텧??
 
   enum class PendingActionType {
     NONE,
@@ -327,7 +321,7 @@ class ProgrammingMode {
   void RenderLadderDiagram();
   void RenderVerticalConnections();
   void RenderVerticalConnectionsForRung(
-      int rungIndex, float cellAreaWidth);  // [NEW] 뱃별 세로선 렌더링
+      int rungIndex, float cellAreaWidth);  // [NEW] 諭껊퀎 ?몃줈???뚮뜑留?
   void RenderRung(int rungIndex);
   void RenderEndRung(int rungIndex);
   void RenderLadderCell(int rungIndex, int cellIndex, float cellWidth);
@@ -352,30 +346,31 @@ class ProgrammingMode {
 
   void SimulateLadderProgram();
 
-  // 🔥 **NEW**: OpenPLC 엔진 통합 관련 함수들
-  void ExecuteWithOpenPLCEngine();     // OpenPLC 엔진으로 시뮬레이션
-  bool CompileLadderToOpenPLC();       // 레더 → .ld → C++ → OpenPLC 로드
-  void SyncPhysicsToOpenPLC();         // 물리 상태 → OpenPLC 입력
-  void SyncOpenPLCToDevices();         // OpenPLC 출력 → 디바이스 상태
-  void UpdateVisualActiveStates();     // 레더 셀 시각적 활성화 업데이트
-  bool NeedsRecompilation() const;     // 재컴파일 필요 여부 ���인
+  // ?뵦 **NEW**: OpenPLC ?붿쭊 ?듯빀 愿???⑥닔??
+  void ExecuteWithOpenPLCEngine();     // OpenPLC ?붿쭊?쇰줈 ?쒕??덉씠??
+  bool CompileLadderToOpenPLC();       // ?덈뜑 ??.ld ??C++ ??OpenPLC 濡쒕뱶
+  void SyncPhysicsToOpenPLC();         // 臾쇰━ ?곹깭 ??OpenPLC ?낅젰
+  void SyncOpenPLCToDevices();         // OpenPLC 異쒕젰 ???붾컮?댁뒪 ?곹깭
+  void SyncOpenPLCToTimersCounters();
+  void UpdateVisualActiveStates();     // ?덈뜑 ? ?쒓컖???쒖꽦???낅뜲?댄듃
+  bool NeedsRecompilation() const;     // ?ъ뺨?뚯씪 ?꾩슂 ?щ? 占쏙옙占쎌씤
 
-  // 🔥 **NEW**: UI 구조 보존을 위한 유틸리티 함수들
+  // ?뵦 **NEW**: UI 援ъ“ 蹂댁〈???꾪븳 ?좏떥由ы떚 ?⑥닔??
   LadderProgram DeepCopyLadderProgram(
-      const LadderProgram& source) const;  // 레더 프로그램 깊은 복사
+      const LadderProgram& source) const;  // ?덈뜑 ?꾨줈洹몃옩 源딆? 蹂듭궗
   SimulatorState GetCurrentStateSnapshot()
-      const;  // 현재 시뮬레이터 상태 스냅샷
+      const;  // ?꾩옱 ?쒕??덉씠???곹깭 ?ㅻ깄??
   void UpdateUIFromSimulatorState(
-      const SimulatorState& state);  // 상태로부터 UI 업데이트 (구조 불변)
+      const SimulatorState& state);  // ?곹깭濡쒕???UI ?낅뜲?댄듃 (援ъ“ 遺덈?)
 
-  // 🔥 **NEW**: 안전한 동기화 메커니즘
-  bool IsSafeToUpdateUI() const;         // UI 업데이트가 안전한지 확인
-  void SetEditingState(bool isEditing);  // 편집 상태 설정
-  void ProcessPendingStateUpdates();     // 대��� 중인 상태 업데이트 처리
-  void SafeUpdateUI(const SimulatorState& state);  // 안전한 UI 업데이트
+  // ?뵦 **NEW**: ?덉쟾???숆린??硫붿빱?덉쬁
+  bool IsSafeToUpdateUI() const;         // UI ?낅뜲?댄듃媛 ?덉쟾?쒖? ?뺤씤
+  void SetEditingState(bool isEditing);  // ?몄쭛 ?곹깭 ?ㅼ젙
+  void ProcessPendingStateUpdates();     // ?占쏙옙占?以묒씤 ?곹깭 ?낅뜲?댄듃 泥섎━
+  void SafeUpdateUI(const SimulatorState& state);  // ?덉쟾??UI ?낅뜲?댄듃
 
   LadderProgram NormalizeLadderGX2(
-      const LadderProgram& src);  // 컴파일/실행 직전 내부 정규화
+      const LadderProgram& src);  // 而댄뙆???ㅽ뻾 吏곸쟾 ?대? ?뺢퇋??
 
   bool GetDeviceState(const std::string& address) const;
   void SetDeviceState(const std::string& address, bool state);
@@ -399,22 +394,25 @@ class ProgrammingMode {
   std::map<std::string, TimerState> timer_states_;
   std::map<std::string, CounterState> counter_states_;
 
-  // 🔥 **NEW**: OpenPLC 검증된 레더 엔진 통합
+  // ?뵦 **NEW**: OpenPLC 寃利앸맂 ?덈뜑 ?붿쭊 ?듯빀
   std::unique_ptr<CompiledPLCExecutor> plc_executor_;
   std::unique_ptr<LadderToLDConverter> ld_converter_;
-  bool use_compiled_engine_;           // OpenPLC 엔진 사용 여부
-  std::string current_compiled_code_;  // 현재 컴파일된 C++ 코드
+  bool use_compiled_engine_;           // OpenPLC ?붿쭊 ?ъ슜 ?щ?
+  std::string current_compiled_code_;  // ?꾩옱 而댄뙆?쇰맂 C++ 肄붾뱶
   bool compile_failed_ = false;
+  std::vector<int> compile_error_rungs_;
+  std::map<int, size_t> compile_error_rung_hashes_;
+  std::string last_ld_code_;
   size_t last_failed_hash_ = 0;
 
-  // 🔥 **NEW**: 안전한 UI 동기화를 위한 상태 관리
-  bool is_editing_in_progress_ = false;   // 현재 편집 중인지 여부
-  bool has_ui_focus_ = false;            // UI가 포커스를 가지고 있는지 여부
-  SimulatorState pending_state_update_;  // 대기 중인 상태 업데이트
+  // ?뵦 **NEW**: ?덉쟾??UI ?숆린?붾? ?꾪븳 ?곹깭 愿由?
+  bool is_editing_in_progress_ = false;   // ?꾩옱 ?몄쭛 以묒씤吏 ?щ?
+  bool has_ui_focus_ = false;            // UI媛 ?ъ빱?ㅻ? 媛吏怨??덈뒗吏 ?щ?
+  SimulatorState pending_state_update_;  // ?湲?以묒씤 ?곹깭 ?낅뜲?댄듃
   bool has_pending_state_update_ =
-      false;  // 대기 ��인 상태 업데이트가 있는지 여부
+      false;  // ?湲?占쏙옙???곹깭 ?낅뜲?댄듃媛 ?덈뒗吏 ?щ?
   std::chrono::steady_clock::time_point
-      last_safe_update_;  // 마지막 안전한 업데이트 시간
+      last_safe_update_;  // 留덉?留??덉쟾???낅뜲?댄듃 ?쒓컙
 
   bool show_address_popup_;
   bool show_vertical_dialog_;
@@ -422,27 +420,32 @@ class ProgrammingMode {
   char temp_address_buffer_[64];
   int vertical_line_count_;
 
-  bool is_dirty_ = false;         // 레더 변경됨
-  size_t last_compiled_hash_ = 0;  // 마지막 컴파일된 레더 해시
-  size_t ComputeProgramHash(const LadderProgram& program) const;  // 해시 계산
-  void MarkDirty() { is_dirty_ = true; }  // 더티 표시 헬퍼
+  bool is_dirty_ = false;         // ?덈뜑 蹂寃쎈맖
+  size_t last_compiled_hash_ = 0;  // 留덉?留?而댄뙆?쇰맂 ?덈뜑 ?댁떆
+  size_t ComputeProgramHash(const LadderProgram& program) const;  // ?댁떆 怨꾩궛
+  void UpdateCompileErrorRungsOnEdit();
+  bool IsRungCompileError(int rungIndex) const;
+  size_t ComputeRungHash(const Rung& rung) const;
+  void UpdateCompileErrorRungsOnCompileFailure(
+      const std::string& ldCode, const std::string& errorMessage);
+  void MarkDirty();  // 더티 표시 헬퍼
 
   void InitializeTimersAndCountersFromProgram();
 
-  // 사용 중인 코일 주소 수집 (OTE/SET/RST 대상)
+  // ?ъ슜 以묒씤 肄붿씪 二쇱냼 ?섏쭛 (OTE/SET/RST ???
   void GetUsedCoils(std::vector<std::string>& coils) const;
-  // 사용 중인 입력(X) 주소 수집 (XIC/XIO 대상)
+  // ?ъ슜 以묒씤 ?낅젰(X) 二쇱냼 ?섏쭛 (XIC/XIO ???
   void GetUsedInputs(std::vector<std::string>& inputs) const;
 
-  std::string last_compile_error_;  // 마지막 컴파일 에러 메시지
-  bool last_scan_success_ = false;  // 최근 스캔 성공 여부
-  int last_cycle_time_us_ = 0;       // 최근 스캔 사이클 시간(us)
-  int last_instruction_count_ = 0;  // 최근 실행된 명령어 수
-  std::string last_scan_error_;     // 최근 스캔 에러 메시지
+  std::string last_compile_error_;  // 留덉?留?而댄뙆???먮윭 硫붿떆吏
+  bool last_scan_success_ = false;  // 理쒓렐 ?ㅼ틪 ?깃났 ?щ?
+  int last_cycle_time_us_ = 0;       // 理쒓렐 ?ㅼ틪 ?ъ씠???쒓컙(us)
+  int last_instruction_count_ = 0;  // 理쒓렐 ?ㅽ뻾??紐낅졊????
+  std::string last_scan_error_;     // 理쒓렐 ?ㅼ틪 ?먮윭 硫붿떆吏
 
-  bool gx2_normalization_enabled_ = true;   // 기본 ON
-  int last_normalization_fix_count_ = 0;     // 최근 정규화에서 적용된 수정 수
-  std::string last_normalization_summary_;  // 최근 정규화 요약(경고/보정 내역)
+  bool gx2_normalization_enabled_ = true;   // 湲곕낯 ON
+  int last_normalization_fix_count_ = 0;     // 理쒓렐 ?뺢퇋?붿뿉???곸슜???섏젙 ??
+  std::string last_normalization_summary_;  // 理쒓렐 ?뺢퇋???붿빟(寃쎄퀬/蹂댁젙 ?댁뿭)
 };
 }  // namespace plc
 #endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_

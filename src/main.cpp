@@ -1,5 +1,4 @@
 // main.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Application entry point.
 
@@ -9,8 +8,9 @@
 #include "plc_emulator/core/application.h"
 
 #include <cstdio>
+#include <string>
 
-int main() {
+int main(int argc, char* argv[]) {
   printf("=====================================\n");
   printf("FX3U PLC Simulator Starting...\n");
   printf("Current: Wiring Mode UI Complete\n");
@@ -19,7 +19,16 @@ int main() {
 
   // try-catch 구문을 사용하여 예외 처리를 수행합니다.
   try {
-    plc::Application app;
+    bool enable_debug = false;
+    for (int i = 1; i < argc; ++i) {
+      std::string arg = argv[i];
+      if (arg == "--Debug" || arg == "--debug") {
+        enable_debug = true;
+        break;
+      }
+    }
+
+    plc::Application app(enable_debug);
 
     //  if-else 문을 사용하여 초기화 성공 여부를 확인합니다.
     if (!app.Initialize()) {

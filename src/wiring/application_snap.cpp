@@ -1,5 +1,4 @@
 // application_snap.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Grid snapping functionality.
 
@@ -32,7 +31,7 @@ ImVec2 Application::ApplySnap(ImVec2 position, bool isWirePoint) {
 
   if (snap_settings_.enableVerticalSnap ||
       snap_settings_.enableHorizontalSnap) {
-    ImVec2 lineSnappedPos = ApplyLineSnap(position, referencePoint);
+    ImVec2 lineSnappedPos = ApplyLineSnap(position, referencePoint, false);
     if (lineSnappedPos.x != position.x || lineSnappedPos.y != position.y) {
       return lineSnappedPos;
     }
@@ -83,7 +82,9 @@ ImVec2 Application::ApplyPortSnap(ImVec2 position) {
   return position;
 }
 
-ImVec2 Application::ApplyLineSnap(ImVec2 position, ImVec2 referencePoint) {
+ImVec2 Application::ApplyLineSnap(ImVec2 position, ImVec2 referencePoint,
+                                  bool force_orthogonal) {
+  (void)force_orthogonal;
   float snapDistance = snap_settings_.snapDistance / camera_zoom_;
 
   bool canSnapV = snap_settings_.enableVerticalSnap &&

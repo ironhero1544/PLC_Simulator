@@ -1,5 +1,4 @@
-// plc_simulator_core.cpp
-// Copyright 2024 PLC Emulator Project
+﻿// plc_simulator_core.cpp
 //
 // Implementation of core simulator.
 
@@ -38,7 +37,7 @@ bool PLCSimulatorCore::Initialize() {
   InitializeDefaultData();
 
 
-  // ComponentRepository 생성 (C언어 스타일)
+  // ComponentRepository 생성
   ComponentRepository* compRepo =
       CreateComponentRepository(&placed_components_);
   if (compRepo) {
@@ -84,7 +83,7 @@ bool PLCSimulatorCore::Initialize() {
     std::cout << "EventDispatcher initialized successfully." << std::endl;
   }
 
-  std::cout << "✅ PLCSimulatorCore initialized with all repositories and "
+  std::cout << "PLCSimulatorCore initialized with all repositories and "
                "event system."
             << std::endl;
   return true;
@@ -127,7 +126,7 @@ void PLCSimulatorCore::Shutdown() {
     std::cout << "EventDispatcher destroyed." << std::endl;
   }
 
-  std::cout << "✅ PLCSimulatorCore shutdown completed." << std::endl;
+  std::cout << "PLCSimulatorCore shutdown completed." << std::endl;
 }
 
 
@@ -176,7 +175,7 @@ void PLCSimulatorCore::NotifyDataChanged() {
     EventData event = CreateDataChangedEvent();
     event_dispatcher_->Dispatch(event_dispatcher_.get(), &event);
   }
-  std::cout << "📡 PLCSimulatorCore: Data changed event dispatched."
+  std::cout << "PLCSimulatorCore: Data changed event dispatched."
             << std::endl;
 }
 
@@ -191,7 +190,7 @@ void PLCSimulatorCore::NotifyModeChanged(Mode newMode) {
   }
 
   const char* modeStr = (newMode == Mode::WIRING) ? "WIRING" : "PROGRAMMING";
-  std::cout << "📡 PLCSimulatorCore: Mode changed event dispatched to "
+  std::cout << "PLCSimulatorCore: Mode changed event dispatched to "
             << modeStr << std::endl;
 }
 
@@ -237,7 +236,7 @@ bool PLCSimulatorCore::UpdateIOMapping() {
     return false;
   }
 
-  std::cout << "🔄 Updating I/O mapping from current wiring..." << std::endl;
+  std::cout << "Updating I/O mapping from current wiring..." << std::endl;
 
   // IOMapper를 사용하여 현재 배선 정보로부터 I/O 매핑 추출
   MappingResult result = io_mapper_->ExtractMapping(io_mapper_.get(), &wires_,
@@ -255,8 +254,8 @@ bool PLCSimulatorCore::UpdateIOMapping() {
       io_repo_->SetMappingResult(io_repo_.get(), &last_mapping_result_);
     }
 
-    std::cout << "✅ I/O mapping updated successfully" << std::endl;
-    std::cout << "📊 Generated: " << current_io_mapping_.inputCount
+    std::cout << "I/O mapping updated successfully" << std::endl;
+    std::cout << "Generated: " << current_io_mapping_.inputCount
               << " inputs (X), " << current_io_mapping_.outputCount
               << " outputs (Y)" << std::endl;
 
@@ -264,15 +263,9 @@ bool PLCSimulatorCore::UpdateIOMapping() {
     // NotifyIOMappingUpdated();
 
     return true;
-  } else {
-    std::cerr << "❌ Failed to update I/O mapping" << std::endl;
-    if (result.HasErrors()) {
-      for (const auto& error : result.errors) {
-        std::cerr << "  Error: " << error << std::endl;
-      }
-    }
-    return false;
   }
+
+  return false;
 }
 
 const IOMapping& PLCSimulatorCore::GetCurrentIOMapping() const {
@@ -288,11 +281,10 @@ void PLCSimulatorCore::SyncIOMapping() {
   // Phase 3에서 프로그래밍 모드와 실제 연동 구현 예정
 
   if (!UpdateIOMapping()) {
-    std::cerr << "Warning: I/O mapping sync failed" << std::endl;
     return;
   }
 
-  std::cout << "🔄 I/O mapping synchronized with current wiring state"
+  std::cout << "I/O mapping synchronized with current wiring state"
             << std::endl;
 
   // TODO Phase 3: 프로그래밍 모드의 X, Y 디바이스와 실제 매핑 연동
@@ -309,3 +301,4 @@ bool PLCSimulatorCore::ValidateIOMapping() const {
 }
 
 }  // namespace plc
+

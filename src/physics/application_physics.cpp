@@ -1,5 +1,4 @@
-// application_physics.cpp
-// Copyright 2024 PLC Emulator Project
+﻿// application_physics.cpp
 //
 // Physics integration with application.
 
@@ -8,13 +7,19 @@
 #include "plc_emulator/core/application.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <cmath>
 #include <exception>
 #include <iostream>
 #include <map>
+#include <mutex>
 #include <queue>
 #include <set>
+#include <thread>
 #include <vector>
 
 /**
@@ -34,6 +39,312 @@ int SolveMechanicalSystemC(plc::MechanicalSystem* system, float deltaTime);
 }
 
 namespace plc {
+namespace {
+
+using PortRef = std::pair<int, int>;
+
+constexpr int kMaxWorkerThreads = 4;
+constexpr bool kForceSerialComponentUpdates = true;
+
+using ComponentTaskFn = void (*)(size_t index, void* context);
+
+class ComponentTaskRunner {
+ public:
+  ComponentTaskRunner() {
+    unsigned int hardware_threads = std::thread::hardware_concurrency();
+    size_t desired = hardware_threads > 1 ? hardware_threads - 1 : 1;
+    worker_count_ = std::min(static_cast<size_t>(kMaxWorkerThreads), desired);
+
+    for (size_t i = 0; i < worker_count_; ++i) {
+      workers_[i] = std::thread([this]() { WorkerLoop(); });
+    }
+  }
+
+  ~ComponentTaskRunner() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      shutdown_ = true;
+      has_task_ = true;
+    }
+    cv_.notify_all();
+    for (size_t i = 0; i < worker_count_; ++i) {
+      if (workers_[i].joinable()) {
+        workers_[i].join();
+      }
+    }
+  }
+
+  void Run(size_t count, ComponentTaskFn fn, void* context) {
+    if (count == 0) {
+      return;
+    }
+    if (kForceSerialComponentUpdates || worker_count_ == 0 || count < 2) {
+      for (size_t i = 0; i < count; ++i) {
+        fn(i, context);
+      }
+      return;
+    }
+
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      done_cv_.wait(lock, [this]() { return !has_task_; });
+      task_fn_ = fn;
+      task_context_ = context;
+      task_count_ = count;
+      next_index_.store(0);
+      active_workers_ = worker_count_;
+      has_task_ = true;
+    }
+
+    cv_.notify_all();
+
+    std::unique_lock<std::mutex> lock(mutex_);
+    done_cv_.wait(lock, [this]() { return !has_task_; });
+  }
+
+ private:
+  void WorkerLoop() {
+    for (;;) {
+      ComponentTaskFn fn = nullptr;
+      void* context = nullptr;
+      size_t count = 0;
+
+      {
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait(lock, [this]() { return has_task_; });
+        if (shutdown_) {
+          return;
+        }
+        fn = task_fn_;
+        context = task_context_;
+        count = task_count_;
+      }
+
+      for (;;) {
+        size_t index = next_index_.fetch_add(1);
+        if (index >= count) {
+          break;
+        }
+        fn(index, context);
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (active_workers_ > 0) {
+          active_workers_--;
+        }
+        if (active_workers_ == 0) {
+          has_task_ = false;
+          done_cv_.notify_one();
+        }
+      }
+    }
+  }
+
+  std::array<std::thread, kMaxWorkerThreads> workers_;
+  size_t worker_count_ = 0;
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::condition_variable done_cv_;
+  std::atomic<size_t> next_index_{0};
+  ComponentTaskFn task_fn_ = nullptr;
+  void* task_context_ = nullptr;
+  size_t task_count_ = 0;
+  size_t active_workers_ = 0;
+  bool has_task_ = false;
+  bool shutdown_ = false;
+};
+
+ComponentTaskRunner& GetComponentTaskRunner() {
+  static ComponentTaskRunner runner;
+  return runner;
+}
+
+struct ElectricalUpdateContext {
+  std::vector<PlacedComponent>* components = nullptr;
+  const std::map<PortRef, float>* voltages = nullptr;
+};
+
+void UpdateElectricalComponent(size_t index, void* context) {
+  auto* ctx = static_cast<ElectricalUpdateContext*>(context);
+  if (!ctx || !ctx->components || !ctx->voltages) {
+    return;
+  }
+  if (index >= ctx->components->size()) {
+    return;
+  }
+
+  auto& comp = (*ctx->components)[index];
+  const auto& port_voltages = *ctx->voltages;
+
+  if (comp.type == ComponentType::BUTTON_UNIT) {
+    for (int i = 0; i < 3; ++i) {
+      PortRef plus_port = std::make_pair(comp.instanceId, i * 5 + 3);
+      PortRef minus_port = std::make_pair(comp.instanceId, i * 5 + 4);
+      bool has_24v = port_voltages.count(plus_port) &&
+                     port_voltages.at(plus_port) > 23.0f;
+      bool has_0v = port_voltages.count(minus_port) &&
+                    port_voltages.at(minus_port) > -0.1f &&
+                    port_voltages.at(minus_port) < 0.1f;
+      comp.internalStates["lamp_on_" + std::to_string(i)] =
+          (has_24v && has_0v) ? 1.0f : 0.0f;
+    }
+    return;
+  }
+
+  if (comp.type == ComponentType::VALVE_SINGLE ||
+      comp.type == ComponentType::VALVE_DOUBLE) {
+    PortRef sol_a_plus = std::make_pair(comp.instanceId, 0);
+    PortRef sol_a_minus = std::make_pair(comp.instanceId, 1);
+    bool sol_a_powered = port_voltages.count(sol_a_plus) &&
+                         port_voltages.at(sol_a_plus) > 23.0f &&
+                         port_voltages.count(sol_a_minus) &&
+                         port_voltages.at(sol_a_minus) > -0.1f &&
+                         port_voltages.at(sol_a_minus) < 0.1f;
+    comp.internalStates["solenoid_a_active"] = sol_a_powered ? 1.0f : 0.0f;
+
+    if (comp.type == ComponentType::VALVE_DOUBLE) {
+      PortRef sol_b_plus = std::make_pair(comp.instanceId, 2);
+      PortRef sol_b_minus = std::make_pair(comp.instanceId, 3);
+      bool sol_b_powered = port_voltages.count(sol_b_plus) &&
+                           port_voltages.at(sol_b_plus) > 23.0f &&
+                           port_voltages.count(sol_b_minus) &&
+                           port_voltages.at(sol_b_minus) > -0.1f &&
+                           port_voltages.at(sol_b_minus) < 0.1f;
+      comp.internalStates["solenoid_b_active"] = sol_b_powered ? 1.0f : 0.0f;
+    }
+    return;
+  }
+
+  if (comp.type == ComponentType::SENSOR) {
+    PortRef plus_port = std::make_pair(comp.instanceId, 0);
+    PortRef minus_port = std::make_pair(comp.instanceId, 1);
+    bool has_24v = port_voltages.count(plus_port) &&
+                   port_voltages.at(plus_port) > 23.0f;
+    bool has_0v = port_voltages.count(minus_port) &&
+                  port_voltages.at(minus_port) > -0.1f &&
+                  port_voltages.at(minus_port) < 0.1f;
+    comp.internalStates["is_powered"] = (has_24v && has_0v) ? 1.0f : 0.0f;
+  }
+}
+
+struct ValveLogicContext {
+  std::vector<PlacedComponent>* components = nullptr;
+};
+
+void UpdateValveLogicComponent(size_t index, void* context) {
+  auto* ctx = static_cast<ValveLogicContext*>(context);
+  if (!ctx || !ctx->components) {
+    return;
+  }
+  if (index >= ctx->components->size()) {
+    return;
+  }
+
+  auto& comp = (*ctx->components)[index];
+  if (comp.type != ComponentType::VALVE_DOUBLE) {
+    return;
+  }
+
+  bool sol_a_active = comp.internalStates.count("solenoid_a_active") &&
+                      comp.internalStates.at("solenoid_a_active") > 0.5f;
+  bool sol_b_active = comp.internalStates.count("solenoid_b_active") &&
+                      comp.internalStates.at("solenoid_b_active") > 0.5f;
+
+  if (sol_a_active && !sol_b_active) {
+    comp.internalStates["last_active_solenoid"] = 1.0f;
+  } else if (sol_b_active && !sol_a_active) {
+    comp.internalStates["last_active_solenoid"] = 2.0f;
+  }
+}
+
+struct CylinderUpdateContext {
+  std::vector<PlacedComponent>* components = nullptr;
+  const std::map<PortRef, float>* pressures = nullptr;
+  float delta_time = 0.0f;
+  float piston_mass = 0.0f;
+  float friction_coeff = 0.0f;
+  float activation_threshold = 0.0f;
+  float force_scale = 0.0f;
+};
+
+void UpdateCylinderComponent(size_t index, void* context) {
+  auto* ctx = static_cast<CylinderUpdateContext*>(context);
+  if (!ctx || !ctx->components || !ctx->pressures) {
+    return;
+  }
+  if (index >= ctx->components->size()) {
+    return;
+  }
+
+  auto& comp = (*ctx->components)[index];
+  if (comp.type != ComponentType::CYLINDER) {
+    return;
+  }
+
+  if (!comp.internalStates.count("position")) {
+    comp.internalStates["position"] = 0.0f;
+    comp.internalStates["velocity"] = 0.0f;
+  }
+
+  float currentPosition = comp.internalStates.at("position");
+  float currentVelocity = comp.internalStates.at("velocity");
+
+  float pressureA = ctx->pressures->count({comp.instanceId, 0})
+                        ? ctx->pressures->at({comp.instanceId, 0})
+                        : 0.0f;
+  float pressureB = ctx->pressures->count({comp.instanceId, 1})
+                        ? ctx->pressures->at({comp.instanceId, 1})
+                        : 0.0f;
+
+  float pressureDiff = pressureA - pressureB;
+  float force = 0.0f;
+
+  if (std::abs(pressureDiff) >= ctx->activation_threshold) {
+    float effectivePressure =
+        std::abs(pressureDiff) - ctx->activation_threshold;
+    float forceMagnitude =
+        std::pow(effectivePressure, 2.0f) * ctx->force_scale;
+    force = std::copysign(forceMagnitude, pressureDiff);
+  }
+
+  float frictionForce = -ctx->friction_coeff * currentVelocity;
+  float totalForce = force + frictionForce;
+
+  float acceleration = totalForce / ctx->piston_mass;
+
+  currentVelocity += acceleration * ctx->delta_time;
+  currentPosition += currentVelocity * ctx->delta_time;
+
+  const float maxStroke = 160.0f;
+  if (currentPosition < 0.0f) {
+    currentPosition = 0.0f;
+    if (currentVelocity < 0) {
+      currentVelocity = 0;
+    }
+  } else if (currentPosition > maxStroke) {
+    currentPosition = maxStroke;
+    if (currentVelocity > 0) {
+      currentVelocity = 0;
+    }
+  }
+
+  comp.internalStates["position"] = currentPosition;
+  comp.internalStates["velocity"] = currentVelocity;
+  comp.internalStates["pressure_a"] = pressureA;
+  comp.internalStates["pressure_b"] = pressureB;
+
+  const float velocityThreshold = 1.0f;
+  if (currentVelocity > velocityThreshold) {
+    comp.internalStates["status"] = 1.0f;
+  } else if (currentVelocity < -velocityThreshold) {
+    comp.internalStates["status"] = -1.0f;
+  } else {
+    comp.internalStates["status"] = 0.0f;
+  }
+}
+
+}  // namespace
 
 /**
  * @brief Main physics simulation with PLC state independence
@@ -279,199 +590,318 @@ void Application::SimulateElectrical() {
     }
   }
 
-  using PortRef = std::pair<int, int>;
   enum class VoltageType { NONE, V24, V0 };
+  constexpr int kMaxPortsPerComponent = 32;
+  constexpr int kMaxElectricalComponents = 512;
+  constexpr int kMaxElectricalPorts =
+      kMaxElectricalComponents * kMaxPortsPerComponent;
 
-  port_voltages_.clear();
+  struct ElectricalCache {
+    std::array<PortRef, kMaxElectricalPorts> ports;
+    int port_count = 0;
+    std::array<int, kMaxElectricalComponents * kMaxPortsPerComponent>
+        port_index_by_id;
+    std::array<int, kMaxElectricalPorts> base_parent;
+    std::array<int, kMaxElectricalPorts> base_rank;
+    std::array<int, kMaxElectricalPorts> parent;
+    std::array<int, kMaxElectricalPorts> rank;
+    std::array<int, kMaxElectricalPorts> port_net_id;
+    std::array<int, kMaxElectricalPorts> root_to_net;
+    std::array<int, kMaxElectricalPorts> net_voltage;
+    int net_count = 0;
+    std::array<ComponentType, kMaxElectricalComponents> component_types;
+    uint64_t last_wiring_hash = 0;
+    uint64_t last_component_hash = 0;
+    int last_max_component_id = -1;
+    bool topology_valid = false;
+  };
 
-  // Build electrical network graph from wire connections
-  std::map<PortRef, std::vector<PortRef>> adjList;
-  for (const auto& wire : wires_) {
-    if (wire.isElectric) {
-      PortRef p1 = std::make_pair(wire.fromComponentId, wire.fromPortId);
-      PortRef p2 = std::make_pair(wire.toComponentId, wire.toPortId);
-      adjList[p1].push_back(p2);
-      adjList[p2].push_back(p1);
+  static ElectricalCache cache;
+
+  auto hash_combine = [](uint64_t* seed, uint64_t value) {
+    *seed ^= value + 0x9e3779b97f4a7c15ULL + (*seed << 6) + (*seed >> 2);
+  };
+
+  auto compute_wiring_hash = [&]() {
+    uint64_t seed = 0;
+    for (const auto& wire : wires_) {
+      hash_combine(&seed, static_cast<uint64_t>(wire.id));
+      hash_combine(&seed, static_cast<uint64_t>(wire.fromComponentId));
+      hash_combine(&seed, static_cast<uint64_t>(wire.fromPortId));
+      hash_combine(&seed, static_cast<uint64_t>(wire.toComponentId));
+      hash_combine(&seed, static_cast<uint64_t>(wire.toPortId));
+      hash_combine(&seed, wire.isElectric ? 1U : 0U);
+    }
+    return seed;
+  };
+
+  auto compute_component_hash = [&]() {
+    uint64_t seed = 0;
+    for (const auto& comp : placed_components_) {
+      hash_combine(&seed, static_cast<uint64_t>(comp.instanceId));
+      hash_combine(&seed, static_cast<uint64_t>(comp.type));
+    }
+    return seed;
+  };
+
+  auto find_root = [&](int idx, auto&& find_root_ref) -> int {
+    if (cache.parent[idx] != idx) {
+      cache.parent[idx] = find_root_ref(cache.parent[idx], find_root_ref);
+    }
+    return cache.parent[idx];
+  };
+
+  auto unite = [&](int a, int b) {
+    int root_a = find_root(a, find_root);
+    int root_b = find_root(b, find_root);
+    if (root_a == root_b) {
+      return;
+    }
+    if (cache.rank[root_a] < cache.rank[root_b]) {
+      cache.parent[root_a] = root_b;
+    } else if (cache.rank[root_a] > cache.rank[root_b]) {
+      cache.parent[root_b] = root_a;
+    } else {
+      cache.parent[root_b] = root_a;
+      cache.rank[root_a]++;
+    }
+  };
+
+  uint64_t wiring_hash = compute_wiring_hash();
+  uint64_t component_hash = compute_component_hash();
+
+  int max_component_id = -1;
+  for (const auto& entry : port_positions_) {
+    int comp_id = entry.first.first;
+    if (comp_id >= 0 && comp_id < kMaxElectricalComponents &&
+        comp_id > max_component_id) {
+      max_component_id = comp_id;
     }
   }
 
-  // Apply physical switch/sensor states to network graph
+  bool topology_changed = !cache.topology_valid ||
+                          wiring_hash != cache.last_wiring_hash ||
+                          component_hash != cache.last_component_hash ||
+                          max_component_id != cache.last_max_component_id;
+
+  if (topology_changed) {
+    cache.port_count = 0;
+    std::fill(cache.port_index_by_id.begin(), cache.port_index_by_id.end(), -1);
+    for (const auto& entry : port_positions_) {
+      int comp_id = entry.first.first;
+      int port_id = entry.first.second;
+      if (comp_id < 0 || comp_id > max_component_id ||
+          comp_id >= kMaxElectricalComponents) {
+        continue;
+      }
+      if (port_id < 0 || port_id >= kMaxPortsPerComponent) {
+        continue;
+      }
+      if (cache.port_count >= kMaxElectricalPorts) {
+        break;
+      }
+      cache.ports[cache.port_count] = entry.first;
+      cache.port_index_by_id[comp_id * kMaxPortsPerComponent + port_id] =
+          cache.port_count;
+      cache.port_count++;
+    }
+
+    std::fill(cache.rank.begin(), cache.rank.end(), 0);
+    for (int i = 0; i < cache.port_count; ++i) {
+      cache.parent[i] = i;
+    }
+
+    for (const auto& wire : wires_) {
+      if (!wire.isElectric) {
+        continue;
+      }
+      int from_index = -1;
+      int to_index = -1;
+      if (wire.fromComponentId >= 0 && wire.fromComponentId <= max_component_id &&
+          wire.fromPortId >= 0 && wire.fromPortId < kMaxPortsPerComponent) {
+        from_index =
+            cache.port_index_by_id[wire.fromComponentId * kMaxPortsPerComponent +
+                                     wire.fromPortId];
+      }
+      if (wire.toComponentId >= 0 && wire.toComponentId <= max_component_id &&
+          wire.toPortId >= 0 && wire.toPortId < kMaxPortsPerComponent) {
+        to_index =
+            cache.port_index_by_id[wire.toComponentId * kMaxPortsPerComponent +
+                                     wire.toPortId];
+      }
+      if (from_index >= 0 && to_index >= 0) {
+        unite(from_index, to_index);
+      }
+    }
+
+    for (int i = 0; i < cache.port_count; ++i) {
+      cache.base_parent[i] = cache.parent[i];
+      cache.base_rank[i] = cache.rank[i];
+    }
+
+    std::fill(cache.component_types.begin(), cache.component_types.end(),
+              ComponentType::PLC);
+    for (const auto& comp : placed_components_) {
+      if (comp.instanceId >= 0 && comp.instanceId <= max_component_id &&
+          comp.instanceId < kMaxElectricalComponents) {
+        cache.component_types[comp.instanceId] = comp.type;
+      }
+    }
+
+    port_voltages_.clear();
+
+    cache.last_wiring_hash = wiring_hash;
+    cache.last_component_hash = component_hash;
+    cache.last_max_component_id = max_component_id;
+    cache.topology_valid = true;
+  }
+
+  if (cache.port_count == 0) {
+    return;
+  }
+
+  for (int i = 0; i < cache.port_count; ++i) {
+    cache.parent[i] = cache.base_parent[i];
+    cache.rank[i] = cache.base_rank[i];
+  }
+
+  auto get_index = [&](int comp_id, int port_id) -> int {
+    if (comp_id < 0 || comp_id > cache.last_max_component_id ||
+        comp_id >= kMaxElectricalComponents) {
+      return -1;
+    }
+    if (port_id < 0 || port_id >= kMaxPortsPerComponent) {
+      return -1;
+    }
+    int offset = comp_id * kMaxPortsPerComponent + port_id;
+    if (offset < 0 ||
+        offset >= static_cast<int>(cache.port_index_by_id.size())) {
+      return -1;
+    }
+    return cache.port_index_by_id[offset];
+  };
+
   for (const auto& comp : placed_components_) {
-    // Physical switch logic
     if (comp.type == ComponentType::LIMIT_SWITCH) {
       bool is_pressed = comp.internalStates.count("is_pressed") &&
                         comp.internalStates.at("is_pressed") > 0.5f;
-      PortRef com = std::make_pair(comp.instanceId, 0);
-      PortRef no = std::make_pair(comp.instanceId, 1);
-      PortRef nc = std::make_pair(comp.instanceId, 2);
-      if (is_pressed) {
-        adjList[com].push_back(no);
-        adjList[no].push_back(com);
-      } else {
-        adjList[com].push_back(nc);
-        adjList[nc].push_back(com);
+      int com_index = get_index(comp.instanceId, 0);
+      int target_port = is_pressed ? 1 : 2;
+      int target_index = get_index(comp.instanceId, target_port);
+      if (com_index >= 0 && target_index >= 0) {
+        unite(com_index, target_index);
       }
     } else if (comp.type == ComponentType::BUTTON_UNIT) {
       for (int i = 0; i < 3; ++i) {
         bool is_pressed =
             comp.internalStates.count("is_pressed_" + std::to_string(i)) &&
             comp.internalStates.at("is_pressed_" + std::to_string(i)) > 0.5f;
-        PortRef com = std::make_pair(comp.instanceId, i * 5 + 0);
-        PortRef no = std::make_pair(comp.instanceId, i * 5 + 1);
-        PortRef nc = std::make_pair(comp.instanceId, i * 5 + 2);
-        if (is_pressed) {
-          adjList[com].push_back(no);
-          adjList[no].push_back(com);
-        } else {
-          adjList[com].push_back(nc);
-          adjList[nc].push_back(com);
+        int com_index = get_index(comp.instanceId, i * 5 + 0);
+        int target_port = is_pressed ? (i * 5 + 1) : (i * 5 + 2);
+        int target_index = get_index(comp.instanceId, target_port);
+        if (com_index >= 0 && target_index >= 0) {
+          unite(com_index, target_index);
         }
       }
     } else if (comp.type == ComponentType::SENSOR) {
       bool is_detected = comp.internalStates.count("is_detected") &&
                          comp.internalStates.at("is_detected") > 0.5f;
       if (is_detected) {
-        PortRef p_24v = std::make_pair(comp.instanceId, 0);
-        PortRef p_out = std::make_pair(comp.instanceId, 2);
-        adjList[p_24v].push_back(p_out);
-        adjList[p_out].push_back(p_out);
-      }
-    }
-    // PLC output logic simulation
-    else if (comp.type == ComponentType::PLC) {
-      for (int i = 0; i < 16; ++i) {
-        bool isY_On = GetPlcDeviceState("Y" + std::to_string(i));
-        if (isY_On) {
-          int y_port_id = 16 + i;
-          int com_port_id = (i >= 8) ? 30 : 14;
-          adjList[std::make_pair(comp.instanceId, y_port_id)].push_back(
-              std::make_pair(comp.instanceId, com_port_id));
-          adjList[std::make_pair(comp.instanceId, com_port_id)].push_back(
-              std::make_pair(comp.instanceId, y_port_id));
+        int p24_index = get_index(comp.instanceId, 0);
+        int out_index = get_index(comp.instanceId, 2);
+        if (p24_index >= 0 && out_index >= 0) {
+          unite(p24_index, out_index);
         }
       }
     }
   }
 
-  // Electrical network analysis and voltage propagation
-  std::map<PortRef, int> port_to_net_id;
-  std::map<int, VoltageType> net_voltage_type;
-  int current_net_id = 1;
+  for (int i = 0; i < cache.port_count; ++i) {
+    cache.port_net_id[i] = -1;
+    cache.root_to_net[i] = -1;
+  }
+  int net_count = 0;
+  for (int i = 0; i < cache.port_count; ++i) {
+    int root = find_root(i, find_root);
+    if (cache.root_to_net[root] == -1) {
+      cache.root_to_net[root] = net_count++;
+    }
+    cache.port_net_id[i] = cache.root_to_net[root];
+  }
 
-  for (const auto& [port_ref, position] : port_positions_) {
-    if (port_to_net_id.find(port_ref) == port_to_net_id.end()) {
-      VoltageType found_voltage = VoltageType::NONE;
-      std::queue<PortRef> q;
-      q.push(port_ref);
-      port_to_net_id[port_ref] = current_net_id;
+  cache.net_count = net_count;
+  for (int i = 0; i < cache.net_count; ++i) {
+    cache.net_voltage[i] = static_cast<int>(VoltageType::NONE);
+  }
 
-      while (!q.empty()) {
-        PortRef p = q.front();
-        q.pop();
-        int compId = p.first;
-        int portId = p.second;
-        auto comp_it = std::find_if(
-            placed_components_.begin(), placed_components_.end(),
-            [compId](const auto& c) { return c.instanceId == compId; });
-        if (comp_it != placed_components_.end() &&
-            comp_it->type == ComponentType::POWER_SUPPLY) {
-          if (portId == 0)
-            found_voltage = VoltageType::V24;
-          if (portId == 1)
-            found_voltage = VoltageType::V0;
+  for (int i = 0; i < cache.port_count; ++i) {
+    int comp_id = cache.ports[i].first;
+    int port_id = cache.ports[i].second;
+    int net_id = cache.port_net_id[i];
+    if (net_id < 0) {
+      continue;
+    }
+
+    if (comp_id >= 0 && comp_id <= cache.last_max_component_id) {
+      ComponentType type = cache.component_types[comp_id];
+      if (type == ComponentType::POWER_SUPPLY) {
+        if (port_id == 0 && cache.net_voltage[net_id] !=
+                                static_cast<int>(VoltageType::V0)) {
+          cache.net_voltage[net_id] = static_cast<int>(VoltageType::V24);
         }
-        if (adjList.count(p)) {
-          for (const auto& neighbor : adjList.at(p)) {
-            if (port_to_net_id.find(neighbor) == port_to_net_id.end()) {
-              port_to_net_id[neighbor] = current_net_id;
-              q.push(neighbor);
-            }
-          }
+        if (port_id == 1) {
+          cache.net_voltage[net_id] = static_cast<int>(VoltageType::V0);
+        }
+      } else if (type == ComponentType::PLC && port_id >= 16 && port_id < 32) {
+        int y_index = port_id - 16;
+        bool y_state = GetPlcDeviceState("Y" + std::to_string(y_index));
+        if (y_state) {
+          cache.net_voltage[net_id] = static_cast<int>(VoltageType::V0);
         }
       }
-      net_voltage_type[current_net_id] = found_voltage;
-      current_net_id++;
     }
   }
 
-  // Set voltages based on network analysis
-  for (const auto& [port, net_id] : port_to_net_id) {
-    VoltageType type = net_voltage_type[net_id];
-    if (type == VoltageType::V24)
-      port_voltages_[port] = 24.0f;
-    else if (type == VoltageType::V0)
-      port_voltages_[port] = 0.0f;
-    else
-      port_voltages_[port] = -1.0f;
-  }
-
-  // Component activation based on closed circuit detection
-  for (auto& comp : placed_components_) {
-    if (comp.type == ComponentType::BUTTON_UNIT) {
-      for (int i = 0; i < 3; ++i) {
-        PortRef plus_port = std::make_pair(comp.instanceId, i * 5 + 3);
-        PortRef minus_port = std::make_pair(comp.instanceId, i * 5 + 4);
-        bool has_24v = port_voltages_.count(plus_port) &&
-                       port_voltages_.at(plus_port) > 23.0f;
-        bool has_0v = port_voltages_.count(minus_port) &&
-                      port_voltages_.at(minus_port) > -0.1f &&
-                      port_voltages_.at(minus_port) < 0.1f;
-        comp.internalStates["lamp_on_" + std::to_string(i)] =
-            (has_24v && has_0v) ? 1.0f : 0.0f;
+  for (int i = 0; i < cache.port_count; ++i) {
+    int net_id = cache.port_net_id[i];
+    float voltage = -1.0f;
+    if (net_id >= 0) {
+      VoltageType net_voltage =
+          static_cast<VoltageType>(cache.net_voltage[net_id]);
+      if (net_voltage == VoltageType::V24) {
+        voltage = 24.0f;
+      } else if (net_voltage == VoltageType::V0) {
+        voltage = 0.0f;
       }
     }
-    if (comp.type == ComponentType::VALVE_SINGLE ||
-        comp.type == ComponentType::VALVE_DOUBLE) {
-      PortRef sol_a_plus = std::make_pair(comp.instanceId, 0);
-      PortRef sol_a_minus = std::make_pair(comp.instanceId, 1);
-      bool sol_a_powered = port_voltages_.count(sol_a_plus) &&
-                           port_voltages_.at(sol_a_plus) > 23.0f &&
-                           port_voltages_.count(sol_a_minus) &&
-                           port_voltages_.at(sol_a_minus) > -0.1f &&
-                           port_voltages_.at(sol_a_minus) < 0.1f;
-      comp.internalStates["solenoid_a_active"] = sol_a_powered ? 1.0f : 0.0f;
-
-      if (comp.type == ComponentType::VALVE_DOUBLE) {
-        PortRef sol_b_plus = std::make_pair(comp.instanceId, 2);
-        PortRef sol_b_minus = std::make_pair(comp.instanceId, 3);
-        bool sol_b_powered = port_voltages_.count(sol_b_plus) &&
-                             port_voltages_.at(sol_b_plus) > 23.0f &&
-                             port_voltages_.count(sol_b_minus) &&
-                             port_voltages_.at(sol_b_minus) > -0.1f &&
-                             port_voltages_.at(sol_b_minus) < 0.1f;
-        comp.internalStates["solenoid_b_active"] = sol_b_powered ? 1.0f : 0.0f;
-      }
-    }
-    if (comp.type == ComponentType::SENSOR) {
-      PortRef plus_port = std::make_pair(comp.instanceId, 0);
-      PortRef minus_port = std::make_pair(comp.instanceId, 1);
-      bool has_24v = port_voltages_.count(plus_port) &&
-                     port_voltages_.at(plus_port) > 23.0f;
-      bool has_0v = port_voltages_.count(minus_port) &&
-                    port_voltages_.at(minus_port) > -0.1f &&
-                    port_voltages_.at(minus_port) < 0.1f;
-      comp.internalStates["is_powered"] = (has_24v && has_0v) ? 1.0f : 0.0f;
-    }
+    port_voltages_[cache.ports[i]] = voltage;
   }
 
-  // Note: X 입력 동기화는 SyncPhysicsEngineToApplication()에서 단일 경로로
-  // 처리합니다.
+  ElectricalUpdateContext update_context;
+  update_context.components = &placed_components_;
+  update_context.voltages = &port_voltages_;
+  GetComponentTaskRunner().Run(placed_components_.size(), UpdateElectricalComponent,
+                               &update_context);
+
+  for (const auto& comp : placed_components_) {
+    if (comp.type != ComponentType::PLC) {
+      continue;
+    }
+    for (int i = 0; i < 16; ++i) {
+      auto key = std::make_pair(comp.instanceId, i);
+      float voltage = 0.0f;
+      if (port_voltages_.count(key)) {
+        voltage = port_voltages_.at(key);
+      }
+      SetPlcDeviceState("X" + std::to_string(i), voltage > 0.0f);
+    }
+  }
 }
 void Application::UpdateComponentLogic() {
-  for (auto& comp : placed_components_) {
-    if (comp.type == ComponentType::VALVE_DOUBLE) {
-      bool sol_a_active = comp.internalStates.count("solenoid_a_active") &&
-                          comp.internalStates.at("solenoid_a_active") > 0.5f;
-      bool sol_b_active = comp.internalStates.count("solenoid_b_active") &&
-                          comp.internalStates.at("solenoid_b_active") > 0.5f;
-
-      if (sol_a_active && !sol_b_active) {
-        comp.internalStates["last_active_solenoid"] = 1.0f;
-      } else if (sol_b_active && !sol_a_active) {
-        comp.internalStates["last_active_solenoid"] = 2.0f;
-      }
-    }
-  }
+  ValveLogicContext update_context;
+  update_context.components = &placed_components_;
+  GetComponentTaskRunner().Run(placed_components_.size(),
+                               UpdateValveLogicComponent, &update_context);
 }
 
 void Application::SimulatePneumatic() {
@@ -595,67 +1025,16 @@ void Application::UpdateActuators() {
   const float ACTIVATION_PRESSURE_THRESHOLD = 2.5f;
   const float FORCE_SCALING_FACTOR = 15.0f;
 
-  for (auto& comp : placed_components_) {
-    if (comp.type == ComponentType::CYLINDER) {
-      if (!comp.internalStates.count("position")) {
-        comp.internalStates["position"] = 0.0f;
-        comp.internalStates["velocity"] = 0.0f;
-      }
-
-      float currentPosition = comp.internalStates.at("position");
-      float currentVelocity = comp.internalStates.at("velocity");
-
-      float pressureA = port_pressures_.count({comp.instanceId, 0})
-                            ? port_pressures_.at({comp.instanceId, 0})
-                            : 0.0f;
-      float pressureB = port_pressures_.count({comp.instanceId, 1})
-                            ? port_pressures_.at({comp.instanceId, 1})
-                            : 0.0f;
-
-      float pressureDiff = pressureA - pressureB;
-      float force = 0.0f;
-
-      if (std::abs(pressureDiff) >= ACTIVATION_PRESSURE_THRESHOLD) {
-        float effectivePressure =
-            std::abs(pressureDiff) - ACTIVATION_PRESSURE_THRESHOLD;
-        float forceMagnitude =
-            std::pow(effectivePressure, 2.0f) * FORCE_SCALING_FACTOR;
-        force = std::copysign(forceMagnitude, pressureDiff);
-      }
-
-      float frictionForce = -frictionCoeff * currentVelocity;
-      float totalForce = force + frictionForce;
-
-      float acceleration = totalForce / pistonMass;
-
-      currentVelocity += acceleration * deltaTime;
-      currentPosition += currentVelocity * deltaTime;
-
-      const float maxStroke = 160.0f;
-      if (currentPosition < 0.0f) {
-        currentPosition = 0.0f;
-        if (currentVelocity < 0)
-          currentVelocity = 0;
-      } else if (currentPosition > maxStroke) {
-        currentPosition = maxStroke;
-        if (currentVelocity > 0)
-          currentVelocity = 0;
-      }
-
-      comp.internalStates["position"] = currentPosition;
-      comp.internalStates["velocity"] = currentVelocity;
-      comp.internalStates["pressure_a"] = pressureA;
-      comp.internalStates["pressure_b"] = pressureB;
-
-      const float velocityThreshold = 1.0f;
-      if (currentVelocity > velocityThreshold)
-        comp.internalStates["status"] = 1.0f;
-      else if (currentVelocity < -velocityThreshold)
-        comp.internalStates["status"] = -1.0f;
-      else
-        comp.internalStates["status"] = 0.0f;
-    }
-  }
+  CylinderUpdateContext update_context;
+  update_context.components = &placed_components_;
+  update_context.pressures = &port_pressures_;
+  update_context.delta_time = deltaTime;
+  update_context.piston_mass = pistonMass;
+  update_context.friction_coeff = frictionCoeff;
+  update_context.activation_threshold = ACTIVATION_PRESSURE_THRESHOLD;
+  update_context.force_scale = FORCE_SCALING_FACTOR;
+  GetComponentTaskRunner().Run(placed_components_.size(), UpdateCylinderComponent,
+                               &update_context);
 
   // Sensor and limit switch detection system
   static int debugCounter = 0;
@@ -957,7 +1336,7 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
         if (yState) {
           // Y OUTPUT ON: Low voltage (sinking type PLC output)
           node.isVoltageSource = true;
-          node.sourceVoltage = 0.5f;     // 0.5V residual voltage when ON
+          node.sourceVoltage = 0.0f;
           node.sourceResistance = 0.1f;  // 0.1Ω output resistance
         } else {
           // Y OUTPUT OFF: High impedance (open circuit)
@@ -975,7 +1354,7 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
               physics_engine_->componentPhysicsStates[physicsIndex];
           if (physState.type == PHYSICS_STATE_PLC) {
             physState.state.plc.outputStates[y] = yState;
-            physState.state.plc.outputVoltages[y] = yState ? 0.5f : 24.0f;
+            physState.state.plc.outputVoltages[y] = yState ? 0.0f : -1.0f;
             physState.state.plc.outputCurrents[y] =
                 yState ? 100.0f : 0.0f;  // 100mA when ON
           }
@@ -1017,8 +1396,7 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
             physState.state.plc.inputVoltages[x] = node.voltage;
             physState.state.plc.inputCurrents[x] =
                 node.current * 1000.0f;  // A → mA
-            physState.state.plc.inputStates[x] =
-                (node.voltage > 12.0f);  // 12V 임계값
+            physState.state.plc.inputStates[x] = (node.voltage > 0.0f);
           }
         }
       }
@@ -1446,3 +1824,5 @@ std::vector<std::pair<int, bool>> Application::GetPortsForComponent(
   return ports;
 }
 }  // namespace plc
+
+

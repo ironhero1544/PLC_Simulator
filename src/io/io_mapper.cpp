@@ -1,5 +1,4 @@
 // io_mapper.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Implementation of I/O mapper.
 

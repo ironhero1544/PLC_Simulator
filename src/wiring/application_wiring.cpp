@@ -1,5 +1,4 @@
 // application_wiring.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Wire drawing and editing.
 
@@ -12,6 +11,9 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <string>
+
+#include <GLFW/glfw3.h>
 
 namespace plc {
 
@@ -29,6 +31,9 @@ void Application::StartWireConnection(int componentId, int portId,
     wire_start_pos_ = portWorldPos;
     wire_current_pos_ = portWorldPos;
     current_way_points_.clear();
+    last_pointer_world_pos_ = portWorldPos;
+    last_pointer_move_time_ = ImGui::GetTime();
+    last_auto_waypoint_time_ = last_pointer_move_time_;
   }
 }
 
@@ -40,7 +45,9 @@ void Application::UpdateWireDrawing(ImVec2 mousePos) {
 
 void Application::CompleteWireConnection(int componentId, int portId,
                                          ImVec2 portWorldPos) {
-  if (is_connecting_ && componentId != wire_start_component_id_) {
+  if (is_connecting_ &&
+      !(componentId == wire_start_component_id_ &&
+        portId == wire_start_port_id_)) {
     int targetComponentId = -1;
     Port* targetPort = FindPortAtPosition(portWorldPos, targetComponentId);
     if (targetPort && targetComponentId == componentId) {
@@ -170,21 +177,34 @@ void Application::RenderWiringCanvas() {
 
     ImGui::SetCursorScreenPos(canvas_top_left_);
     ImGui::InvisibleButton("canvas_interaction_area", canvas_size_);
-    ImVec2 mouse_world_pos = ScreenToWorld(io.MousePos);
+    ImVec2 mouse_screen_pos =
+        last_pointer_is_pan_input_ ? touch_anchor_screen_pos_ : io.MousePos;
+    ImVec2 mouse_world_pos = ScreenToWorld(mouse_screen_pos);
 
     const bool is_canvas_hovered =
         ImGui::IsItemHovered() ||
-        (io.MousePos.x >= canvas_top_left_.x &&
-         io.MousePos.x <= canvas_top_left_.x + canvas_size_.x &&
-         io.MousePos.y >= canvas_top_left_.y &&
-         io.MousePos.y <= canvas_top_left_.y + canvas_size_.y);
+        (mouse_screen_pos.x >= canvas_top_left_.x &&
+         mouse_screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
+         mouse_screen_pos.y >= canvas_top_left_.y &&
+         mouse_screen_pos.y <= canvas_top_left_.y + canvas_size_.y);
+    const bool allow_pan_zoom = is_canvas_hovered || touch_gesture_active_;
+    const bool is_pan_input = last_pointer_is_pan_input_;
+    const double now = ImGui::GetTime();
+    const float move_epsilon = 1.0f;
+    const float move_dx = mouse_world_pos.x - last_pointer_world_pos_.x;
+    const float move_dy = mouse_world_pos.y - last_pointer_world_pos_.y;
+    if ((move_dx * move_dx + move_dy * move_dy) >=
+        (move_epsilon * move_epsilon)) {
+      last_pointer_world_pos_ = mouse_world_pos;
+      last_pointer_move_time_ = now;
+    }
 
     // Handle FRL pressure adjustment
     bool frl_interaction_handled = HandleFRLPressureAdjustment(mouse_world_pos, io);
 
     // Handle zoom and pan
     bool wheel_handled = false;
-    HandleZoomAndPan(is_canvas_hovered, io, frl_interaction_handled, wheel_handled);
+    HandleZoomAndPan(allow_pan_zoom, io, frl_interaction_handled, wheel_handled);
     
     if ((wheel_handled || frl_interaction_handled) && is_canvas_hovered) {
       ImGui::SetItemDefaultFocus();
@@ -194,7 +214,7 @@ void Application::RenderWiringCanvas() {
     RenderGrid(draw_list);
 
     // Handle component drop and wire deletion
-    HandleComponentDropAndWireDelete(is_canvas_hovered, mouse_world_pos);
+    HandleComponentDropAndWireDelete(is_canvas_hovered, mouse_world_pos, io);
 
     if (current_tool_ == ToolType::SELECT) {
       if (wire_edit_mode_ == WireEditMode::MOVING_POINT) {
@@ -202,8 +222,9 @@ void Application::RenderWiringCanvas() {
           for (auto& wire : wires_) {
             if (wire.id == editing_wire_id_ && editing_point_index_ >= 0 &&
                 editing_point_index_ < static_cast<int>(wire.wayPoints.size())) {
-              ImVec2 snapped_pos = ApplySnap(mouse_world_pos, true);
-              wire.wayPoints[static_cast<size_t>(editing_point_index_)] = snapped_pos;
+          // ImVec2 snapped_pos = ApplySnap(mouse_world_pos, true);
+          ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
+          wire.wayPoints[static_cast<size_t>(editing_point_index_)] = snapped_pos;
             }
           }
         } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -317,7 +338,8 @@ void Application::RenderWiringCanvas() {
       }
     } else {
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
-        ImVec2 snapped_pos = ApplySnap(mouse_world_pos, true);
+        // ImVec2 snapped_pos = ApplySnap(mouse_world_pos, true);
+        ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
         int clickedComponentId = -1;
         Port* clickedPort = FindPortAtPosition(snapped_pos, clickedComponentId);
         if (clickedPort && clickedComponentId != -1) {
@@ -327,15 +349,36 @@ void Application::RenderWiringCanvas() {
           else
             CompleteWireConnection(clickedComponentId, clickedPort->id,
                                    snapped_pos);
-        } else if (is_connecting_)
-          HandleWayPointClick(snapped_pos);
+        } else if (is_connecting_) {
+          HandleWayPointClick(snapped_pos, true);
+        }
+      }
+      if (is_connecting_ && is_pan_input && is_canvas_hovered) {
+        const double idle_threshold = 0.25;
+        const double cooldown = 0.35;
+        const float min_waypoint_dist = 6.0f;
+        if ((now - last_pointer_move_time_) >= idle_threshold &&
+            (now - last_auto_waypoint_time_) >= cooldown) {
+          ImVec2 candidate = ApplyPortSnap(mouse_world_pos);
+          ImVec2 last_point = current_way_points_.empty()
+                                  ? wire_start_pos_
+                                  : ImVec2(current_way_points_.back().x,
+                                           current_way_points_.back().y);
+          float dx = candidate.x - last_point.x;
+          float dy = candidate.y - last_point.y;
+          if ((dx * dx + dy * dy) >= (min_waypoint_dist * min_waypoint_dist)) {
+            AddWayPoint(candidate);
+            last_auto_waypoint_time_ = now;
+          }
+        }
       }
     }
 
     RenderPlacedComponents(draw_list);
     RenderWires(draw_list);
     if (is_connecting_) {
-      ImVec2 snapped_mouse_pos = ApplySnap(mouse_world_pos, true);
+      // ImVec2 snapped_mouse_pos = ApplySnap(mouse_world_pos, true);
+      ImVec2 snapped_mouse_pos = ApplyPortSnap(mouse_world_pos);
       UpdateWireDrawing(snapped_mouse_pos);
       if (snapped_mouse_pos.x != mouse_world_pos.x ||
           snapped_mouse_pos.y != mouse_world_pos.y) {
@@ -423,7 +466,7 @@ void Application::RenderWiringCanvas() {
         ImGui::Separator();
         ImGui::Text("줌: 마우스 휠");
         ImGui::Text("팬: 중간버튼 드래그");
-        ImGui::Text("팬: Shift + 좌클릭 드래그");
+        ImGui::Text("팬: Alt + 우클릭 드래그");
         ImGui::Text("트랙패드: Ctrl + 스크롤");
         ImGui::PopStyleColor();
       }
@@ -436,9 +479,10 @@ void Application::RenderWiringCanvas() {
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
 }
-void Application::HandleWayPointClick(ImVec2 worldPos) {
+void Application::HandleWayPointClick(ImVec2 worldPos, bool use_port_snap_only) {
   if (is_connecting_) {
-    ImVec2 snappedPos = ApplySnap(worldPos, true);
+    // ImVec2 snappedPos = ApplySnap(worldPos, true);
+    ImVec2 snappedPos = ApplyPortSnap(worldPos);
     AddWayPoint(snappedPos);
   }
 }
@@ -496,7 +540,9 @@ int Application::FindWayPointAtPosition(Wire& wire, ImVec2 worldPos,
 
 Wire* Application::FindWireAtPosition(ImVec2 worldPos, float tolerance) {
   Wire* closestWire = nullptr;
-  float min_dist_sq = (tolerance / camera_zoom_) * (tolerance / camera_zoom_);
+  float effective_tolerance = std::max(tolerance, 10.0f);
+  float min_dist_sq = (effective_tolerance / camera_zoom_) *
+                      (effective_tolerance / camera_zoom_);
 
   for (auto& wire : wires_) {
     auto startIt =
@@ -548,7 +594,7 @@ Wire* Application::FindWireAtPosition(ImVec2 worldPos, float tolerance) {
 
 bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos, 
                                                const ImGuiIO& io) {
-  if (!io.MouseWheel)
+  if (!io.MouseWheel || io.KeyCtrl)
     return false;
     
   for (auto& comp : placed_components_) {
@@ -577,6 +623,26 @@ bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
 
 void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
                                     bool frl_handled, bool& wheel_handled) {
+  if (touch_gesture_active_ && is_canvas_hovered) {
+    ImVec2 anchor = touch_anchor_screen_pos_;
+    ImVec2 mouse_pos_before_zoom = ScreenToWorld(anchor);
+    float zoom_factor = 1.0f + touch_zoom_delta_;
+    if (zoom_factor > 0.01f) {
+      camera_zoom_ *= zoom_factor;
+      camera_zoom_ = std::max(0.05f, std::min(camera_zoom_, 10.0f));
+      ImVec2 mouse_pos_after_zoom = ScreenToWorld(anchor);
+      camera_offset_.x += (mouse_pos_before_zoom.x - mouse_pos_after_zoom.x);
+      camera_offset_.y += (mouse_pos_before_zoom.y - mouse_pos_after_zoom.y);
+    }
+
+    camera_offset_.x += touch_pan_delta_.x / camera_zoom_;
+    camera_offset_.y += touch_pan_delta_.y / camera_zoom_;
+    touch_gesture_active_ = false;
+    touch_zoom_delta_ = 0.0f;
+    touch_pan_delta_ = ImVec2(0.0f, 0.0f);
+    wheel_handled = true;
+  }
+
   // Zoom with mouse wheel
   if (is_canvas_hovered && io.MouseWheel != 0 && !io.KeyCtrl && !frl_handled) {
     ImVec2 mouse_pos_before_zoom = ScreenToWorld(io.MousePos);
@@ -601,11 +667,10 @@ void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
     wheel_handled = true;
   }
   
-  // Pan with middle mouse or Shift+Left
+  // Pan with middle mouse
   float pan_sensitivity = 1.0f;
   if (is_canvas_hovered &&
-      (ImGui::IsMouseDragging(ImGuiMouseButton_Middle) ||
-       (io.KeyShift && ImGui::IsMouseDragging(ImGuiMouseButton_Left)))) {
+      ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
     camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
     camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
   }
@@ -642,8 +707,29 @@ void Application::RenderGrid(ImDrawList* draw_list) {
   }
 }
 
+void Application::UpdateTouchGesture(float zoom_delta, ImVec2 pan_delta,
+                                     bool active) {
+  touch_gesture_active_ = active;
+  if (!active) {
+    touch_zoom_delta_ = 0.0f;
+    touch_pan_delta_ = ImVec2(0.0f, 0.0f);
+    return;
+  }
+  touch_zoom_delta_ = zoom_delta;
+  touch_pan_delta_ = pan_delta;
+}
+
+void Application::SetPanInputActive(bool active) {
+  last_pointer_is_pan_input_ = active;
+}
+
+void Application::SetTouchAnchor(ImVec2 screen_pos) {
+  touch_anchor_screen_pos_ = screen_pos;
+}
+
 void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
-                                                    ImVec2 mouse_world_pos) {
+                                                    ImVec2 mouse_world_pos,
+                                                    const ImGuiIO& io) {
   // Handle component drop
   if (is_dragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
     if (is_canvas_hovered)
@@ -654,17 +740,141 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
     }
   }
 
-  // Handle wire deletion with right click
-  if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && is_canvas_hovered) {
+  bool right_click = win32_right_click_ ||
+                     ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+  bool right_down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) ==
+                    GLFW_PRESS;
+  if (!right_click && right_down && !prev_right_button_down_) {
+    right_click = true;
+  }
+  win32_right_click_ = false;
+  prev_right_button_down_ = right_down;
+
+  // Right click: cancel wire if connecting, otherwise delete under cursor.
+  if (right_click && !is_canvas_hovered) {
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] Right click: canvas not hovered");
+    }
+  }
+  if (right_click && is_canvas_hovered && !io.KeyAlt) {
     if (is_connecting_) {
       is_connecting_ = false;
       current_way_points_.clear();
+      if (IsDebugEnabled()) {
+        DebugLog("[INPUT] Right click: cancel wire");
+      }
     } else {
+      bool deleted = false;
+      for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
+        const auto& comp = placed_components_[static_cast<size_t>(i)];
+        if (mouse_world_pos.x >= comp.position.x &&
+            mouse_world_pos.x <= comp.position.x + comp.size.width &&
+            mouse_world_pos.y >= comp.position.y &&
+            mouse_world_pos.y <= comp.position.y + comp.size.height) {
+          HandleComponentSelection(comp.instanceId);
+          DeleteSelectedComponent();
+          deleted = true;
+          if (IsDebugEnabled()) {
+            DebugLog("[INPUT] Right click: delete component " +
+                     std::to_string(comp.instanceId));
+          }
+          break;
+        }
+      }
+      if (!deleted) {
       Wire* wire_to_delete = FindWireAtPosition(mouse_world_pos);
-      if (wire_to_delete)
-        DeleteWire(wire_to_delete->id);
+      if (wire_to_delete) {
+        int wire_id = wire_to_delete->id;
+        DeleteWire(wire_id);
+        deleted = true;
+        if (IsDebugEnabled()) {
+          DebugLog("[INPUT] Right click: delete wire " +
+                   std::to_string(wire_id));
+        }
+      }
+      }
+      if (!deleted && IsDebugEnabled()) {
+        DebugLog("[INPUT] Right click: nothing to delete at (" +
+                 std::to_string(static_cast<int>(mouse_world_pos.x)) + "," +
+                 std::to_string(static_cast<int>(mouse_world_pos.y)) + ")");
+      }
     }
   }
+
+  // Delete component or wire with side button (XButton1)
+  bool side_click = win32_side_click_ || ImGui::IsMouseClicked(3);
+  bool side_down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_4) ==
+                   GLFW_PRESS;
+  bool side_hold = win32_side_down_ || ImGui::IsMouseDown(3) || side_down;
+  if (!side_click && side_down && !prev_side_button_down_) {
+    side_click = true;
+  }
+  win32_side_click_ = false;
+  win32_side_down_ = side_hold;
+  prev_side_button_down_ = side_down;
+
+  if (side_click && !is_canvas_hovered) {
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] Side click: canvas not hovered");
+    }
+  }
+  if ((side_click || side_hold) && is_canvas_hovered) {
+    if (side_click && is_connecting_) {
+      is_connecting_ = false;
+      current_way_points_.clear();
+      if (IsDebugEnabled()) {
+        DebugLog("[INPUT] Side click: cancel wire");
+      }
+    }
+    bool deleted = false;
+    if (side_click) {
+      for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
+        const auto& comp = placed_components_[static_cast<size_t>(i)];
+        if (mouse_world_pos.x >= comp.position.x &&
+            mouse_world_pos.x <= comp.position.x + comp.size.width &&
+            mouse_world_pos.y >= comp.position.y &&
+            mouse_world_pos.y <= comp.position.y + comp.size.height) {
+          HandleComponentSelection(comp.instanceId);
+          DeleteSelectedComponent();
+          deleted = true;
+          if (IsDebugEnabled()) {
+            DebugLog("[INPUT] Side click: delete component " +
+                     std::to_string(comp.instanceId));
+          }
+          break;
+        }
+      }
+    }
+    if (!deleted) {
+      const float delete_tolerance = side_hold ? 20.0f : 10.0f;
+      Wire* wire_to_delete = FindWireAtPosition(mouse_world_pos,
+                                                delete_tolerance);
+      if (wire_to_delete) {
+        int wire_id = wire_to_delete->id;
+        DeleteWire(wire_id);
+        deleted = true;
+        if (IsDebugEnabled()) {
+          DebugLog("[INPUT] Side click: delete wire " +
+                   std::to_string(wire_id));
+        }
+      }
+    }
+    if (!deleted && side_click && IsDebugEnabled()) {
+      DebugLog("[INPUT] Side click: nothing to delete at (" +
+               std::to_string(static_cast<int>(mouse_world_pos.x)) + "," +
+               std::to_string(static_cast<int>(mouse_world_pos.y)) + ")");
+    }
+  }
+}
+
+bool Application::IsPointInCanvas(ImVec2 screen_pos) const {
+  if (canvas_size_.x <= 0.0f || canvas_size_.y <= 0.0f) {
+    return false;
+  }
+  return screen_pos.x >= canvas_top_left_.x &&
+         screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
+         screen_pos.y >= canvas_top_left_.y &&
+         screen_pos.y <= canvas_top_left_.y + canvas_size_.y;
 }
 
 }  // namespace plc

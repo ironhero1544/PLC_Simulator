@@ -1,5 +1,4 @@
 // window_manager.h
-// Copyright 2024 PLC Emulator Project
 //
 // Manages GLFW window creation and events.
 

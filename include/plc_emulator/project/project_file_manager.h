@@ -1,5 +1,4 @@
 // project_file_manager.h
-// Copyright 2024 PLC Emulator Project
 //
 // Project file save/load management.
 

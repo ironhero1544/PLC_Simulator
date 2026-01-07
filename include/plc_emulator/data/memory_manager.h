@@ -1,5 +1,4 @@
 // memory_manager.h
-// Copyright 2024 PLC Emulator Project
 //
 // PLC memory regions (X, Y, M, D, T, C).
 

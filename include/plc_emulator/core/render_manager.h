@@ -1,5 +1,4 @@
 // render_manager.h
-// Copyright 2024 PLC Emulator Project
 //
 // Manages OpenGL and ImGui rendering.
 

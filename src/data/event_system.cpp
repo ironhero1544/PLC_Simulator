@@ -1,5 +1,4 @@
 // event_system.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Implementation of event system.
 

@@ -1,13 +1,12 @@
-// openplc_compiler_integration.cpp
-// Copyright 2024 PLC Emulator Project
+﻿// openplc_compiler_integration.cpp
 //
 // Implementation of compiler integration.
 
 #include "plc_emulator/project/openplc_compiler_integration.h"
 
-#include "plc_emulator/programming/programming_mode.h"  // 🔥 **NEW**: LadderProgram 타입
-#include "plc_emulator/project/ladder_ir.h"  // 🔥 **NEW**: LadderIR 지원
-#include "plc_emulator/project/ladder_to_ld_converter.h"  // 🔥 **NEW**: IR 기반 변환기
+#include "plc_emulator/programming/programming_mode.h"  // ?뵦 **NEW**: LadderProgram ???
+#include "plc_emulator/project/ladder_ir.h"  // ?뵦 **NEW**: LadderIR 吏??
+#include "plc_emulator/project/ladder_to_ld_converter.h"  // ?뵦 **NEW**: IR 湲곕컲 蹂?섍린
 
 #include <algorithm>
 #include <fstream>
@@ -53,7 +52,7 @@ OpenPLCCompilerIntegration::CompileLDString(const std::string& ldContent) {
 
   DebugLog("Starting .ld compilation...");
 
-  // 1. .ld 파일 내용 파싱
+  // 1. .ld ?뚯씪 ?댁슜 ?뚯떛
   if (!ParseLDContent(ldContent)) {
     result.success = false;
     result.errorMessage = last_error_;
@@ -63,7 +62,7 @@ OpenPLCCompilerIntegration::CompileLDString(const std::string& ldContent) {
   DebugLog("Parsed " + std::to_string(instructions_.size()) + " instructions");
   DebugLog("Found " + std::to_string(variables_.size()) + " variables");
 
-  // 2. C++ 코드 생성
+  // 2. C++ 肄붾뱶 ?앹꽦
   result.generatedCode = GenerateCPPCode(instructions_);
 
   if (result.generatedCode.empty()) {
@@ -72,7 +71,7 @@ OpenPLCCompilerIntegration::CompileLDString(const std::string& ldContent) {
     return result;
   }
 
-  // 3. 결과 설정
+  // 3. 寃곌낵 ?ㅼ젙
   result.success = true;
   result.inputCount = input_count_;
   result.outputCount = output_count_;
@@ -113,21 +112,21 @@ bool OpenPLCCompilerIntegration::SaveGeneratedCode(
 }
 
 bool OpenPLCCompilerIntegration::ParseLDContent(const std::string& ldContent) {
-  // .ld 파일 구조:
-  // 1. 주석 (* ... *)
+  // .ld ?뚯씪 援ъ“:
+  // 1. 二쇱꽍 (* ... *)
   // 2. PROGRAM PLC_PRG
-  // 3. VAR 섹션
+  // 3. VAR ?뱀뀡
   // 4. END_VAR
-  // 5. 프로그램 섹션 (LD, AND, OR, ST 명령어들)
+  // 5. ?꾨줈洹몃옩 ?뱀뀡 (LD, AND, OR, ST 紐낅졊?대뱾)
   // 6. END_PROGRAM
 
   std::string content = ldContent;
 
-  // 주석 제거
+  // 二쇱꽍 ?쒓굅
   std::regex commentRegex(R"(\(\*.*?\*\))");
   content = std::regex_replace(content, commentRegex, "");
 
-  // VAR 섹션 추출
+  // VAR ?뱀뀡 異붿텧
   std::regex varRegex(R"(VAR\s+(.*?)\s+END_VAR)", std::regex_constants::icase);
   std::smatch varMatch;
 
@@ -137,10 +136,10 @@ bool OpenPLCCompilerIntegration::ParseLDContent(const std::string& ldContent) {
     }
   }
 
-  // 프로그램 섹션 추출 (VAR 이후부터 END_PROGRAM까지)
+  // ?꾨줈洹몃옩 ?뱀뀡 異붿텧 (VAR ?댄썑遺??END_PROGRAM源뚯?)
   size_t programStart = content.find("END_VAR");
   if (programStart != std::string::npos) {
-    programStart += 7;  // "END_VAR" 길이
+    programStart += 7;  // "END_VAR" 湲몄씠
 
     size_t programEnd = content.find("END_PROGRAM");
     if (programEnd == std::string::npos) {
@@ -153,7 +152,7 @@ bool OpenPLCCompilerIntegration::ParseLDContent(const std::string& ldContent) {
       return false;
     }
   } else {
-    // VAR 섹션이 없는 경우 전체를 프로그램 섹션으로 처리
+    // VAR ?뱀뀡???녿뒗 寃쎌슦 ?꾩껜瑜??꾨줈洹몃옩 ?뱀뀡?쇰줈 泥섎━
     if (!ParseInstructions(content)) {
       return false;
     }
@@ -171,10 +170,10 @@ bool OpenPLCCompilerIntegration::ParseVariableDeclarations(
     line = Trim(line);
     if (line.empty() || line[0] == '(' ||
         line.find("(*") != std::string::npos) {
-      continue;  // 주석이나 빈 줄 건너뛰기
+      continue;  // 二쇱꽍?대굹 鍮?以?嫄대꼫?곌린
     }
 
-    // 변수 선언 파싱: X0 AT %IX0.0 : BOOL;
+    // 蹂???좎뼵 ?뚯떛: X0 AT %IX0.0 : BOOL;
     std::regex varRegex(
         R"((\w+)\s+AT\s+%([IQMX])([XW]?)(\d+)\.?(\d*)\s*:\s*(\w+);?)");
     std::smatch match;
@@ -218,7 +217,7 @@ bool OpenPLCCompilerIntegration::ParseInstructions(const std::string& content) {
       continue;
     }
 
-    // 라인 토큰화 (연속 공백 허용)
+    // ?쇱씤 ?좏겙??(?곗냽 怨듬갚 ?덉슜)
     std::istringstream lineStream(line);
     std::vector<std::string> tokens;
     std::string tok;
@@ -236,7 +235,7 @@ bool OpenPLCCompilerIntegration::ParseInstructions(const std::string& content) {
     LDInstruction ldInst;
     ldInst.lineNumber = lineNumber;
 
-    // LD/AND/OR + optional NOT 처리
+    // LD/AND/OR + optional NOT 泥섎━
     if (instr == "LDN" || instr == "ANDN" || instr == "ORN") {
       if (tokens.size() < 2) {
         continue;
@@ -251,7 +250,7 @@ bool OpenPLCCompilerIntegration::ParseInstructions(const std::string& content) {
       ldInst.operand = tokens[1];
     } else if (instr == "LD" || instr == "AND" || instr == "OR") {
       if (tokens.size() < 2) {
-        // 피연산자 없음: 무시
+        // ?쇱뿰?곗옄 ?놁쓬: 臾댁떆
         continue;
       }
       bool hasNot = (upper(tokens[1]) == "NOT");
@@ -259,7 +258,7 @@ bool OpenPLCCompilerIntegration::ParseInstructions(const std::string& content) {
         ldInst.type = hasNot ? LDInstruction::LDN : LDInstruction::LD;
         if (hasNot) {
           if (tokens.size() < 3)
-            continue;  // NOT 뒤 피연산자 없음
+            continue;  // NOT ???쇱뿰?곗옄 ?놁쓬
           ldInst.operand = tokens[2];
         } else {
           ldInst.operand = tokens[1];
@@ -302,12 +301,14 @@ bool OpenPLCCompilerIntegration::ParseInstructions(const std::string& content) {
       if (tokens.size() >= 3)
         ldInst.preset = tokens[2];
     } else if (instr == "TOF" || instr == "CTU" || instr == "CTD") {
-      // 향후 확장용: 기본 피연산자만 수용
+      // ?ν썑 ?뺤옣?? 湲곕낯 ?쇱뿰?곗옄留??섏슜
       ldInst.type = StringToInstructionType(instr);
       if (tokens.size() >= 2)
         ldInst.operand = tokens[1];
+      if (instr == "CTU" && tokens.size() >= 3)
+        ldInst.preset = tokens[2];
     } else {
-      // 알 수 없는 명령: 건너뜀
+      // ?????녿뒗 紐낅졊: 嫄대꼫?
       continue;
     }
 
@@ -323,23 +324,23 @@ std::string OpenPLCCompilerIntegration::GenerateCPPCode(
     const std::vector<LDInstruction>& instructions) {
   std::stringstream code;
 
-  // 1. 헤더 생성
+  // 1. ?ㅻ뜑 ?앹꽦
   code << GenerateFunctionHeader();
   code << "\n";
 
-  // 2. 변수 선언
+  // 2. 蹂???좎뼵
   code << GenerateVariableDeclarations();
   code << "\n";
 
-  // 3. I/O 매핑
+  // 3. I/O 留ㅽ븨
   code << GenerateIOMapping();
   code << "\n";
 
-  // 4. 래더 로직 실행 코드
+  // 4. ?섎뜑 濡쒖쭅 ?ㅽ뻾 肄붾뱶
   code << GenerateExecutionCode(instructions);
   code << "\n";
 
-  // 5. 함수 종료
+  // 5. ?⑥닔 醫낅즺
   code << "}\n";
 
   return code.str();
@@ -366,7 +367,7 @@ std::string OpenPLCCompilerIntegration::GenerateVariableDeclarations() {
 
   vars << "    // PLC Scan Cycle Variables\n";
   vars << "    static bool accumulator = false;\n";
-  vars << "    static bool accumulator_stack[16]; // OR/AND 블록 스택\n";
+  vars << "    static bool accumulator_stack[16]; // OR/AND 釉붾줉 ?ㅽ깮\n";
   vars << "    static int stack_pointer = 0;\n";
   vars << "    \n";
   vars << "    // Timer variables\n";
@@ -419,6 +420,28 @@ std::string OpenPLCCompilerIntegration::GenerateExecutionCode(
 
 std::string OpenPLCCompilerIntegration::TranslateInstruction(
     const LDInstruction& instruction) {
+  auto preset_to_int = [](std::string preset, int scale) -> int {
+    if (preset.empty()) {
+      return 0;
+    }
+    if (preset[0] == 'K' || preset[0] == 'k') {
+      preset = preset.substr(1);
+    }
+    int value = 0;
+    try {
+      value = std::stoi(preset);
+    } catch (...) {
+      return 0;
+    }
+    if (value < 0) {
+      value = 0;
+    }
+    if (scale > 1) {
+      value *= scale;
+    }
+    return value;
+  };
+
   switch (instruction.type) {
     case LDInstruction::LD:
       return "accumulator = " + instruction.operand + ";";
@@ -445,27 +468,27 @@ std::string OpenPLCCompilerIntegration::TranslateInstruction(
       return "if (accumulator) " + instruction.operand + " = true;";
 
     case LDInstruction::R:
+      if (!instruction.operand.empty() &&
+          (instruction.operand[0] == 'T' || instruction.operand[0] == 'C')) {
+        return "PLC_RST " + instruction.operand + ";";
+      }
       return "if (accumulator) " + instruction.operand + " = false;";
 
     case LDInstruction::TON: {
-      // 타이머 처리
-      std::string timerVar = instruction.operand;
-      std::string presetValue = instruction.preset;
+      int preset_ms = preset_to_int(instruction.preset, 100);
+      return "PLC_TON " + instruction.operand + " " +
+             std::to_string(preset_ms) + ";";
+    }
 
-      // K100 -> 100ms로 변환
-      if (presetValue.length() > 1 && presetValue[0] == 'K') {
-        presetValue = presetValue.substr(1) + " * 100";
-      }
-
-      return "/* TON " + timerVar + " " + instruction.preset + " */ " +
-             "if (accumulator && T[" + timerVar.substr(1) + "] < " +
-             presetValue + ") " + "T[" + timerVar.substr(1) +
-             "] += elapsed_ms; " + "accumulator = (T[" + timerVar.substr(1) +
-             "] >= " + presetValue + ");";
+    case LDInstruction::CTU: {
+      int preset = preset_to_int(instruction.preset, 1);
+      return "PLC_CTU " + instruction.operand + " " +
+             std::to_string(preset) + ";";
     }
 
     default:
-      return "// Unknown instruction: " + std::to_string(static_cast<int>(instruction.type));
+      return "// Unknown instruction: " +
+             std::to_string(static_cast<int>(instruction.type));
   }
 }
 
@@ -502,7 +525,7 @@ OpenPLCCompilerIntegration::StringToInstructionType(
   if (upper == "CTD")
     return LDInstruction::CTD;
 
-  return LDInstruction::LD;  // 기본값
+  return LDInstruction::LD;  // 湲곕낯媛?
 }
 
 void OpenPLCCompilerIntegration::SetError(const std::string& error) {
@@ -528,26 +551,26 @@ std::string OpenPLCCompilerIntegration::Trim(const std::string& str) {
 }
 
 // ============================================================================
-// 🔥 **NEW**: IR 기반 고정밀도 컴파일 함수들 (Phase 4)
+// ?뵦 **NEW**: IR 湲곕컲 怨좎젙諛??而댄뙆???⑥닔??(Phase 4)
 // ============================================================================
 
 OpenPLCCompilerIntegration::CompilationResult
 OpenPLCCompilerIntegration::CompileLadderProgramWithIR(
     const LadderProgram& ladderProgram) {
-  DebugLog("🔥 Starting IR-based compilation...");
+  DebugLog("?뵦 Starting IR-based compilation...");
 
   CompilationResult result;
 
   try {
-    // 1. LadderProgram → LadderIR 변환
+    // 1. LadderProgram ??LadderIR 蹂??
     DebugLog("Step 1: Converting to IR...");
     LadderIRProgram irProgram = LadderToIRConverter::ConvertToIR(ladderProgram);
 
-    // 2. LadderIR → 컴파일
+    // 2. LadderIR ??而댄뙆??
     DebugLog("Step 2: Compiling IR program...");
     result = CompileIRProgram(irProgram);
 
-    DebugLog("✅ IR-based compilation completed!");
+    DebugLog("??IR-based compilation completed!");
 
   } catch (const std::exception& e) {
     result.success = false;
@@ -565,21 +588,21 @@ OpenPLCCompilerIntegration::CompileIRProgram(const LadderIRProgram& irProgram) {
   CompilationResult result;
 
   try {
-    // 1. LadderIR → 스택 명령어 변환
+    // 1. LadderIR ???ㅽ깮 紐낅졊??蹂??
     std::vector<std::string> stackInstructions =
         IRToStackConverter::ConvertToStackInstructions(irProgram);
 
     DebugLog("Generated " + std::to_string(stackInstructions.size()) +
              " stack instructions");
 
-    // 2. 스택 명령어 → .ld 문자열 변환
+    // 2. ?ㅽ깮 紐낅졊????.ld 臾몄옄??蹂??
     std::stringstream ldContent;
 
-    // .ld 헤더 생성
+    // .ld ?ㅻ뜑 ?앹꽦
     ldContent << GenerateOpenPLCHeader();
     ldContent << "\n\nPROGRAM main\nVAR\nEND_VAR\n\n";
 
-    // 스택 명령어들을 .ld 형식으로 변환
+    // ?ㅽ깮 紐낅졊?대뱾??.ld ?뺤떇?쇰줈 蹂??
     for (const auto& instruction : stackInstructions) {
       if (!instruction.empty()) {
         ldContent << "    " << instruction << ";\n";
@@ -588,11 +611,11 @@ OpenPLCCompilerIntegration::CompileIRProgram(const LadderIRProgram& irProgram) {
 
     ldContent << "\nEND_PROGRAM\n";
 
-    // 3. .ld 문자열 컴파일
+    // 3. .ld 臾몄옄??而댄뙆??
     std::string ldString = ldContent.str();
     result = CompileLDString(ldString);
 
-    // 4. IR 최적화 정보 추가
+    // 4. IR 理쒖쟻???뺣낫 異붽?
     if (result.success) {
       result.intermediateCode = "// IR-based compilation\n";
       result.intermediateCode +=
@@ -622,20 +645,20 @@ std::string OpenPLCCompilerIntegration::GenerateOpenPLCHeader() {
          << output_count_ << " outputs\n";
   header << "\n";
 
-  // I/O 변수 선언
+  // I/O 蹂???좎뼵
   header << "VAR_GLOBAL\n";
 
-  // 입력 변수들 (X0~X15)
+  // ?낅젰 蹂?섎뱾 (X0~X15)
   for (int i = 0; i < input_count_; ++i) {
     header << "  X" << i << " : BOOL;\n";
   }
 
-  // 출력 변수들 (Y0~Y15)
+  // 異쒕젰 蹂?섎뱾 (Y0~Y15)
   for (int i = 0; i < output_count_; ++i) {
     header << "  Y" << i << " : BOOL;\n";
   }
 
-  // 타이머/카운터 변수들
+  // ??대㉧/移댁슫??蹂?섎뱾
   header << "  // Timer variables\n";
   for (int i = 0; i < 100; ++i) {
     header << "  T" << i << " : TON;\n";

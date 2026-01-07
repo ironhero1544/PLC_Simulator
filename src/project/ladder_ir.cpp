@@ -1,18 +1,4 @@
 // ladder_ir.cpp
-// Copyright 2024 PLC Emulator Project
-//
-// Implementation of ladder IR.
-
-/**
- * @file LadderIR.cpp
- * @brief Ladder Intermediate Representation 구현
-  * L추가er Intermedi에서e Represent에서i위 구현
- *
- * 병렬(OR) 논리 회로의 정확한 변환을 위한 중간 표현 구현
- *
- * @author Claude Code Analysis Engine
- * @date 2025-01-08
- */
 
 #include "plc_emulator/project/ladder_ir.h"
 

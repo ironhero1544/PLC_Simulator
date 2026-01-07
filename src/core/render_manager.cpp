@@ -1,6 +1,4 @@
 // render_manager.cpp
-// Copyright 2024 PLC Emulator Project
-//
 // Implementation of render manager.
 
 // render_manager.cpp

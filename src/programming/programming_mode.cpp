@@ -1,6 +1,4 @@
-// programming_mode.cpp
-
-// Copyright 2024 PLC Emulator Project
+﻿// programming_mode.cpp
 
 //
 
@@ -27,6 +25,7 @@
 #include <functional>
 
 #include <iostream>
+#include <regex>
 
 #include <set>
 
@@ -1060,6 +1059,122 @@ size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
 
   return seed;
 
+}
+void ProgrammingMode::MarkDirty() {
+  is_dirty_ = true;
+  UpdateCompileErrorRungsOnEdit();
+}
+
+size_t ProgrammingMode::ComputeRungHash(const Rung& rung) const {
+  auto hash_combine = [](size_t& seed, size_t v) {
+    seed ^= v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+  };
+  std::hash<int> hi;
+  std::hash<std::string> hs;
+  size_t seed = 0;
+
+  hash_combine(seed, hi(rung.number));
+  hash_combine(seed, hi(rung.isEndRung ? 1 : 0));
+  hash_combine(seed, hi(static_cast<int>(rung.cells.size())));
+  for (const auto& cell : rung.cells) {
+    hash_combine(seed, hi(static_cast<int>(cell.type)));
+    hash_combine(seed, hs(cell.address));
+    hash_combine(seed, hs(cell.preset));
+  }
+  return seed;
+}
+
+void ProgrammingMode::UpdateCompileErrorRungsOnEdit() {
+  if (!compile_failed_ || compile_error_rungs_.empty()) {
+    return;
+  }
+
+  std::vector<int> remaining;
+  std::map<int, size_t> remainingHashes;
+
+  for (int rungIndex : compile_error_rungs_) {
+    if (rungIndex < 0 || rungIndex >= static_cast<int>(ladder_program_.rungs.size())) {
+      continue;
+    }
+    size_t currentHash = ComputeRungHash(ladder_program_.rungs[rungIndex]);
+    auto it = compile_error_rung_hashes_.find(rungIndex);
+    if (it != compile_error_rung_hashes_.end() && it->second == currentHash) {
+      remaining.push_back(rungIndex);
+      remainingHashes[rungIndex] = it->second;
+    }
+  }
+
+  compile_error_rungs_ = remaining;
+  compile_error_rung_hashes_ = remainingHashes;
+
+  if (compile_error_rungs_.empty()) {
+    compile_failed_ = false;
+    last_failed_hash_ = 0;
+    last_compile_error_.clear();
+  }
+}
+
+bool ProgrammingMode::IsRungCompileError(int rungIndex) const {
+  return std::find(compile_error_rungs_.begin(), compile_error_rungs_.end(),
+                   rungIndex) != compile_error_rungs_.end();
+}
+
+void ProgrammingMode::UpdateCompileErrorRungsOnCompileFailure(
+    const std::string& ldCode, const std::string& errorMessage) {
+  compile_failed_ = true;
+  last_failed_hash_ = ComputeProgramHash(ladder_program_);
+  last_compile_error_ = errorMessage;
+
+  compile_error_rungs_.clear();
+  compile_error_rung_hashes_.clear();
+
+  int errorLine = -1;
+  std::regex lineRegex(R"(line\s*(\d+))", std::regex_constants::icase);
+  std::smatch lineMatch;
+  if (std::regex_search(errorMessage, lineMatch, lineRegex)) {
+    try {
+      errorLine = std::stoi(lineMatch[1].str());
+    } catch (...) {
+      errorLine = -1;
+    }
+  }
+
+  if (!ldCode.empty() && errorLine > 0) {
+    std::istringstream ldStream(ldCode);
+    std::string line;
+    int currentRung = -1;
+    int lineNo = 0;
+    std::regex rungRegex(R"(\(\*\s*Rung\s+(\d+)\s*\*\))");
+    while (std::getline(ldStream, line)) {
+      lineNo++;
+      std::smatch rungMatch;
+      if (std::regex_search(line, rungMatch, rungRegex)) {
+        try {
+          currentRung = std::stoi(rungMatch[1].str());
+        } catch (...) {
+          currentRung = -1;
+        }
+      }
+      if (lineNo == errorLine && currentRung >= 0) {
+        compile_error_rungs_.push_back(currentRung);
+        break;
+      }
+    }
+  }
+
+  if (compile_error_rungs_.empty()) {
+    for (size_t i = 0; i + 1 < ladder_program_.rungs.size(); ++i) {
+      compile_error_rungs_.push_back(static_cast<int>(i));
+    }
+  }
+
+  for (int rungIndex : compile_error_rungs_) {
+    if (rungIndex < 0 || rungIndex >= static_cast<int>(ladder_program_.rungs.size())) {
+      continue;
+    }
+    compile_error_rung_hashes_[rungIndex] =
+        ComputeRungHash(ladder_program_.rungs[rungIndex]);
+  }
 }
 
 

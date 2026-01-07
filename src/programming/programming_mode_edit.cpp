@@ -1,13 +1,14 @@
-// programming_mode_edit.cpp
-// Copyright 2024 PLC Emulator Project
+﻿// programming_mode_edit.cpp
 //
 // Ladder editing functions.
 
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <cctype>
-#include <vector>  // [NEW] std::vector 사용을 위해 추가
+#include <vector>  // [NEW] std::vector ?ъ슜???꾪빐 異붽?
 
 namespace plc {
 
@@ -24,7 +25,9 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
 
   bool onEndRung =
       (selected_rung_ == static_cast<int>(ladder_program_.rungs.size()) - 1);
-  bool shiftPressed = ImGui::GetIO().KeyShift;
+  ImGuiIO& io = ImGui::GetIO();
+  bool shiftPressed = io.KeyShift;
+  bool ctrlPressed = io.KeyCtrl;
 
   if (!is_monitor_mode_) {
     switch (key) {
@@ -42,6 +45,9 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
         }
         return;
       case ImGuiKey_F9:
+        if (selected_cell_ == 11) {
+          return;
+        }
         if (shiftPressed) {
           if (!onEndRung && selected_cell_ > 0) {
             AddVerticalConnection();
@@ -70,6 +76,9 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
     }
   }
 
+  int prev_rung = selected_rung_;
+  int prev_cell = selected_cell_;
+
   switch (key) {
     case ImGuiKey_LeftArrow:
       if (selected_cell_ > 0)
@@ -93,6 +102,120 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
     case ImGuiKey_F3:
       is_monitor_mode_ = false;
       break;
+  }
+
+  if (ctrlPressed && !is_monitor_mode_ &&
+      (prev_rung != selected_rung_ || prev_cell != selected_cell_)) {
+    if (prev_rung == selected_rung_) {
+      int step = (selected_cell_ > prev_cell) ? 1 : -1;
+      for (int c = prev_cell; c != selected_cell_; c += step) {
+        int next = c + step;
+        if (next < 0 || next >= 12)
+          continue;
+        if (prev_rung >= static_cast<int>(ladder_program_.rungs.size()) - 1)
+          continue;
+
+        if (next != 11) {
+          auto& dest = ladder_program_.rungs[prev_rung].cells[next];
+          if (dest.type == LadderInstructionType::HLINE) {
+            dest = LadderInstruction();
+            MarkDirty();
+            continue;
+          }
+        }
+
+        if (c != 11) {
+          auto& current = ladder_program_.rungs[prev_rung].cells[c];
+          if (current.type == LadderInstructionType::EMPTY) {
+            current.type = LadderInstructionType::HLINE;
+            MarkDirty();
+          }
+        }
+      }
+    } else if (prev_cell == selected_cell_) {
+      if (selected_cell_ == 11) {
+        return;
+      }
+      int maxRung = static_cast<int>(ladder_program_.rungs.size()) - 2;
+      auto segment_key = [](int a, int b) -> long long {
+        int lo = std::min(a, b);
+        int hi = std::max(a, b);
+        return (static_cast<long long>(lo) << 32) | static_cast<unsigned int>(hi);
+      };
+      std::set<long long> segments;
+      for (const auto& conn : ladder_program_.verticalConnections) {
+        if (conn.x != selected_cell_)
+          continue;
+        std::vector<int> rungs = conn.rungs;
+        std::sort(rungs.begin(), rungs.end());
+        for (size_t i = 0; i + 1 < rungs.size(); ++i) {
+          int a = rungs[i];
+          int b = rungs[i + 1];
+          if (b == a + 1) {
+            segments.insert(segment_key(a, b));
+          }
+        }
+      }
+
+      int step = (selected_rung_ > prev_rung) ? 1 : -1;
+      for (int r = prev_rung; r != selected_rung_; r += step) {
+        int next = r + step;
+        if (r < 0 || next < 0 || r > maxRung || next > maxRung)
+          continue;
+        long long segmentKey = segment_key(r, next);
+        if (segments.count(segmentKey)) {
+          segments.erase(segmentKey);
+        } else {
+          segments.insert(segmentKey);
+        }
+        MarkDirty();
+      }
+
+      std::map<int, std::set<int>> adjacency;
+      for (long long segmentKey : segments) {
+        int a = static_cast<int>(segmentKey >> 32);
+        int b = static_cast<int>(segmentKey & 0xffffffff);
+        adjacency[a].insert(b);
+        adjacency[b].insert(a);
+      }
+
+      std::set<int> visited;
+      std::vector<VerticalConnection> rebuilt;
+      for (const auto& conn : ladder_program_.verticalConnections) {
+        if (conn.x != selected_cell_) {
+          rebuilt.push_back(conn);
+        }
+      }
+
+      for (const auto& entry : adjacency) {
+        int node = entry.first;
+        if (visited.count(node))
+          continue;
+        std::vector<int> stack;
+        std::vector<int> component;
+        stack.push_back(node);
+        visited.insert(node);
+        while (!stack.empty()) {
+          int current = stack.back();
+          stack.pop_back();
+          component.push_back(current);
+          for (int neighbor : adjacency[current]) {
+            if (visited.insert(neighbor).second) {
+              stack.push_back(neighbor);
+            }
+          }
+        }
+        std::sort(component.begin(), component.end());
+        if (component.size() >= 2) {
+          VerticalConnection vc;
+          vc.x = selected_cell_;
+          vc.rungs = component;
+          rebuilt.push_back(vc);
+        }
+      }
+
+      ladder_program_.verticalConnections = rebuilt;
+    }
   }
 }
 
@@ -215,55 +338,55 @@ void ProgrammingMode::AddNewRung() {
   MarkDirty();
 }
 
-// [MODIFIED] 룽 삭제 시 연결된 세로선을 함께 제거하고, 나머지 세로선의 인덱스를
-// 업데이트하는 로직 추가
+// [MODIFIED] 猷???젣 ???곌껐???몃줈?좎쓣 ?④퍡 ?쒓굅?섍퀬, ?섎㉧吏 ?몃줈?좎쓽 ?몃뜳?ㅻ?
+// ?낅뜲?댄듃?섎뒗 濡쒖쭅 異붽?
 void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
-  // END 룽이나 존재하지 않는 룽은 삭제할 수 없음
+  // END 猷쎌씠??議댁옱?섏? ?딅뒗 猷쎌? ??젣?????놁쓬
   if (rungIndexToDelete < 0 ||
       rungIndexToDelete >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
     return;
   }
 
-  // 1. 세로선 연결 정보 업데이트
+  // 1. ?몃줈???곌껐 ?뺣낫 ?낅뜲?댄듃
   std::vector<VerticalConnection> updatedConnections;
   for (const auto& conn : ladder_program_.verticalConnections) {
-    // 현재 연결이 삭제될 룽을 포함하는지 확인
+    // ?꾩옱 ?곌껐????젣??猷쎌쓣 ?ы븿?섎뒗吏 ?뺤씤
     auto it =
         std::find(conn.rungs.begin(), conn.rungs.end(), rungIndexToDelete);
 
     if (it == conn.rungs.end()) {
-      // 삭제될 룽을 포함하지 않으면, 이 연결은 유지. 단, 인덱스 조정이 필요.
+      // ??젣??猷쎌쓣 ?ы븿?섏? ?딆쑝硫? ???곌껐? ?좎?. ?? ?몃뜳??議곗젙???꾩슂.
       VerticalConnection newConn;
       newConn.x = conn.x;
       for (int r_idx : conn.rungs) {
         if (r_idx > rungIndexToDelete) {
-          newConn.rungs.push_back(r_idx - 1);  // 인덱스 1 감소
+          newConn.rungs.push_back(r_idx - 1);  // ?몃뜳??1 媛먯냼
         } else {
           newConn.rungs.push_back(r_idx);
         }
       }
-      // 업데이트 후에도 여전히 2개 이상의 룽을 연결하는 경우에만 추가
+      // ?낅뜲?댄듃 ?꾩뿉???ъ쟾??2媛??댁긽??猷쎌쓣 ?곌껐?섎뒗 寃쎌슦?먮쭔 異붽?
       if (newConn.rungs.size() >= 2) {
         updatedConnections.push_back(newConn);
       }
     }
-    // else: 삭제될 룽을 포함하는 연결은 updatedConnections에 추가하지 않아
-    // 자동으로 삭제됨
+    // else: ??젣??猷쎌쓣 ?ы븿?섎뒗 ?곌껐? updatedConnections??異붽??섏? ?딆븘
+    // ?먮룞?쇰줈 ??젣??
   }
-  // 업데이트된 연결 목록으로 교체
+  // ?낅뜲?댄듃???곌껐 紐⑸줉?쇰줈 援먯껜
   ladder_program_.verticalConnections = updatedConnections;
 
-  // 2. 룽 삭제
-  if (ladder_program_.rungs.size() > 2) {  // 최소 1개의 룽과 END 룽은 유지
+  // 2. 猷???젣
+  if (ladder_program_.rungs.size() > 2) {  // 理쒖냼 1媛쒖쓽 猷쎄낵 END 猷쎌? ?좎?
     ladder_program_.rungs.erase(ladder_program_.rungs.begin() +
                                 rungIndexToDelete);
 
-    // 커서 위치 조정
+    // 而ㅼ꽌 ?꾩튂 議곗젙
     if (selected_rung_ >= rungIndexToDelete && selected_rung_ > 0) {
       selected_rung_--;
     }
 
-    // 3. 나머지 룽 번호 재정렬
+    // 3. ?섎㉧吏 猷?踰덊샇 ?ъ젙??
     for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
       ladder_program_.rungs[i].number = i;
     }

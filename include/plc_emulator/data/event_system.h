@@ -1,5 +1,4 @@
 // event_system.h
-// Copyright 2024 PLC Emulator Project
 //
 // Event dispatching and handling system.
 

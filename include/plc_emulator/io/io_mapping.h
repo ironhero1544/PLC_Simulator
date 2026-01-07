@@ -1,5 +1,4 @@
 // io_mapping.h
-// Copyright 2024 PLC Emulator Project
 //
 // I/O mapping data structures.
 

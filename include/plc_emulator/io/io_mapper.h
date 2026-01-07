@@ -1,5 +1,4 @@
 // io_mapper.h
-// Copyright 2024 PLC Emulator Project
 //
 // Maps physical wiring to PLC I/O addresses.
 

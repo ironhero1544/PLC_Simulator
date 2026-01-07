@@ -1,5 +1,4 @@
 // plc_simulator_core.h
-// Copyright 2024 PLC Emulator Project
 //
 // Core simulation logic coordinator.
 

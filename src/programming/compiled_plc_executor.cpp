@@ -1,5 +1,4 @@
-// compiled_plc_executor.cpp
-// Copyright 2024 PLC Emulator Project
+﻿// compiled_plc_executor.cpp
 //
 // Implementation of PLC executor.
 
@@ -7,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <regex>
 #include <sstream>
@@ -16,7 +16,7 @@ namespace plc {
 
 /**
  * @brief Constructor with safe memory initialization
-  * C위구조체또는 와 함께 sfe 메모리 내itiliz에서i위
+  * C?꾧뎄議곗껜?먮뒗 ? ?④퍡 sfe 硫붾え由??큛tiliz?먯꽌i??
  *
  * MEMORY SAFETY INITIALIZATION:
  * Ensures all PLC memory structures are properly initialized to prevent
@@ -43,11 +43,11 @@ CompiledPLCExecutor::~CompiledPLCExecutor() {
 
 /**
  * @brief Load and parse compiled C++ code with comprehensive error handling
-  * 로드 및 파싱 컴파일d C++ code 와 함께 comprehensive 오류 h및l내g
+  * 濡쒕뱶 諛??뚯떛 而댄뙆?펋 C++ code ? ?④퍡 comprehensive ?ㅻ쪟 h諛뢬?큙
  * @param compiledCode Generated C++ code from OpenPLC compiler
-  * Gener에서ed C++ code 부터 OpenPLC 컴파일r
+  * Gener?먯꽌ed C++ code 遺??OpenPLC 而댄뙆?펢
  * @return true if successful, false on parsing errors
-  * 참 만약 성공ful, 거짓 위 prs내g 오류s
+  * 李?留뚯빟 ?깃났ful, 嫄곗쭞 ??prs?큙 ?ㅻ쪟s
  *
  * CRITICAL COMPILATION ERROR PREVENTION:
  * This method handles the most common source of PLC execution failures -
@@ -95,14 +95,14 @@ bool CompiledPLCExecutor::LoadFromCompilationResult(
 
 /**
  * @brief Execute PLC scan cycle with comprehensive error handling and timing
-  * 실행 PLC s할 수 있다 cycle 와 함께 comprehensive 오류 h및l내g 및 tim내g
+  * ?ㅽ뻾 PLC s?????덈떎 cycle ? ?④퍡 comprehensive ?ㅻ쪟 h諛뢬?큙 諛?tim?큙
  * @return ExecutionResult containing success status, timing, and error
-  * Executi위Result c위t내내g 성공 st에서us, tim내g, 및 오류
+  * Executi?껽esult c?꼝?대궡g ?깃났 st?먯꽌us, tim?큙, 諛??ㅻ쪟
  * information
  *
  * CRITICAL PLC SCAN CYCLE IMPLEMENTATION:
  * This method implements the standard industrial PLC scan cycle following
- * the INPUT SCAN → PROGRAM SCAN → OUTPUT SCAN pattern. Comprehensive
+ * the INPUT SCAN ??PROGRAM SCAN ??OUTPUT SCAN pattern. Comprehensive
  * error handling prevents crashes that could stop industrial processes.
  *
  * SCAN CYCLE ERROR PREVENTION:
@@ -126,6 +126,14 @@ bool CompiledPLCExecutor::LoadFromCompilationResult(
 CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
   ExecutionResult result;
   auto startTime = std::chrono::high_resolution_clock::now();
+
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now - memory_.last_scan_time).count();
+  if (elapsed_ms < 0) {
+    elapsed_ms = 0;
+  }
+  current_elapsed_ms_ = static_cast<int>(elapsed_ms);
 
   if (instructions_.empty()) {
     result.success = false;
@@ -153,7 +161,7 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
 
     // STAGE 3: OUTPUT SCAN - Outputs already set in Y array during execution
 
-    // 실행 통계 계산
+    // ?ㅽ뻾 ?듦퀎 怨꾩궛
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
         endTime - startTime);
@@ -162,7 +170,7 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
     result.cycleTime_us = static_cast<int>(duration.count());
     result.instructionCount = executedInstructions;
 
-    // 스캔 시간 업데이트
+    // ?ㅼ틪 ?쒓컙 ?낅뜲?댄듃
     memory_.last_scan_time = std::chrono::steady_clock::now();
     memory_.scan_cycle_ms = static_cast<int>(duration.count() / 1000);
 
@@ -199,8 +207,8 @@ void CompiledPLCExecutor::SetContinuousExecution(bool enable,
   if (enable) {
     DebugLog("Starting continuous execution mode with " +
              std::to_string(cycleTime_ms) + "ms cycle time");
-    // 실제 구현에서는 별도 스레드에서 실행할 수 있음
-    // 지금은 단순하게 단일 스캔만 지원
+    // ?ㅼ젣 援ы쁽?먯꽌??蹂꾨룄 ?ㅻ젅?쒖뿉???ㅽ뻾?????덉쓬
+    // 吏湲덉? ?⑥닚?섍쾶 ?⑥씪 ?ㅼ틪留?吏??
   } else {
     DebugLog("Stopping continuous execution mode");
   }
@@ -237,11 +245,11 @@ bool CompiledPLCExecutor::GetMemory(int address) const {
 
 /**
  * @brief Get device state with comprehensive bounds checking and error handling
-  * 가져오기 device st에서e 와 함께 comprehensive bounds 확인내g 및 오류 h및l내g
+  * 媛?몄삤湲?device st?먯꽌e ? ?④퍡 comprehensive bounds ?뺤씤?큙 諛??ㅻ쪟 h諛뢬?큙
  * @param address Device address string (e.g., "X0", "Y15", "M999")
-  * Device 추가ress 문자열 (e.g., "X0", "Y15", "M999")
+  * Device 異붽?ress 臾몄옄??(e.g., "X0", "Y15", "M999")
  * @return Device state or false if invalid address
-  * Device st에서e 또는 거짓 만약 내vlID 추가ress
+  * Device st?먯꽌e ?먮뒗 嫄곗쭞 留뚯빟 ?큩lID 異붽?ress
  *
  * CRITICAL MEMORY SAFETY FEATURES:
  * This method implements multiple layers of protection against memory access
@@ -263,6 +271,34 @@ bool CompiledPLCExecutor::GetMemory(int address) const {
  * Returns false for any invalid access instead of crashing, ensuring
  * system stability even with malformed device addresses.
  */
+int CompiledPLCExecutor::GetTimerValue(int index) const {
+  if (index >= 0 && index < 256) {
+    return memory_.T[index];
+  }
+  return 0;
+}
+
+bool CompiledPLCExecutor::GetTimerEnabled(int index) const {
+  if (index >= 0 && index < 256) {
+    return timer_enabled_[index];
+  }
+  return false;
+}
+
+int CompiledPLCExecutor::GetCounterValue(int index) const {
+  if (index >= 0 && index < 256) {
+    return memory_.C[index];
+  }
+  return 0;
+}
+
+bool CompiledPLCExecutor::GetCounterLastPower(int index) const {
+  if (index >= 0 && index < 256) {
+    return counter_last_power_[index];
+  }
+  return false;
+}
+
 bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
   if (address.empty())
     return false;
@@ -295,11 +331,11 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
 
 /**
  * @brief Set device state with memory protection and validation
-  * 설정 device st에서e 와 함께 메모리 protecti위 및 vlID에서i위
+  * ?ㅼ젙 device st?먯꽌e ? ?④퍡 硫붾え由?protecti??諛?vlID?먯꽌i??
  * @param address Device address string (must be valid format)
-  * Device 추가ress 문자열 (해야 한다 이다 vlID 위한m에서)
+  * Device 異붽?ress 臾몄옄??(?댁빞 ?쒕떎 ?대떎 vlID ?꾪븳m?먯꽌)
  * @param state New device state
-  * New device st에서e
+  * New device st?먯꽌e
  *
  * MEMORY CORRUPTION PREVENTION:
  * This method implements the same safety features as GetDeviceState() for
@@ -353,7 +389,7 @@ void CompiledPLCExecutor::SetDeviceState(const std::string& address,
 
 /**
  * @brief Reset all PLC memory to safe initial state
-  * Re집합 ll PLC 메모리 sfe 내itil st에서e
+  * Re吏묓빀 ll PLC 硫붾え由?sfe ?큛til st?먯꽌e
  *
  * MEMORY SAFETY RESET:
  * This method provides complete memory initialization to prevent undefined
@@ -398,16 +434,20 @@ void CompiledPLCExecutor::ResetMemory() {
     memory_.accumulator_stack[i] = false;
   }
 
+  current_elapsed_ms_ = 0;
+  timer_enabled_.fill(false);
+  counter_last_power_.fill(false);
+
   DebugLog("Memory reset completed");
 }
 
 /**
  * @brief Parse compiled C++ code into executable instructions
-  * 파싱 컴파일d C++ code 내 executble 명령s
+  * ?뚯떛 而댄뙆?펋 C++ code ??executble 紐낅졊s
  * @param code Generated C++ code from OpenPLC compiler
-  * Gener에서ed C++ code 부터 OpenPLC 컴파일r
+  * Gener?먯꽌ed C++ code 遺??OpenPLC 而댄뙆?펢
  * @return true if parsing successful, false on syntax errors
-  * 참 만약 prs내g 성공ful, 거짓 위 syntx 오류s
+  * 李?留뚯빟 prs?큙 ?깃났ful, 嫄곗쭞 ??syntx ?ㅻ쪟s
  *
  * CRITICAL PARSING ERROR PREVENTION:
  * This method handles the complex task of converting generated C++ code
@@ -469,6 +509,81 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
     };
 
     // INSTRUCTION TYPE ANALYSIS with error tolerance
+    // PLC helper instructions
+    if (line.rfind("PLC_", 0) == 0) {
+      std::istringstream plcStream(line);
+      std::string op;
+      std::string addr;
+      std::string presetStr;
+      plcStream >> op >> addr >> presetStr;
+      if (!addr.empty() && addr.back() == ';') {
+        addr.pop_back();
+      }
+      if (!presetStr.empty() && presetStr.back() == ';') {
+        presetStr.pop_back();
+      }
+      auto parse_index = [](const std::string& text) -> int {
+        if (text.size() < 2) return -1;
+        int idx = -1;
+        try { idx = std::stoi(text.substr(1)); } catch (...) { return -1; }
+        return idx;
+      };
+
+      ParsedInstruction instruction;
+      instruction.originalLine = line;
+      instruction.lineNumber = lineNumber;
+
+      if (op == "PLC_TON") {
+        instruction.type = ParsedInstruction::PLC_TON;
+        instruction.index = parse_index(addr);
+        instruction.preset = presetStr.empty() ? 0 : std::atoi(presetStr.c_str());
+        instructions_.push_back(instruction);
+        continue;
+      }
+
+      if (op == "PLC_CTU") {
+        instruction.type = ParsedInstruction::PLC_CTU;
+        instruction.index = parse_index(addr);
+        instruction.preset = presetStr.empty() ? 0 : std::atoi(presetStr.c_str());
+        instructions_.push_back(instruction);
+        continue;
+      }
+
+      if (op == "PLC_RST") {
+        int idx = parse_index(addr);
+        instruction.index = idx;
+        if (!addr.empty() && addr[0] == 'T') {
+          instruction.type = ParsedInstruction::PLC_RST_T;
+        } else if (!addr.empty() && addr[0] == 'C') {
+          instruction.type = ParsedInstruction::PLC_RST_C;
+        } else {
+          instruction.type = ParsedInstruction::UNKNOWN;
+        }
+        instructions_.push_back(instruction);
+        continue;
+      }
+    }
+
+    // Conditional assignment: if (accumulator) X0 = true;
+    {
+      static const std::regex condRegex(
+          R"(^if\s*\(\s*accumulator\s*\)\s*([A-Za-z0-9_\[\]]+)\s*=\s*(true|false)\s*;?$)");
+      std::smatch condMatch;
+      if (std::regex_match(line, condMatch, condRegex)) {
+        ParsedInstruction instruction;
+        instruction.originalLine = line;
+        instruction.lineNumber = lineNumber;
+        instruction.type = ParsedInstruction::COND_ASSIGN;
+        instruction.target = condMatch[1].str();
+        instruction.boolValue = (condMatch[2].str() == "true");
+        instructions_.push_back(instruction);
+        if (debug_mode_) {
+          DebugLog("Parsed line " + std::to_string(lineNumber) + ": " + instruction.originalLine);
+        }
+        continue;
+      }
+    }
+
     if (line.find(" = ") != std::string::npos) {
       size_t equalPos = line.find(" = ");
       std::string lhs = line.substr(0, equalPos);
@@ -527,11 +642,101 @@ bool CompiledPLCExecutor::ExecuteInstruction(
     case ParsedInstruction::LOGIC_OP:
       return ExecuteAssignment(instruction);
 
+    case ParsedInstruction::COND_ASSIGN: {
+      if (memory_.accumulator) {
+        bool* targetPtr = GetVariablePointer(instruction.target);
+        if (!targetPtr) {
+          SetError("Invalid target variable: " + instruction.target);
+          return false;
+        }
+        *targetPtr = instruction.boolValue;
+      }
+      return true;
+    }
+
+    case ParsedInstruction::PLC_TON: {
+      int idx = instruction.index;
+      if (idx < 0 || idx >= 256) {
+        SetError("Invalid timer index");
+        return false;
+      }
+      int preset = instruction.preset;
+      if (preset < 0) {
+        preset = 0;
+      }
+      if (memory_.accumulator) {
+        timer_enabled_[idx] = true;
+        if (preset == 0) {
+          memory_.T[idx] = 0;
+          memory_.accumulator = true;
+        } else {
+          if (memory_.T[idx] < preset) {
+            memory_.T[idx] += current_elapsed_ms_;
+            if (memory_.T[idx] > preset) {
+              memory_.T[idx] = preset;
+            }
+          }
+          memory_.accumulator = (memory_.T[idx] >= preset);
+        }
+      } else {
+        timer_enabled_[idx] = false;
+        memory_.T[idx] = 0;
+        memory_.accumulator = false;
+      }
+      return true;
+    }
+
+    case ParsedInstruction::PLC_CTU: {
+      int idx = instruction.index;
+      if (idx < 0 || idx >= 256) {
+        SetError("Invalid counter index");
+        return false;
+      }
+      int preset = instruction.preset;
+      if (preset < 0) {
+        preset = 0;
+      }
+      bool power = memory_.accumulator;
+      if (power && !counter_last_power_[idx]) {
+        memory_.C[idx] += 1;
+      }
+      counter_last_power_[idx] = power;
+      bool done = (preset > 0) ? (memory_.C[idx] >= preset) : power;
+      memory_.accumulator = done;
+      return true;
+    }
+
+    case ParsedInstruction::PLC_RST_T: {
+      int idx = instruction.index;
+      if (idx < 0 || idx >= 256) {
+        SetError("Invalid timer index");
+        return false;
+      }
+      if (memory_.accumulator) {
+        memory_.T[idx] = 0;
+        timer_enabled_[idx] = false;
+      }
+      return true;
+    }
+
+    case ParsedInstruction::PLC_RST_C: {
+      int idx = instruction.index;
+      if (idx < 0 || idx >= 256) {
+        SetError("Invalid counter index");
+        return false;
+      }
+      if (memory_.accumulator) {
+        memory_.C[idx] = 0;
+        counter_last_power_[idx] = false;
+      }
+      return true;
+    }
+
     case ParsedInstruction::COMMENT:
-      return true;  // 주석은 무시
+      return true;  // comment
 
     case ParsedInstruction::UNKNOWN:
-      return true;  // 알 수 없는 명령어도 일단 무시
+      return true;  // ignore unknown lines
 
     default:
       return false;
@@ -541,10 +746,10 @@ bool CompiledPLCExecutor::ExecuteInstruction(
 bool CompiledPLCExecutor::ExecuteAssignment(
     const ParsedInstruction& instruction) {
 
-  // 1. 표현식 평가
+  // 1. ?쒗쁽???됯?
   bool result = EvaluateExpression(instruction.operand1);
 
-  // 2. 대상 변수에 할당
+  // 2. ???蹂?섏뿉 ?좊떦
   bool* targetPtr = GetVariablePointer(instruction.target);
   if (targetPtr) {
     *targetPtr = result;
@@ -563,11 +768,11 @@ bool CompiledPLCExecutor::ExecuteAssignment(
 
 /**
  * @brief Get memory pointer for variable with bounds checking and validation
-  * 가져오기 메모리 포인터 위한 vrible 와 함께 bounds 확인내g 및 vlID에서i위
+  * 媛?몄삤湲?硫붾え由??ъ씤???꾪븳 vrible ? ?④퍡 bounds ?뺤씤?큙 諛?vlID?먯꽌i??
  * @param varName Variable name (e.g., "X[5]", "Y[10]", "M[100]", "accumulator")
-  * Vrible 이름 (e.g., "X[5]", "Y[10]", "M[100]", "ccumul에서또는")
+  * Vrible ?대쫫 (e.g., "X[5]", "Y[10]", "M[100]", "ccumul?먯꽌?먮뒗")
  * @return Pointer to memory location or nullptr if invalid
-  * Po내ter 메모리 loc에서i위 또는 nullptr 만약 내vlID
+  * Po?큧er 硫붾え由?loc?먯꽌i???먮뒗 nullptr 留뚯빟 ?큩lID
  *
  * CRITICAL MEMORY SAFETY:
  * This method provides safe access to PLC memory through pointers while
@@ -643,12 +848,12 @@ bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
 
 /**
  * @brief Evaluate boolean expressions with recursive parsing and error handling
-  * Evlu에서e boole expressi위s 와 함께 recursive prs내g 및 오류 h및l내g
+  * Evlu?먯꽌e boole expressi?꼜 ? ?④퍡 recursive prs?큙 諛??ㅻ쪟 h諛뢬?큙
  * @param expression Boolean expression string (e.g., "X[11]", "accumulator &&
-  * Boole expressi위 문자열 (e.g., "X[11]", "ccumul에서또는 &&
+  * Boole expressi??臾몄옄??(e.g., "X[11]", "ccumul?먯꽌?먮뒗 &&
  * !M[2]")
  * @return Evaluated boolean result
-  * Evlu에서ed boole result
+  * Evlu?먯꽌ed boole result
  *
  * CRITICAL EXPRESSION EVALUATION SAFETY:
  * This method handles complex boolean expressions that could cause stack
@@ -751,9 +956,9 @@ int CompiledPLCExecutor::ExtractNumber(const std::string& str) {
 
 /**
  * @brief Set error state with logging and result tracking
-  * 설정 오류 st에서e 와 함께 logg내g 및 result trck내g
+  * ?ㅼ젙 ?ㅻ쪟 st?먯꽌e ? ?④퍡 logg?큙 諛?result trck?큙
  * @param error Error message describing the failure
-  * Err또는 messge describ내g 실패
+  * Err?먮뒗 messge describ?큙 ?ㅽ뙣
  *
  * ERROR STATE MANAGEMENT:
  * This method provides centralized error handling for the PLC executor,

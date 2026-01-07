@@ -1,5 +1,4 @@
 // data_types.h
-// Copyright 2024 PLC Emulator Project
 //
 // Common data types and structures.
 

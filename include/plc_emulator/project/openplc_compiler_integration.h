@@ -1,5 +1,4 @@
 // openplc_compiler_integration.h
-// Copyright 2024 PLC Emulator Project
 //
 // OpenPLC compiler interface.
 

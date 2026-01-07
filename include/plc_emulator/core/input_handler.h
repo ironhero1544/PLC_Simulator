@@ -1,5 +1,4 @@
 // input_handler.h
-// Copyright 2024 PLC Emulator Project
 //
 // Handles keyboard and mouse input.
 

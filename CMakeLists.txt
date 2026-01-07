@@ -78,6 +78,7 @@ add_executable(${PROJECT_NAME}
         
         # Core
         src/core/application.cpp
+        src/core/win32_input.cpp
         src/core/data_types.cpp
         src/core/plc_simulator_core.cpp
         src/core/window_manager.cpp
@@ -118,6 +119,7 @@ add_executable(${PROJECT_NAME}
         src/project/ld_to_ladder_converter.cpp
         src/project/ladder_ir.cpp
         src/project/openplc_compiler_integration.cpp
+    src/core/win32_input.cpp
 )
 
 set(FONT_FILE ${CMAKE_SOURCE_DIR}/resources/fonts/unifont.ttf)

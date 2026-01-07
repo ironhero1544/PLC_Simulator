@@ -1,5 +1,4 @@
 // ladder_to_ld_converter.cpp
-// Copyright 2024 PLC Emulator Project
 //
 // Implementation of LD converter.
 

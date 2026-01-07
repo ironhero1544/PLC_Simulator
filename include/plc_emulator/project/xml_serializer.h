@@ -1,5 +1,4 @@
 // xml_serializer.h
-// Copyright 2024 PLC Emulator Project
 //
 // XML serialization utilities.
 

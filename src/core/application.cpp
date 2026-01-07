@@ -1,7 +1,5 @@
 // application.cpp
 
-// Copyright 2024 PLC Emulator Project
-
 //
 
 // Implementation of main application class.
@@ -11,6 +9,7 @@
 // src/Application.cpp
 
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/core/win32_input.h"
 
 
 
@@ -24,9 +23,17 @@
 
 #endif
 
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0602
+#endif
+#ifndef WINVER
+#define WINVER 0x0602
+#endif
+
 #include <windows.h>
 
 #include <commdlg.h>
+#include <windowsx.h>
 
 #endif
 
@@ -73,6 +80,7 @@
 #include <fstream>
 
 #include <iostream>
+#include <unordered_map>
 
 
 
@@ -84,13 +92,24 @@ using json = nlohmann::json;
 
 namespace plc {
 
+namespace {
+Application* g_physics_warning_app = nullptr;
+
+void PhysicsWarningDialogCallback(const char* message) {
+  if (g_physics_warning_app && message) {
+    g_physics_warning_app->QueuePhysicsWarningDialog(message);
+  }
+}
+}  // namespace
+
+
 
 
 Position GetPortRelativePositionById(const PlacedComponent& comp, int portId);
 
 
 
-Application::Application()
+Application::Application(bool enable_debug_mode)
 
     : window_(nullptr),
 
@@ -139,14 +158,12 @@ Application::Application()
       physics_engine_(nullptr),
 
       project_file_manager_(std::make_unique<ProjectFileManager>()),
-
+      debug_mode_requested_(enable_debug_mode),
       debug_mode_(false),
-
       enable_debug_logging_(false),
-
-      debug_key_pressed_(false),
-
-      debug_update_counter_(0) {
+      debug_update_counter_(0),
+      show_physics_warning_dialog_(false),
+      physics_warning_message_("") {
 
   drag_start_offset_ = {0, 0};
 
@@ -155,6 +172,19 @@ Application::Application()
   wire_current_pos_ = {0, 0};
 
   camera_offset_ = {0.0f, 0.0f};
+  last_pointer_world_pos_ = {0.0f, 0.0f};
+  last_pointer_move_time_ = 0.0;
+  last_auto_waypoint_time_ = 0.0;
+  touch_gesture_active_ = false;
+  touch_zoom_delta_ = 0.0f;
+  touch_pan_delta_ = {0.0f, 0.0f};
+  last_pointer_is_pan_input_ = false;
+  touch_anchor_screen_pos_ = {0.0f, 0.0f};
+  prev_right_button_down_ = false;
+  prev_side_button_down_ = false;
+  win32_right_click_ = false;
+  win32_side_click_ = false;
+  win32_side_down_ = false;
 
   canvas_top_left_ = {0.0f, 0.0f};
 
@@ -169,17 +199,20 @@ Application::Application()
   snap_settings_.enableHorizontalSnap = true;
 
   snap_settings_.snapDistance = 15.0f;
-
   snap_settings_.gridSize = 25.0f;
 
+  g_physics_warning_app = this;
+  SetPhysicsWarningCallback(PhysicsWarningDialogCallback);
 }
 
 
 
-Application::~Application() = default;
-
-
-
+Application::~Application() {
+  if (g_physics_warning_app == this) {
+    g_physics_warning_app = nullptr;
+  }
+  SetPhysicsWarningCallback(nullptr);
+}
 bool Application::Initialize() {
 
   if (!InitializeWindow())
@@ -240,15 +273,14 @@ bool Application::Initialize() {
 
   std::cout << "=====================================" << std::endl;
 
-  std::cout << "Ctrl+Q: Quit" << std::endl;
-
-  std::cout << "Ctrl+F12: Toggle Debug" << std::endl;
-
-  std::cout << "ESC: Toggle UI" << std::endl;
+  std::cout << "Debug: launch with --Debug" << std::endl;
 
   std::cout << std::endl;
 
-
+  if (debug_mode_requested_) {
+    ToggleDebugMode();
+    DebugLog("[DEBUG] Debug mode requested via --Debug");
+  }
 
   running_ = true;
 
@@ -360,40 +392,7 @@ void Application::ProcessInput() {
 
 
 
-  if (glfwGetKey(window_, GLFW_KEY_Q) == GLFW_PRESS &&
-
-      (glfwGetKey(window_, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-
-       glfwGetKey(window_, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS)) {
-
-    running_ = false;
-
-  }
-
-
-
   ImGuiIO& io = ImGui::GetIO();
-
-
-
-
-
-
-  if (ImGui::IsKeyPressed(ImGuiKey_F12, false) && io.KeyCtrl) {
-
-    if (!debug_key_pressed_) {
-
-      ToggleDebugMode();
-
-      debug_key_pressed_ = true;
-
-    }
-
-  } else {
-
-    debug_key_pressed_ = false;
-
-  }
 
 
 
@@ -558,6 +557,10 @@ bool Application::InitializeWindow() {
 
   }
 
+#ifdef _WIN32
+  InstallWin32InputHook(window_, this);
+#endif
+
 
 
   printf("=== PLC Simulator Started ===\n");
@@ -580,11 +583,7 @@ bool Application::InitializeImGui() {
 
 
 
-  io.Fonts->AddFontDefault();
-
   ImFontConfig font_config;
-
-  font_config.MergeMode = true;
 
   font_config.PixelSnapH = true;
 
@@ -728,7 +727,8 @@ void Application::RenderUI() {
 
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
 
-      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 
 
@@ -763,19 +763,15 @@ void Application::RenderUI() {
   ImGui::End();
 
   ImGui::PopStyleVar(3);
-
-
-
   if (current_mode_ == Mode::PROGRAMMING && programming_mode_) {
 
     RenderPLCDebugPanel();
 
   }
 
+  RenderPhysicsWarningDialog();
+
 }
-
-
-
 void Application::RenderWiringModeUI() {
 
   RenderToolbar();
@@ -1169,23 +1165,32 @@ void Application::RenderToolbar() {
 
 void Application::RenderMainArea() {
 
-  ImGui::Columns(2, "MainColumns", true);
+  const float status_bar_height = 25.0f;
+  ImVec2 available = ImGui::GetContentRegionAvail();
+  float main_area_height = available.y - status_bar_height;
+  if (main_area_height < 0.0f)
+    main_area_height = 0.0f;
 
-  ImGui::SetColumnWidth(0, ImGui::GetWindowWidth() * 0.75f);
+  if (ImGui::BeginChild("WiringMainArea", ImVec2(0, main_area_height), false,
+                        ImGuiWindowFlags_NoScrollbar |
+                            ImGuiWindowFlags_NoScrollWithMouse)) {
+    ImGui::Columns(2, "MainColumns", true);
 
-  RenderWiringCanvas();
+    ImGui::SetColumnWidth(0, ImGui::GetWindowWidth() * 0.75f);
 
-  ImGui::NextColumn();
+    RenderWiringCanvas();
 
-  RenderComponentList();
+    ImGui::NextColumn();
 
-  ImGui::Columns(1);
+    RenderComponentList();
 
-
+    ImGui::Columns(1);
+  }
+  ImGui::EndChild();
 
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.94f, 0.94f, 0.94f, 1.0f));
 
-  if (ImGui::BeginChild("StatusBar", ImVec2(0, 25), true,
+  if (ImGui::BeginChild("StatusBar", ImVec2(0, status_bar_height), true,
 
                         ImGuiWindowFlags_NoScrollbar)) {
 
@@ -1252,6 +1257,10 @@ void Application::Cleanup() {
   ImGui_ImplGlfw_Shutdown();
 
   ImGui::DestroyContext();
+
+#ifdef _WIN32
+  UninstallWin32InputHook(window_);
+#endif
 
   if (window_)
 
@@ -1461,13 +1470,7 @@ void Application::SyncLadderProgramFromProgrammingMode() {
 
 
     if (simulator_core_->UpdateIOMapping()) {
-
       printf("[INFO] I/O mapping updated from wiring connections.\n");
-
-    } else {
-
-      printf("[WARN] I/O mapping update failed - check wiring connections.\n");
-
     }
 
 
@@ -2003,7 +2006,7 @@ void Application::ToggleDebugMode() {
 
         "[DEBUG MODE ON] Physics Engine Debug System Activated");
 
-    PrintDebugToConsole("Press Ctrl+F12 again to disable debug mode");
+    PrintDebugToConsole("Restart without --Debug to disable debug mode");
 
     PrintDebugToConsole("==========================================");
 
@@ -2064,6 +2067,71 @@ void Application::UpdateDebugLogging() {
 
   }
 
+}
+
+bool Application::IsDebugEnabled() const {
+  return debug_mode_ || debug_mode_requested_;
+}
+
+void Application::DebugLog(const std::string& message) {
+  PrintDebugToConsole(message);
+#ifdef _WIN32
+  OutputDebugStringA((message + "\n").c_str());
+#endif
+}
+
+void Application::QueuePhysicsWarningDialog(const std::string& message) {
+  std::lock_guard<std::mutex> lock(physics_warning_mutex_);
+  physics_warning_message_ = message;
+  show_physics_warning_dialog_ = true;
+}
+
+void Application::RenderPhysicsWarningDialog() {
+  bool show_dialog = false;
+  std::string message;
+  {
+    std::lock_guard<std::mutex> lock(physics_warning_mutex_);
+    show_dialog = show_physics_warning_dialog_;
+    message = physics_warning_message_;
+  }
+
+  if (!show_dialog)
+    return;
+
+  if (!ImGui::IsPopupOpen("Physics Warning")) {
+    ImGui::OpenPopup("Physics Warning");
+  }
+
+  bool open = true;
+  if (ImGui::BeginPopupModal("Physics Warning", &open,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextUnformatted("Fixed buffer limit reached.");
+    ImGui::Separator();
+    ImGui::TextWrapped("%s", message.c_str());
+
+    if (ImGui::Button("OK", ImVec2(120, 0))) {
+      std::lock_guard<std::mutex> lock(physics_warning_mutex_);
+      show_physics_warning_dialog_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+  }
+
+  if (!open) {
+    std::lock_guard<std::mutex> lock(physics_warning_mutex_);
+    show_physics_warning_dialog_ = false;
+  }
+}
+void Application::RegisterWin32RightClick() {
+  win32_right_click_ = true;
+}
+
+void Application::RegisterWin32SideClick() {
+  win32_side_click_ = true;
+}
+void Application::RegisterWin32SideDown(bool is_down) {
+  win32_side_down_ = is_down;
 }
 
 
