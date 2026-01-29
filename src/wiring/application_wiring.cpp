@@ -5,7 +5,9 @@
 // src/Application_Wiring.cpp
 
 #include "imgui.h"
+#include "plc_emulator/components/component_behavior.h"
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/lang/lang_manager.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,8 +19,29 @@
 
 namespace plc {
 
-// ★★★ FIX: 아래의 불필요한 함수 선언을 삭제했습니다. ★★★
-// 이 선언은 Application.h에 이미 존재하며, 여기서 다시 선언할 필요가 없습니다.
+namespace {
+
+bool IsPointInsideComponent(const PlacedComponent& comp, ImVec2 world_pos) {
+  return world_pos.x >= comp.position.x &&
+         world_pos.x <= comp.position.x + comp.size.width &&
+         world_pos.y >= comp.position.y &&
+         world_pos.y <= comp.position.y + comp.size.height;
+}
+
+int FindFirstComponentIndexAtPosition(
+    const std::vector<PlacedComponent>& components, ImVec2 world_pos) {
+  for (size_t i = 0; i < components.size(); ++i) {
+    if (IsPointInsideComponent(components[i], world_pos)) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
+}  // namespace
+
+// ?????FIX: ??????????? ??? ??????????????. ?????
+// ??????? Application.h????? ??????, ???????? ?????????? ??????.
 // Position GetPortRelativePositionById(const PlacedComponent& comp, int
 // portId);
 
@@ -222,9 +245,26 @@ void Application::RenderWiringCanvas() {
           for (auto& wire : wires_) {
             if (wire.id == editing_wire_id_ && editing_point_index_ >= 0 &&
                 editing_point_index_ < static_cast<int>(wire.wayPoints.size())) {
-          // ImVec2 snapped_pos = ApplySnap(mouse_world_pos, true);
+          ImVec2 reference_point = mouse_world_pos;
+          if (editing_point_index_ > 0) {
+            const Position& prev =
+                wire.wayPoints[static_cast<size_t>(editing_point_index_ - 1)];
+            reference_point = ImVec2(prev.x, prev.y);
+          } else {
+            auto it = port_positions_.find(
+                {wire.fromComponentId, wire.fromPortId});
+            if (it != port_positions_.end()) {
+              reference_point = ImVec2(it->second.x, it->second.y);
+            }
+          }
+
           ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
-          wire.wayPoints[static_cast<size_t>(editing_point_index_)] = snapped_pos;
+          if (snapped_pos.x == mouse_world_pos.x &&
+              snapped_pos.y == mouse_world_pos.y) {
+            snapped_pos = ApplyAngleSnap(mouse_world_pos, reference_point);
+          }
+          wire.wayPoints[static_cast<size_t>(editing_point_index_)] =
+              snapped_pos;
             }
           }
         } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -268,23 +308,11 @@ void Application::RenderWiringCanvas() {
                 mouse_world_pos.x <= comp.position.x + comp.size.width &&
                 mouse_world_pos.y >= comp.position.y &&
                 mouse_world_pos.y <= comp.position.y + comp.size.height) {
-              if (comp.type == ComponentType::LIMIT_SWITCH) {
-                comp.internalStates["is_pressed_manual"] =
-                    1.0f - (comp.internalStates.count("is_pressed_manual")
-                                ? comp.internalStates.at("is_pressed_manual")
-                                : 0.0f);
-                break;
-              }
-              if (comp.type == ComponentType::BUTTON_UNIT) {
-                float local_y = mouse_world_pos.y - comp.position.y;
-
-                if (local_y >= 70.0f && local_y <= 90.0f) {
-                  std::string key = "is_pressed_2";
-                  comp.internalStates[key] =
-                      1.0f - (comp.internalStates.count(key)
-                                  ? comp.internalStates.at(key)
-                                  : 0.0f);
-                }
+              const ComponentBehavior* behavior =
+                  GetComponentBehavior(comp.type);
+              if (behavior && behavior->OnDoubleClick &&
+                  behavior->OnDoubleClick(&comp, mouse_world_pos,
+                                          ImGuiMouseButton_Left)) {
                 break;
               }
             }
@@ -294,27 +322,25 @@ void Application::RenderWiringCanvas() {
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && is_canvas_hovered &&
             !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
           for (auto& comp : placed_components_) {
-            if (comp.type == ComponentType::BUTTON_UNIT) {
-              if (mouse_world_pos.x >= comp.position.x &&
-                  mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                  mouse_world_pos.y >= comp.position.y &&
-                  mouse_world_pos.y <= comp.position.y + comp.size.height) {
-                for (int i = 0; i < 2; ++i) {
-                  float y_offset = 20.0f + static_cast<float>(i) * 30.0f;
-                  float local_y = mouse_world_pos.y - comp.position.y;
-                  if (local_y > y_offset - 8 && local_y < y_offset + 8) {
-                    comp.internalStates["is_pressed_" + std::to_string(i)] =
-                        1.0f;
-                  }
-                }
+            if (mouse_world_pos.x >= comp.position.x &&
+                mouse_world_pos.x <= comp.position.x + comp.size.width &&
+                mouse_world_pos.y >= comp.position.y &&
+                mouse_world_pos.y <= comp.position.y + comp.size.height) {
+              const ComponentBehavior* behavior =
+                  GetComponentBehavior(comp.type);
+              if (behavior && behavior->OnMouseDown) {
+                behavior->OnMouseDown(&comp, mouse_world_pos,
+                                      ImGuiMouseButton_Left);
               }
             }
           }
         } else {
           for (auto& comp : placed_components_) {
-            if (comp.type == ComponentType::BUTTON_UNIT) {
-              comp.internalStates["is_pressed_0"] = 0.0f;
-              comp.internalStates["is_pressed_1"] = 0.0f;
+            const ComponentBehavior* behavior =
+                GetComponentBehavior(comp.type);
+            if (behavior && behavior->OnMouseUp) {
+              behavior->OnMouseUp(&comp, mouse_world_pos,
+                                  ImGuiMouseButton_Left);
             }
           }
         }
@@ -338,20 +364,25 @@ void Application::RenderWiringCanvas() {
       }
     } else {
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
-        // ImVec2 snapped_pos = ApplySnap(mouse_world_pos, true);
-        ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
         int clickedComponentId = -1;
-        Port* clickedPort = FindPortAtPosition(snapped_pos, clickedComponentId);
+        Port* clickedPort =
+            FindPortAtPosition(mouse_world_pos, clickedComponentId);
         if (clickedPort && clickedComponentId != -1) {
+          ImVec2 port_world_pos = mouse_world_pos;
+          auto it =
+              port_positions_.find({clickedComponentId, clickedPort->id});
+          if (it != port_positions_.end()) {
+            port_world_pos = ImVec2(it->second.x, it->second.y);
+          }
           if (!is_connecting_)
             StartWireConnection(clickedComponentId, clickedPort->id,
-                                snapped_pos);
+                                port_world_pos);
           else
             CompleteWireConnection(clickedComponentId, clickedPort->id,
-                                   snapped_pos);
-        } else if (is_connecting_) {
-          HandleWayPointClick(snapped_pos, true);
-        }
+                                   port_world_pos);
+          } else if (is_connecting_) {
+            HandleWayPointClick(mouse_world_pos, true);
+          }
       }
       if (is_connecting_ && is_pan_input && is_canvas_hovered) {
         const double idle_threshold = 0.25;
@@ -359,7 +390,7 @@ void Application::RenderWiringCanvas() {
         const float min_waypoint_dist = 6.0f;
         if ((now - last_pointer_move_time_) >= idle_threshold &&
             (now - last_auto_waypoint_time_) >= cooldown) {
-          ImVec2 candidate = ApplyPortSnap(mouse_world_pos);
+          ImVec2 candidate = ApplySnap(mouse_world_pos, true);
           ImVec2 last_point = current_way_points_.empty()
                                   ? wire_start_pos_
                                   : ImVec2(current_way_points_.back().x,
@@ -377,8 +408,7 @@ void Application::RenderWiringCanvas() {
     RenderPlacedComponents(draw_list);
     RenderWires(draw_list);
     if (is_connecting_) {
-      // ImVec2 snapped_mouse_pos = ApplySnap(mouse_world_pos, true);
-      ImVec2 snapped_mouse_pos = ApplyPortSnap(mouse_world_pos);
+      ImVec2 snapped_mouse_pos = ApplySnap(mouse_world_pos, true);
       UpdateWireDrawing(snapped_mouse_pos);
       if (snapped_mouse_pos.x != mouse_world_pos.x ||
           snapped_mouse_pos.y != mouse_world_pos.y) {
@@ -395,55 +425,61 @@ void Application::RenderWiringCanvas() {
           FindPortAtPosition(mouse_world_pos, hoveredComponentId);
       if (hoveredPort) {
         ImGui::BeginTooltip();
-        ImGui::Text("컴포넌트 ID: %d, 포트 ID: %d", hoveredComponentId,
-                    hoveredPort->id);
+        char tooltip_buf[256] = {0};
+        FormatString(tooltip_buf, sizeof(tooltip_buf),
+                     "ui.wiring.tooltip_port_ids",
+                     "Component ID: %d, Port ID: %d",
+                     hoveredComponentId, hoveredPort->id);
+        ImGui::TextUnformatted(tooltip_buf);
         ImGui::Separator();
-        ImGui::Text("타입: %s", (hoveredPort->type == PortType::ELECTRIC)
-                                    ? "전기"
-                                    : "공압");
-        ImGui::Text("역할: %s", hoveredPort->role.c_str());
-        ImGui::Text("방향: %s", hoveredPort->isInput ? "입력" : "출력");
+        FormatString(tooltip_buf, sizeof(tooltip_buf),
+                     "ui.wiring.tooltip_type_fmt", "Type: %s",
+                     (hoveredPort->type == PortType::ELECTRIC)
+                         ? TR("ui.wiring.port_type_electric", "Electric")
+                         : TR("ui.wiring.port_type_pneumatic", "Pneumatic"));
+        ImGui::TextUnformatted(tooltip_buf);
+        FormatString(tooltip_buf, sizeof(tooltip_buf),
+                     "ui.wiring.tooltip_role_fmt", "Role: %s",
+                     hoveredPort->role.c_str());
+        ImGui::TextUnformatted(tooltip_buf);
+        FormatString(tooltip_buf, sizeof(tooltip_buf),
+                     "ui.wiring.tooltip_direction_fmt", "Direction: %s",
+                     hoveredPort->isInput
+                         ? TR("ui.wiring.direction_input", "Input")
+                         : TR("ui.wiring.direction_output", "Output"));
+        ImGui::TextUnformatted(tooltip_buf);
         ImGui::EndTooltip();
         tooltip_shown = true;
       }
 
       if (!tooltip_shown) {
-        for (const auto& comp : placed_components_) {
-          if (mouse_world_pos.x >= comp.position.x &&
-              mouse_world_pos.x <= comp.position.x + comp.size.width &&
-              mouse_world_pos.y >= comp.position.y &&
-              mouse_world_pos.y <= comp.position.y + comp.size.height) {
-            if (comp.type == ComponentType::LIMIT_SWITCH ||
-                comp.type == ComponentType::BUTTON_UNIT) {
-              bool is_pressed = false;
-              if (comp.type == ComponentType::LIMIT_SWITCH &&
-                  comp.internalStates.count("is_pressed")) {
-                is_pressed = comp.internalStates.at("is_pressed") > 0.5f;
+        int hover_index = is_canvas_hovered
+                              ? FindFirstComponentIndexAtPosition(
+                                    placed_components_, mouse_world_pos)
+                              : -1;
+        if (hover_index != -1) {
+          const auto& comp = placed_components_[static_cast<size_t>(hover_index)];
+          const ComponentBehavior* behavior =
+              GetComponentBehavior(comp.type);
+          if (behavior && behavior->BuildTooltip &&
+              behavior->BuildTooltip(comp, mouse_world_pos)) {
+            tooltip_shown = true;
+          }
+        }
+        if (!tooltip_shown) {
+          for (size_t i = 0; i < placed_components_.size(); ++i) {
+            if (static_cast<int>(i) == hover_index) {
+              continue;
+            }
+            const auto& comp = placed_components_[i];
+            if (IsPointInsideComponent(comp, mouse_world_pos)) {
+              const ComponentBehavior* behavior =
+                  GetComponentBehavior(comp.type);
+              if (behavior && behavior->BuildTooltip &&
+                  behavior->BuildTooltip(comp, mouse_world_pos)) {
+                tooltip_shown = true;
+                break;
               }
-              if (comp.type == ComponentType::BUTTON_UNIT) {
-                for (int i = 0; i < 3; ++i) {
-                  if (comp.internalStates.count("is_pressed_" +
-                                                std::to_string(i)) &&
-                      comp.internalStates.at("is_pressed_" +
-                                             std::to_string(i)) > 0.5f) {
-                    is_pressed = true;
-                    break;
-                  }
-                }
-              }
-              ImGui::BeginTooltip();
-              ImGui::Text("상태: %s", is_pressed ? "눌림" : "안 눌림");
-              ImGui::EndTooltip();
-              break;
-            } else if (comp.type == ComponentType::FRL) {
-              float pressure = comp.internalStates.count("air_pressure")
-                                   ? comp.internalStates.at("air_pressure")
-                                   : 6.0f;
-              ImGui::BeginTooltip();
-              ImGui::Text("현재 압력: %.1f bar", pressure);
-              ImGui::TextDisabled("마우스 휠로 조절하세요");
-              ImGui::EndTooltip();
-              break;
             }
           }
         }
@@ -451,23 +487,31 @@ void Application::RenderWiringCanvas() {
     }
 
     if (is_canvas_hovered) {
-      ImVec2 help_pos = ImVec2(canvas_top_left_.x + canvas_size_.x - 200,
-                               canvas_top_left_.y + canvas_size_.y - 100);
+      const float layout_scale = GetLayoutScale();
+      ImVec2 help_pos =
+          ImVec2(canvas_top_left_.x + canvas_size_.x - 200 * layout_scale,
+                 canvas_top_left_.y + canvas_size_.y - 100 * layout_scale);
       ImGui::SetCursorScreenPos(help_pos);
 
       ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.6f));
-      ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f);
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+      ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 5.0f * layout_scale);
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                          ImVec2(8 * layout_scale, 6 * layout_scale));
 
-      if (ImGui::BeginChild("CameraHelp", ImVec2(190, 90), false,
+      if (ImGui::BeginChild("CameraHelp",
+                            ImVec2(190 * layout_scale, 90 * layout_scale),
+                            false,
                             ImGuiWindowFlags_NoScrollbar)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
-        ImGui::Text("카메라 제어:");
+        ImGui::Text("%s", TR("ui.wiring.camera_help.title", "Camera"));
         ImGui::Separator();
-        ImGui::Text("줌: 마우스 휠");
-        ImGui::Text("팬: 중간버튼 드래그");
-        ImGui::Text("팬: Alt + 우클릭 드래그");
-        ImGui::Text("트랙패드: Ctrl + 스크롤");
+        ImGui::Text("%s", TR("ui.wiring.camera_help.zoom", "Zoom: Mouse wheel (no Ctrl)"));
+        ImGui::Text("%s", TR("ui.wiring.camera_help.pan_middle",
+                             "Pan: Middle drag / Alt + Right drag"));
+        ImGui::Text("%s", TR("ui.wiring.camera_help.trackpad",
+                             "Trackpad: Ctrl + Scroll (Pan)"));
+        ImGui::Text("%s", TR("ui.wiring.camera_help.touch",
+                             "Touch: Pinch to zoom, drag to pan"));
         ImGui::PopStyleColor();
       }
       ImGui::EndChild();
@@ -480,9 +524,9 @@ void Application::RenderWiringCanvas() {
   ImGui::PopStyleColor();
 }
 void Application::HandleWayPointClick(ImVec2 worldPos, bool use_port_snap_only) {
+  (void)use_port_snap_only;
   if (is_connecting_) {
-    // ImVec2 snappedPos = ApplySnap(worldPos, true);
-    ImVec2 snappedPos = ApplyPortSnap(worldPos);
+    ImVec2 snappedPos = ApplySnap(worldPos, true);
     AddWayPoint(snappedPos);
   }
 }
@@ -594,28 +638,20 @@ Wire* Application::FindWireAtPosition(ImVec2 worldPos, float tolerance) {
 
 bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos, 
                                                const ImGuiIO& io) {
-  if (!io.MouseWheel || io.KeyCtrl)
+  if (!io.MouseWheel)
     return false;
-    
+
   for (auto& comp : placed_components_) {
-    if (comp.type == ComponentType::FRL &&
-        mouse_world_pos.x >= comp.position.x &&
+    if (mouse_world_pos.x >= comp.position.x &&
         mouse_world_pos.x <= comp.position.x + comp.size.width &&
         mouse_world_pos.y >= comp.position.y &&
         mouse_world_pos.y <= comp.position.y + comp.size.height) {
-      float current_pressure = comp.internalStates.count("air_pressure")
-                                   ? comp.internalStates.at("air_pressure")
-                                   : 6.0f;
-      float step = io.KeyCtrl ? 0.1f : 0.5f;
-
-      if (io.MouseWheel > 0)
-        current_pressure += step;
-      else
-        current_pressure -= step;
-
-      current_pressure = std::max(0.0f, std::min(10.0f, current_pressure));
-      comp.internalStates["air_pressure"] = current_pressure;
-      return true;
+      const ComponentBehavior* behavior =
+          GetComponentBehavior(comp.type);
+      if (behavior && behavior->OnMouseWheel &&
+          behavior->OnMouseWheel(&comp, mouse_world_pos, io)) {
+        return true;
+      }
     }
   }
   return false;

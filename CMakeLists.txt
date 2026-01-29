@@ -79,12 +79,40 @@ add_executable(${PROJECT_NAME}
         # Core
         src/core/application.cpp
         src/core/win32_input.cpp
+        src/core/ui_settings.cpp
         src/core/data_types.cpp
         src/core/plc_simulator_core.cpp
         src/core/window_manager.cpp
         src/core/render_manager.cpp
         src/core/input_handler.cpp
         src/core/component_manager.cpp
+
+        # Components
+        src/components/component_registry.cpp
+        src/components/component_behavior.cpp
+        src/components/button_unit_def.cpp
+        src/components/box_def.cpp
+        src/components/conveyor_def.cpp
+        src/components/cylinder_def.cpp
+        src/components/emergency_stop_def.cpp
+        src/components/frl_def.cpp
+        src/components/inductive_sensor_def.cpp
+        src/components/limit_switch_def.cpp
+        src/components/manifold_def.cpp
+        src/components/meter_valve_def.cpp
+        src/components/plc_def.cpp
+        src/components/processing_cylinder_def.cpp
+        src/components/power_supply_def.cpp
+        src/components/ring_sensor_def.cpp
+        src/components/sensor_def.cpp
+        src/components/tower_lamp_def.cpp
+        src/components/valve_double_def.cpp
+        src/components/valve_single_def.cpp
+        src/components/workpiece_def.cpp
+        src/third_party/nanosvg_impl.cpp
+
+        # Language
+        src/lang/lang_manager.cpp
         
         # Wiring
         src/wiring/application_components.cpp
@@ -101,6 +129,7 @@ add_executable(${PROJECT_NAME}
         
         # Physics
         src/physics/physics_engine.cpp
+        src/physics/component_physics_adapter.cpp
         src/physics/physics_solvers.cpp
         src/physics/application_physics.cpp
         
@@ -132,12 +161,50 @@ if(EXISTS ${FONT_FILE})
     )
 endif()
 
+set(JP_FONT_FILE ${CMAKE_SOURCE_DIR}/resources/fonts/JP.ttf)
+if(EXISTS ${JP_FONT_FILE})
+    add_custom_command(
+            TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${JP_FONT_FILE}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    )
+endif()
+
+set(LANG_DIR ${CMAKE_SOURCE_DIR}/resources/lang)
+if(EXISTS ${LANG_DIR})
+    add_custom_command(
+            TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/lang"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${LANG_DIR}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/lang"
+    )
+endif()
+
+set(SYMBOL_DIR ${CMAKE_SOURCE_DIR}/resources/symbol)
+if(EXISTS ${SYMBOL_DIR})
+    add_custom_command(
+            TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/symbol"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${SYMBOL_DIR}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/symbol"
+    )
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${glad_SOURCE_DIR}/include
         ${glfw_SOURCE_DIR}/include
         ${nlohmann_json_SOURCE_DIR}/include
         ${miniz_SOURCE_DIR}
+)
+
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
 # ImGui 
@@ -226,7 +293,7 @@ else()
         -Wformat=2                  # printf         -Wimplicit-fallthrough      # switch fallthrough 
         
         #  (Release)
-        $<$<CONFIG:Release>:-O3>                      #          $<$<CONFIG:Release>:-DNDEBUG>                 # assert 
+        $<$<CONFIG:Release>:-O3>                      #          $<$<CONFIG:Release>:-DNDEBUG>                 # assert
         $<$<CONFIG:Release>:-Wno-array-bounds>        #   false positive 
         $<$<CONFIG:Release>:-Wno-stringop-overflow>   #   false positive 
         

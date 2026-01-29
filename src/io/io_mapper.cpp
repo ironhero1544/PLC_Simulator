@@ -489,6 +489,25 @@ int IOMapper_GetMaxPortCount(ComponentType type) {
       return 2;
     case ComponentType::FRL:
       return 1;
+    case ComponentType::WORKPIECE_METAL:
+    case ComponentType::WORKPIECE_NONMETAL:
+      return 0;
+    case ComponentType::RING_SENSOR:
+      return 3;
+    case ComponentType::METER_VALVE:
+      return 2;
+    case ComponentType::INDUCTIVE_SENSOR:
+      return 3;
+    case ComponentType::CONVEYOR:
+      return 2;
+    case ComponentType::PROCESSING_CYLINDER:
+      return 7;
+    case ComponentType::BOX:
+      return 0;
+    case ComponentType::TOWER_LAMP:
+      return 4;
+    case ComponentType::EMERGENCY_STOP:
+      return 4;
     default:
       return 1;
   }
@@ -516,6 +535,25 @@ std::string IOMapper_GetComponentRole(ComponentType type) {
       return "MANIFOLD";
     case ComponentType::FRL:
       return "FRL";
+    case ComponentType::WORKPIECE_METAL:
+    case ComponentType::WORKPIECE_NONMETAL:
+      return "WORKPIECE";
+    case ComponentType::RING_SENSOR:
+      return "SENSOR";
+    case ComponentType::METER_VALVE:
+      return "VALVE";
+    case ComponentType::INDUCTIVE_SENSOR:
+      return "SENSOR";
+    case ComponentType::CONVEYOR:
+      return "ACTUATOR";
+    case ComponentType::PROCESSING_CYLINDER:
+      return "ACTUATOR";
+    case ComponentType::BOX:
+      return "BOX";
+    case ComponentType::TOWER_LAMP:
+      return "LAMP";
+    case ComponentType::EMERGENCY_STOP:
+      return "EMERGENCY_STOP";
     default:
       return "UNKNOWN";
   }

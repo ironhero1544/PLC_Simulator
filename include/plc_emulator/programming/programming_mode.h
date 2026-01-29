@@ -333,6 +333,8 @@ class ProgrammingMode {
   void RenderAddressPopup();
   void RenderVerticalDialog();
 
+  float GetLayoutScale() const;
+
   void HandleEditAction(LadderInstructionType type);
   void ConfirmInstruction();
   void DeleteCurrentInstruction();

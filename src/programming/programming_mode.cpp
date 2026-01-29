@@ -1,4 +1,4 @@
-﻿// programming_mode.cpp
+// programming_mode.cpp
 
 //
 
@@ -912,74 +912,52 @@ SimulatorState ProgrammingMode::GetCurrentStateSnapshot() const {
 
 
 void ProgrammingMode::UpdateUIFromSimulatorState(const SimulatorState& state) {
-
-
-
-
-
   for (const auto& [address, deviceState] : state.deviceStates) {
-
     device_states_[address] = deviceState;
-
   }
-
-
-
 
   for (const auto& [address, timerState] : state.timerStates) {
-
     timer_states_[address] = timerState;
-
   }
-
-
-
 
   for (const auto& [address, counterState] : state.counterStates) {
-
     counter_states_[address] = counterState;
-
   }
-
-
-
 
   for (auto& rung : ladder_program_.rungs) {
-
     for (auto& cell : rung.cells) {
-
-      if (!cell.address.empty()) {
-
-        auto it = state.deviceStates.find(cell.address);
-
-        if (it != state.deviceStates.end()) {
-
-          cell.isActive = it->second;
-
-        }
-
+      if (cell.address.empty())
+        continue;
+      if (cell.type == LadderInstructionType::XIC) {
+        cell.isActive = GetDeviceState(cell.address);
+        continue;
       }
-
+      if (cell.type == LadderInstructionType::XIO) {
+        cell.isActive = !GetDeviceState(cell.address);
+        continue;
+      }
+      if (cell.type == LadderInstructionType::OTE ||
+          cell.type == LadderInstructionType::SET ||
+          cell.type == LadderInstructionType::RST ||
+          cell.type == LadderInstructionType::TON ||
+          cell.type == LadderInstructionType::CTU ||
+          cell.type == LadderInstructionType::RST_TMR_CTR) {
+        cell.isActive = GetDeviceState(cell.address);
+        continue;
+      }
+      auto it = state.deviceStates.find(cell.address);
+      if (it != state.deviceStates.end()) {
+        cell.isActive = it->second;
+      }
     }
-
   }
-
-
-
 
   static int updateCounter = 0;
-
   if ((++updateCounter % 100) == 0) {
-
     std::cout << "[UI] State Update #" << updateCounter
-
               << " (seq: " << state.seqNo << ")" << std::endl;
-
   }
-
 }
-
-
 
 void ProgrammingMode::UpdateInputsFromSystem(
 
@@ -1190,9 +1168,14 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     if (!presetStr.empty()) {
 
+      std::string raw = presetStr;
+      if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+        raw = raw.substr(1);
+      }
+
       try {
 
-        preset = std::stoi(presetStr);
+        preset = std::stoi(raw);
 
         if (preset < 0) {
 
@@ -1222,20 +1205,19 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     if (it == timer_states_.end()) {
 
-      TimerState ts;
+      TimerState cs;
 
-      ts.value = 0;
+      cs.value = 0;
 
-      ts.done = false;
+      cs.done = false;
 
-      ts.enabled = false;
+      cs.preset = preset;
 
-      ts.preset = preset;
+      cs.enabled = false;
 
-      timer_states_.emplace(addr, ts);
+      timer_states_.emplace(addr, cs);
 
     } else {
-
 
       if (preset > 0)
 
@@ -1245,7 +1227,9 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
   };
 
-  auto ensure_counter = [&](const std::string& addr,
+
+
+    auto ensure_counter = [&](const std::string& addr,
 
                             const std::string& presetStr) {
 
@@ -1253,9 +1237,14 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     if (!presetStr.empty()) {
 
+      std::string raw = presetStr;
+      if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+        raw = raw.substr(1);
+      }
+
       try {
 
-        preset = std::stoi(presetStr);
+        preset = std::stoi(raw);
 
         if (preset < 0) {
 
@@ -1306,10 +1295,7 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
     }
 
   };
-
-
-
-  for (const auto& rung : ladder_program_.rungs) {
+for (const auto& rung : ladder_program_.rungs) {
 
     if (rung.isEndRung)
 

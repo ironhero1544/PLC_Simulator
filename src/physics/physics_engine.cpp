@@ -168,6 +168,50 @@ PortInfo GetComponentPortInfo(ComponentType type) {
       info.isPneumaticActive = true;
       info.isMechanicalActive = true;
       break;
+
+    case ComponentType::WORKPIECE_METAL:
+    case ComponentType::WORKPIECE_NONMETAL:
+      break;
+
+    case ComponentType::RING_SENSOR:
+      info.electricalPorts = 3;
+      info.isElectricalActive = true;
+      break;
+
+    case ComponentType::METER_VALVE:
+      info.pneumaticPorts = 2;
+      info.isPneumaticActive = true;
+      break;
+
+    case ComponentType::INDUCTIVE_SENSOR:
+      info.electricalPorts = 3;
+      info.isElectricalActive = true;
+      break;
+
+    case ComponentType::CONVEYOR:
+      info.electricalPorts = 2;
+      info.isElectricalActive = true;
+      break;
+
+    case ComponentType::PROCESSING_CYLINDER:
+      info.electricalPorts = 5;
+      info.pneumaticPorts = 2;
+      info.isElectricalActive = true;
+      info.isPneumaticActive = true;
+      break;
+
+    case ComponentType::BOX:
+      break;
+
+    case ComponentType::TOWER_LAMP:
+      info.electricalPorts = 4;
+      info.isElectricalActive = true;
+      break;
+
+    case ComponentType::EMERGENCY_STOP:
+      info.electricalPorts = 4;
+      info.isElectricalActive = true;
+      break;
   }
 
   return info;
@@ -1121,11 +1165,16 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         if (pneu->nodeCount >= pneu->maxNodes)
           break;
 
+        int port_id = p;
+        if (portInfo.isElectricalActive) {
+          port_id += portInfo.electricalPorts;
+        }
+
         PneumaticNode& node = pneu->nodes[pneu->nodeCount];
         std::memset(&node, 0, sizeof(PneumaticNode));
 
         node.base.componentId = comp.instanceId;
-        node.base.portId = p;
+        node.base.portId = port_id;
         node.base.nodeId = pneu->nodeCount;
         node.base.isActive = true;
 
@@ -1156,9 +1205,9 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
 
         // 공압 매핑 ?�이�??�데?�트 - 범위 검??
         if (comp.instanceId >= 0 && comp.instanceId < engine->maxComponents &&
-            p >= 0 && p < 16 &&
+            port_id >= 0 && port_id < 16 &&
             engine->componentPortToPneumaticNode != nullptr) {
-          engine->componentPortToPneumaticNode[comp.instanceId][p] =
+          engine->componentPortToPneumaticNode[comp.instanceId][port_id] =
               pneu->nodeCount;
         }
         pneu->nodeCount++;

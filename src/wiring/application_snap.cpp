@@ -8,7 +8,6 @@
 #include "plc_emulator/core/application.h"
 
 #include <cmath>
-#include <iostream>
 
 namespace plc {
 
@@ -28,20 +27,7 @@ ImVec2 Application::ApplySnap(ImVec2 position, bool isWirePoint) {
       current_way_points_.empty()
           ? wire_start_pos_
           : ImVec2(current_way_points_.back().x, current_way_points_.back().y);
-
-  if (snap_settings_.enableVerticalSnap ||
-      snap_settings_.enableHorizontalSnap) {
-    ImVec2 lineSnappedPos = ApplyLineSnap(position, referencePoint, false);
-    if (lineSnappedPos.x != position.x || lineSnappedPos.y != position.y) {
-      return lineSnappedPos;
-    }
-  }
-
-  if (snap_settings_.enableGridSnap) {
-    return ApplyGridSnap(position);
-  }
-
-  return position;
+  return ApplyAngleSnap(position, referencePoint);
 }
 
 ImVec2 Application::ApplyGridSnap(ImVec2 position) {
@@ -110,6 +96,23 @@ ImVec2 Application::ApplyLineSnap(ImVec2 position, ImVec2 referencePoint,
   }
 
   return position;
+}
+
+ImVec2 Application::ApplyAngleSnap(ImVec2 position, ImVec2 referencePoint) {
+  float dx = position.x - referencePoint.x;
+  float dy = position.y - referencePoint.y;
+  float len_sq = dx * dx + dy * dy;
+  if (len_sq < 0.0001f) {
+    return position;
+  }
+
+  float angle = std::atan2(dy, dx);
+  float snap_step = 3.14159265f / 4.0f;
+  float snapped_angle = std::round(angle / snap_step) * snap_step;
+  float length = std::sqrt(len_sq);
+
+  return ImVec2(referencePoint.x + std::cos(snapped_angle) * length,
+                referencePoint.y + std::sin(snapped_angle) * length);
 }
 
 void Application::RenderSnapGuides(ImDrawList* draw_list, ImVec2 worldSnapPos) {

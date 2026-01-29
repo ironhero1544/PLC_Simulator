@@ -1,0 +1,171 @@
+# Menu
+menu.settings=Settings
+menu.language=Language
+menu.ui_settings=UI
+lang.english=English
+lang.korean=Korean
+lang.japanese=Japanese
+lang.restart_required=Restart required to apply.
+lang.restart_now=Restart now...
+lang.restart_prompt=Restart application now?
+lang.restart_yes=Restart
+lang.restart_no=Cancel
+ui.settings.ui_scale=UI Scale
+ui.settings.font_scale=Font Scale
+ui.settings.layout_scale=Layout Scale
+ui.settings.reset_defaults=Reset Defaults
+ui.settings.restart_required=Restart required to apply UI changes.
+ui.settings.restart_now=Restart now...
+
+# Header
+ui.header.title=PLC Simulator
+ui.header.mode_wiring=Wiring
+ui.header.mode_programming=Programming
+ui.header.status_run=[RUN]
+ui.header.status_stop=[STOP]
+ui.header.btn_run=RUN
+ui.header.btn_stop=STOP
+
+# Toolbar
+ui.toolbar.tool_select=Select
+ui.toolbar.tool_pneumatic=Pneumatic
+ui.toolbar.tool_electric=Electric
+ui.toolbar.load_project=Load Project
+
+# Status bar
+ui.status.zoom_info=Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %zu
+ui.status.tool_fmt=Tool: %s
+
+# Common
+ui.common.yes=Yes
+ui.common.no=No
+ui.common.ok=OK
+ui.common.fail=FAIL
+ui.common.enabled=Enabled
+ui.common.disabled=Disabled
+ui.common.run=RUN
+ui.common.stop=STOP
+
+# Debug panel
+ui.debug.engine_fmt=Engine: %s
+ui.debug.compiled_fmt=Compiled Code: %s
+ui.debug.compiled_loaded=Loaded
+ui.debug.compiled_not_loaded=Not Loaded
+ui.debug.recompile_fmt=Recompile Needed: %s
+ui.debug.last_scan_fmt=Last Scan: %s
+ui.debug.cycle_time_fmt=Cycle Time: %d us
+ui.debug.instructions_fmt=Instructions: %d
+ui.debug.compile_error_fmt=Compile Error: %s
+ui.debug.scan_error_fmt=Scan Error: %s
+ui.debug.gx2_norm_fmt=GX2 Normalize: %s
+ui.debug.fix_count_fmt=Fix Count: %d
+ui.debug.no_fixes=(no fixes)
+ui.debug.fixed_buffer_limit=Fixed buffer limit reached.
+
+# Component list
+ui.component_list.title=Components
+ui.component_list.tooltip_drag=Drag to the canvas.
+ui.component_list.tooltip_place=Drag to place.
+
+# Components
+component.plc.name=FX3U-32M PLC
+component.plc.desc=X:16 / Y:16
+component.plc.label=FX3U-32M
+component.frl.name=FRL Unit
+component.frl.desc=Air supply regulator
+component.frl.label=FRL UNIT
+component.manifold.name=Manifold
+component.manifold.desc=Pneumatic distribution
+component.manifold.label=MANIFOLD
+component.limit_switch.name=Limit Switch
+component.limit_switch.desc=Mechanical contact
+component.limit_switch.label=LIMIT
+component.sensor.name=Sensor
+component.sensor.desc=Proximity sensor
+component.cylinder.name=Cylinder
+component.cylinder.desc=Pneumatic actuator
+component.valve_single.name=Valve Single
+component.valve_single.desc=Single solenoid valve
+component.valve_double.name=Valve Double
+component.valve_double.desc=Double solenoid valve
+component.valve.label_5_2=5/2WAY
+component.button_unit.name=Button Unit
+component.button_unit.desc=Input/indicator panel
+component.button_unit.label=BUTTON UNIT
+component.power_supply.name=Power Supply
+component.power_supply.desc=24V DC supply
+component.power_supply.label=24V DC
+component.workpiece_metal.name=Metal Workpiece
+component.workpiece_metal.desc=Metal material piece
+component.workpiece_nonmetal.name=Non-metal Workpiece
+component.workpiece_nonmetal.desc=Non-metal material piece
+component.ring_sensor.name=Ring Sensor
+component.ring_sensor.desc=Ring-type workpiece sensor
+component.meter_valve.name=Meter In/Out Valve
+component.meter_valve.desc=Flow control valve
+component.inductive_sensor.name=Inductive Sensor
+component.inductive_sensor.desc=Detects metal workpieces
+component.conveyor.name=Conveyor
+component.conveyor.desc=Moves workpieces forward
+component.processing_cylinder.name=Processing Cylinder
+component.processing_cylinder.desc=Processing cylinder with motor
+component.box.name=Box
+component.box.desc=Storage box for workpieces
+component.tower_lamp.name=Tower Lamp
+component.tower_lamp.desc=Red/Yellow/Green status lamp
+component.emergency_stop.name=Emergency Stop
+component.emergency_stop.desc=Emergency stop button
+
+
+# Wiring tooltips
+ui.wiring.tooltip_port_ids=Component ID: %d, Port ID: %d
+ui.wiring.tooltip_type_fmt=Type: %s
+ui.wiring.port_type_electric=Electric
+ui.wiring.port_type_pneumatic=Pneumatic
+ui.wiring.tooltip_role_fmt=Role: %s
+ui.wiring.tooltip_direction_fmt=Direction: %s
+ui.wiring.direction_input=Input
+ui.wiring.direction_output=Output
+ui.wiring.tooltip_state_fmt=State: %s
+ui.wiring.state_pressed=Pressed
+ui.wiring.state_released=Released
+ui.wiring.tooltip_pressure_fmt=Current Pressure: %.1f bar
+ui.wiring.tooltip_pressure_hint=Use mouse wheel to adjust.
+
+# Wiring camera help
+ui.wiring.camera_help.title=Canvas Camera
+ui.wiring.camera_help.zoom=Zoom: Mouse wheel (hold button to pan)
+ui.wiring.camera_help.pan_middle=Pan: Tool selection and wiring are available.
+ui.wiring.camera_help.pan_alt=Trackpad: Pinch to zoom.
+ui.wiring.camera_help.trackpad=Move: Ctrl + two-finger scroll.
+ui.wiring.camera_help.touch=Touch: Pinch to zoom, tap/drag to pan.
+
+# Programming UI
+ui.programming.timers_counters=Timers / Counters
+ui.programming.timer_value_fmt=%s  K%d/%d
+ui.programming.counter_value_fmt=%s  K%d/%d
+ui.programming.memory_m=Memory (M)
+ui.programming.shortcuts=Keyboard Shortcuts
+ui.programming.cursor_info=Cursor Info
+ui.programming.cursor_pos_fmt=Rung %04d, Cell: %d
+ui.programming.input_controls=Input Controls
+ui.programming.inputs_label=Inputs (X0-X15)
+ui.programming.outputs_label=Outputs (Y0-Y15)
+ui.programming.mode_fmt=Mode: %s
+ui.programming.mode_monitor=Monitor
+ui.programming.mode_edit=Edit
+ui.programming.cursor_fmt=Cursor: %04d: X%d
+ui.programming.steps_fmt=Steps: %zu
+ui.programming.vertical_prefix=Vertical: 
+ui.programming.vertical_sep=, 
+ui.programming.vertical_item_fmt=X%d (R%04d-%04d)
+ui.programming.no_vertical=No vertical connections
+ui.programming.compile_fail=Compile: FAIL
+ui.programming.compile_ok=Compile: OK
+ui.programming.plc_status_fmt=PLC: %s
+ui.programming.enter_device_fmt=Enter device address for %s:
+ui.programming.device_example=Example: Y0, T1 K10, C2 K5, SET M0, RST Y0
+ui.programming.vertical_conn_fmt=Vertical connection (X%d to X%d)
+ui.programming.start_rung_fmt=Start rung: %04d
+ui.programming.vertical_info=Vertical connection info
+ui.programming.end_rung_fmt=End rung: %04d

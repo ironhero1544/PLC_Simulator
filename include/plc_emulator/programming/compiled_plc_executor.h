@@ -180,6 +180,8 @@ class CompiledPLCExecutor {
   int current_elapsed_ms_ = 0;
   std::array<bool, 256> timer_enabled_ = {};
   std::array<bool, 256> counter_last_power_ = {};
+  std::array<int, 256> timer_presets_ = {};
+  std::array<int, 256> counter_presets_ = {};
 
   // C++ 肄붾뱶 ?뚯떛 諛??ㅽ뻾???꾪븳 紐낅졊??援ъ“
   struct ParsedInstruction {

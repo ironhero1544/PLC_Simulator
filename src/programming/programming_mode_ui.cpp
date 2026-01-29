@@ -1,8 +1,9 @@
-﻿// programming_mode_ui.cpp
+// programming_mode_ui.cpp
 //
 // Programming mode UI rendering.
 
-#include "plc_emulator/core/application.h"  // SaveProject ???????饔낅떽???????
+#include "plc_emulator/core/application.h"  // SaveProject ?????????????????
+#include "plc_emulator/lang/lang_manager.h"
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
@@ -30,25 +31,28 @@ void ProgrammingMode::RenderProgrammingModeUI(bool isPlcRunning) {
 }
 
 void ProgrammingMode::RenderProgrammingHeader() {
-  // Application ??????????占쎈∥?占썽큺?占쏙옙????????怨멸텛?????占쎈∥?占썸뤆?占???占쎈∥?占썹뭐占?占쏙옙????????占쎈∥占??????????
+  // Application ???????????????????????????????????????????????????????????????????????????????????
 }
 
 void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.94f, 0.94f, 0.94f, 1.0f));
-  if (ImGui::BeginChild("ProgrammingToolbar", ImVec2(0, 50), true,
+  if (ImGui::BeginChild("ProgrammingToolbar", ImVec2(0, 50 * layout_scale),
+                        true,
                         ImGuiWindowFlags_NoScrollbar)) {
-    ImGui::SetCursorPos(ImVec2(20, 10));
+    ImGui::SetCursorPos(ImVec2(20 * layout_scale, 10 * layout_scale));
 
     if (isPlcRunning) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("Edit (F3)", ImVec2(100, 30));
+      ImGui::Button("Edit (F3)", ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
     } else {
       ImGui::PushStyleColor(ImGuiCol_Button,
                             !is_monitor_mode_
                                 ? ImVec4(0.4f, 0.6f, 0.8f, 1.0f)
                                 : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-      if (ImGui::Button("Edit (F3)", ImVec2(100, 30))) {
+      if (ImGui::Button("Edit (F3)",
+                        ImVec2(100 * layout_scale, 30 * layout_scale))) {
         is_monitor_mode_ = false;
       }
       ImGui::PopStyleColor();
@@ -59,7 +63,8 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
     ImGui::PushStyleColor(ImGuiCol_Button,
                           is_monitor_mode_ ? ImVec4(0.4f, 0.6f, 0.8f, 1.0f)
                                           : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-    if (ImGui::Button("Monitor (F2)", ImVec2(100, 30))) {
+    if (ImGui::Button("Monitor (F2)",
+                      ImVec2(100 * layout_scale, 30 * layout_scale))) {
       is_monitor_mode_ = true;
     }
     ImGui::PopStyleColor();
@@ -68,12 +73,13 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning || is_monitor_mode_) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("Save", ImVec2(100, 30));
+      ImGui::Button("Save", ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
     } else {
-      if (ImGui::Button("Save", ImVec2(100, 30))) {
+      if (ImGui::Button("Save",
+                        ImVec2(100 * layout_scale, 30 * layout_scale))) {
 
-        // ???**NEW**: .csv ??????占쎈∥????占승?貫????????占쎈∥???????????占쎈∥????????
+        // ???**NEW**: .csv ???????????????????????????????????????????????????
         if (application_) {
           std::cout << "[DEBUG] application_ available" << std::endl;
 #ifdef _WIN32
@@ -97,7 +103,7 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
               savePath += ".csv";
             }
 
-            // ?????????占쎈∥????占승?貫????????占쎈∥???????????占쎈∥????????(XML + ZIP ??饔낅떽????????占쎈∥???
+            // ??????????????????????????????????????????????????????(XML + ZIP ???????????????????
             std::cout << "[DEBUG] Save path: " << savePath << std::endl;
             std::cout << "[DEBUG] application_: " << (application_ ? "OK" : "NULL") << std::endl;
 
@@ -117,7 +123,7 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
             std::cout << "[DEBUG] Save dialog cancelled" << std::endl;
           }
 #else
-          // ?????占쎈∥占????????????占쎈∥?????占쎈∥??????占쎈∥占???????????
+          // ?????????????????????????????????????????????????????
             std::cout << "[DEBUG] Save path: " << savePath << std::endl;
             std::cout << "[DEBUG] Save path: " << savePath << std::endl;
                     << (application_ ? "OK" : "NULL") << std::endl;
@@ -143,10 +149,12 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning || is_monitor_mode_) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("Compile", ImVec2(100, 30));
+      ImGui::Button("Compile",
+                    ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
     } else {
-      if (ImGui::Button("Compile", ImVec2(100, 30))) {
+      if (ImGui::Button("Compile",
+                        ImVec2(100 * layout_scale, 30 * layout_scale))) {
         CompileLadderToOpenPLC();
       }
     }
@@ -156,9 +164,10 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 }
 
 void ProgrammingMode::RenderProgrammingMainArea() {
+  const float layout_scale = GetLayoutScale();
   ImGui::Columns(2, "MainArea", false);
   float windowWidth = ImGui::GetWindowWidth();
-  float rightPanelWidth = 320.0f;
+  float rightPanelWidth = 320.0f * layout_scale;
   ImGui::SetColumnWidth(0, windowWidth - rightPanelWidth);
   RenderLadderEditor();
   ImGui::NextColumn();
@@ -166,17 +175,23 @@ void ProgrammingMode::RenderProgrammingMainArea() {
   ImGui::Columns(1);
 }
 
+float ProgrammingMode::GetLayoutScale() const {
+  return application_ ? application_->GetLayoutScale() : 1.0f;
+}
+
 void ProgrammingMode::RenderLadderEditor() {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
 
-  float availableHeight = ImGui::GetContentRegionAvail().y - 35;
+  float availableHeight = ImGui::GetContentRegionAvail().y -
+                          (35.0f * layout_scale);
   if (ImGui::BeginChild("LadderEditor", ImVec2(0, availableHeight), true,
                         ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
     RenderColumnHeader();
     RenderLadderDiagram();
-    // ??饔낅떽??????占쎈씮占????????????????? ??????占쎈ı?占썸뤆?????????占쎈뒌?????????占쎈∥????占?????????占쎈∥????鶯ㅺ동??筌믡룓占??????占쎈∥???????????占쎈∥????占쎌맶???
+    // ???????????????????????????????? ????????????????????????????????????????????????????????????????????????????????????????????????????
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
@@ -184,15 +199,17 @@ void ProgrammingMode::RenderLadderEditor() {
 }
 
 void ProgrammingMode::RenderColumnHeader() {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.92f, 0.92f, 0.92f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-  if (ImGui::BeginChild("ColumnHeader", ImVec2(0, 50), true,
+  if (ImGui::BeginChild("ColumnHeader", ImVec2(0, 50 * layout_scale), true,
                         ImGuiWindowFlags_NoScrollbar)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float rungNumberWidth = 80.0f;
-    float railWidth = 22.0f;
-    float deleteButtonWidth = is_monitor_mode_ ? 0.0f : 40.0f;
+    float rungNumberWidth = 80.0f * layout_scale;
+    float railWidth = 22.0f * layout_scale;
+    float deleteButtonWidth =
+        is_monitor_mode_ ? 0.0f : 40.0f * layout_scale;
     float cellAreaWidth =
         availableWidth - rungNumberWidth - (railWidth * 2) - deleteButtonWidth;
     float cellWidth = cellAreaWidth / 12.0f;
@@ -204,7 +221,7 @@ void ProgrammingMode::RenderColumnHeader() {
 
     for (int i = 0; i < 12; i++) {
       ImGui::BeginGroup();
-      ImGui::Dummy(ImVec2(cellWidth, 35));
+      ImGui::Dummy(ImVec2(cellWidth, 35 * layout_scale));
       ImVec2 cellMin = ImGui::GetItemRectMin();
       char numStr[3];
       snprintf(numStr, 3, "%d", i);
@@ -244,13 +261,13 @@ void ProgrammingMode::RenderLadderDiagram() {
 }
 
 void ProgrammingMode::RenderVerticalConnections() {
-  // [DEPRECATED] ??????????????????????? ????????????占쎈∥???
-  // ??饔낅떽??????占쎈씮占????????????????? ??????占쎈∥??????????占쎈ı?占썸뤆?????????占쎈뒌?????????占쎈∥????占?????????占쎈∥????鶯ㅺ동??筌믡룓占????轅붽틓??????
+  // [DEPRECATED] ??????????????????????? ??????????????????
+  // ???????????????????????????????? ?????????????????????????????????????????????????????????????????????????????????????????????
 }
 
-// [PPT: ?????????????占쎈∥???占쎈섰??1 - ????占쎈ı?占썸뤆?????饔낅떽??????占쎈씮占?????????????????
-// ??????占쎈ı?占썸뤆?????????????占쎈∥?????占쎈돥??????饔낅떽??????占쎈씮占????????????????占쎈∥????占????占쎈∥占???占쎌맶??????占쎈∥?????????饔낅떽????占쎌맶????占쎈뮝?????????占쎈∥????? ????????????????????
-// ????占쎈∥????????轅붽틓??????
+// [PPT: ????????????????????????1 - ??????????????????????????????????????????????
+// ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? ????????????????????
+// ????????????????????????
 void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
                                                        float cellAreaWidth) {
   if (ladder_program_.verticalConnections.empty())
@@ -263,9 +280,9 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
   float rungNumberWidth = 80.0f;
   float railWidth = 22.0f;
 
-  // [PPT: ???轅붽틓????????????占쎈∥???占쎈섰?? for???????占쎈∥占?????????轅붽틓??????占쎈∥占????????占쎈∥????????占쎈ı?占썸뤆????????怨멸텛????????占쎈∥?????饔낅떽??????占쎈씮占?????????占쎈∥?占썹뜏??????占쎈∥??????????????占쎈∥???
+  // [PPT: ????????????????????????????? for????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
   for (const auto& connection : ladder_program_.verticalConnections) {
-    // ??????占쎈∥????????占쎈ı?占썸뤆???????饔낅떽??????占쎈씮占?????????占쎈∥?占썹뜏???????????占쎈∥?????占쎈돥????款?蹂Β?占승???? ??饔낅떽?????????
+    // ??????????????????????????????????????????????????????????????????????????????????????????????????? ??????????????
     bool isThisRungInConnection = false;
     for (int connectedRung : connection.rungs) {
       if (connectedRung == rungIndex) {
@@ -277,20 +294,20 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
     if (!isThisRungInConnection)
       continue;
 
-    // [PPT: ?????????????占쎈∥???占쎈섰??2 - React ??????占쎈∥????占승?貫???????????占쎈∥???????????占쎌퓢?????? ?????誘⑺떜?????占?占쏙옙??????占쎈∥占???
-    // ??????????? ?????誘⑺떜??????占쎈∥占???????????轅붽틓??????占쎈∥占????饔낅떽????占쎌맶????占쎈뮝?????饔낅떽??????占쎈씮占?????????占쎈∥???????占?占쏙옙??????占쎈∥占?????轅붽틓??????
+    // [PPT: ????????????????????????2 - React ???????????????????????????????????????????????????? ???????????????????????????????
+    // ??????????? ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
     float lineX = windowPos.x + contentMin.x + rungNumberWidth + railWidth +
                   (connection.x / 12.0f) * cellAreaWidth;
 
-    float rungCenterY = windowPos.y + contentMin.y + 25.0f;  // ???????諛몄맶????占쎈∥????Y ??????占쎈∥????
+    float rungCenterY = windowPos.y + contentMin.y + 25.0f;  // ?????????????????????Y ?????????????
 
-    // [PPT: ???轅붽틓????????????占쎈∥???占쎈섰?? if-else ????占쎈∥??????????占????占승????占?占쏙옙???琉몃궔????占??猷몃쑄?????占쎈∥?????????占쎈눀???????占쎈∥?????????占쎈눀??????????占쎈∥???????關?占썲첎?????占쎈∥??????汝뷴젆?占??????轅붽틓??????
+    // [PPT: ????????????????????????????? if-else ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
     ImU32 lineColor = is_monitor_mode_ ? IM_COL32(107, 114, 128, 255)
                                       :                  // React??#6B7280
                           IM_COL32(156, 163, 175, 255);  // React??#9CA3AF
 
-    // ??????占쎈∥????????占쎈ı?占썸뤆?????轅붽틓??????占쎈∥?????饔낅떽??????占쎈씮占??????????????????占쎈∥??????????占쎈∥占???占쎌맶?
-    // ??????占쎈∥???????????????????轅붽틓??????占쎈∥占????????占쎈∥?????占쎈돥????款?蹂Β?占승???? ??饔낅떽?????????
+    // ?????????????????????????????????????????????????????????????????????????????????????????????????????
+    // ????????????????????????????????????????????????????????????????????????????? ??????????????
     std::vector<int> sortedRungs = connection.rungs;
     std::sort(sortedRungs.begin(), sortedRungs.end());
 
@@ -300,27 +317,28 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
     float lineStartY = rungCenterY;
     float lineEndY = rungCenterY;
 
-    // ??????占쎈∥?占썹춯???占쎈∥????????占쎈∥占?????????????????占쎈∥?????? ??饔낅떽?????????
+    // ????????????????????????????????????????????????????????? ??????????????
     if (rungIndex > minRung) {
-      lineStartY = windowPos.y + contentMin.y - 2.5f;  // ????????占쎈∥?占썹춯???占쎈∥?????
+      lineStartY = windowPos.y + contentMin.y - 2.5f;  // ??????????????????????????
     }
 
-    // ??????占쎈∥???????占쎈∥???????占쎈∥?占썹춯???????????????????占쎈∥?????? ??饔낅떽?????????
+    // ????????????????????????????????????????????????????????????? ??????????????
     if (rungIndex < maxRung) {
       lineEndY =
-          windowPos.y + contentMin.y + 52.5f;  // ????????占쎈∥???????占쎈∥?????(50px + 2.5px)
+          windowPos.y + contentMin.y + 52.5f;  // ??????????????????????????(50px + 2.5px)
     }
 
-    // ??饔낅떽??????占쎈씮占????????占쎈∥??????????占쎈∥占???占쎌맶?
+    // ???????????????????????????????????????????????
     draw_list->AddLine(ImVec2(lineX, lineStartY), ImVec2(lineX, lineEndY),
                        lineColor, 2.0f);
 
-    // ??????占쎈∥????????占쎈ı?占썸뤆????????諛몄맶????占쎈∥???????????占쎈∥?占썹뜏?????????
+    // ?????????????????????????????????????????????????????????????????????
     draw_list->AddCircleFilled(ImVec2(lineX, rungCenterY), 2.0f, lineColor);
   }
 }
 
 void ProgrammingMode::RenderRung(int rungIndex) {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushID(rungIndex);
   bool isSelected = (selected_rung_ == rungIndex);
   bool hasCompileError = IsRungCompileError(rungIndex);
@@ -334,19 +352,20 @@ void ProgrammingMode::RenderRung(int rungIndex) {
   }
   ImGui::PushStyleColor(ImGuiCol_ChildBg, bgColor);
 
-  if (ImGui::BeginChild("Rung", ImVec2(0, 50), false,
+  if (ImGui::BeginChild("Rung", ImVec2(0, 50 * layout_scale), false,
                         ImGuiWindowFlags_NoScrollbar)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float rungNumberWidth = 80.0f;
-    float railWidth = 22.0f;
-    float deleteButtonWidth = is_monitor_mode_ ? 0.0f : 40.0f;
+    float rungNumberWidth = 80.0f * layout_scale;
+    float railWidth = 22.0f * layout_scale;
+    float deleteButtonWidth =
+        is_monitor_mode_ ? 0.0f : 40.0f * layout_scale;
     float cellAreaWidth =
         availableWidth - rungNumberWidth - (railWidth * 2) - deleteButtonWidth;
     float cellWidth = cellAreaWidth / 12.0f;
 
     RenderVerticalConnectionsForRung(rungIndex, cellAreaWidth);
 
-    ImGui::SetCursorPos(ImVec2(10, 15));
+    ImGui::SetCursorPos(ImVec2(10 * layout_scale, 15 * layout_scale));
     char num[5];
     snprintf(num, 5, "%04d", ladder_program_.rungs[rungIndex].number);
     ImGui::TextUnformatted(num);
@@ -354,20 +373,21 @@ void ProgrammingMode::RenderRung(int rungIndex) {
       ImGui::SameLine();
       ImGui::TextColored(ImVec4(0.8f, 0.1f, 0.1f, 1.0f), "!");
     }
-    ImGui::SameLine(80);
+    ImGui::SameLine(80 * layout_scale);
     ImGui::TextUnformatted("|");
-    ImGui::SameLine(102);
+    ImGui::SameLine(102 * layout_scale);
 
     for (int i = 0; i < 12; ++i) {
       RenderLadderCell(rungIndex, i, cellWidth);
       if (i < 11)
-        ImGui::SameLine(0, 1);
+        ImGui::SameLine(0, 1 * layout_scale);
     }
-    ImGui::SameLine(0, 5);
+    ImGui::SameLine(0, 5 * layout_scale);
     ImGui::TextUnformatted("|");
     if (!is_monitor_mode_) {
       ImGui::SameLine();
-      if (ImGui::Button("X", ImVec2(28, 35))) {
+      if (ImGui::Button("X",
+                        ImVec2(28 * layout_scale, 35 * layout_scale))) {
         pending_action_.type = PendingActionType::DELETE_RUNG;
         pending_action_.rungIndex = rungIndex;
       }
@@ -380,18 +400,20 @@ void ProgrammingMode::RenderRung(int rungIndex) {
 }
 
 void ProgrammingMode::RenderEndRung(int rungIndex) {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushID(rungIndex);
   ImGui::PushStyleColor(ImGuiCol_ChildBg,
                         (selected_rung_ == rungIndex)
                             ? ImVec4(1.0f, 1.0f, 0.8f, 1.0f)
                             : ImVec4(0.92f, 0.92f, 0.92f, 1.0f));
 
-  if (ImGui::BeginChild("EndRung", ImVec2(0, 50), false,
+  if (ImGui::BeginChild("EndRung", ImVec2(0, 50 * layout_scale), false,
                         ImGuiWindowFlags_NoScrollbar)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
-    float rungNumberWidth = 80.0f;
-    float railWidth = 22.0f;
-    float deleteButtonWidth = is_monitor_mode_ ? 0.0f : 40.0f;
+    float rungNumberWidth = 80.0f * layout_scale;
+    float railWidth = 22.0f * layout_scale;
+    float deleteButtonWidth =
+        is_monitor_mode_ ? 0.0f : 40.0f * layout_scale;
     float cellAreaWidth =
         availableWidth - rungNumberWidth - (railWidth * 2) - deleteButtonWidth;
 
@@ -403,14 +425,14 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
       selected_cell_ = 0;
     }
 
-    ImGui::SetCursorPos(ImVec2(10, 15));
+    ImGui::SetCursorPos(ImVec2(10 * layout_scale, 15 * layout_scale));
     ImGui::TextUnformatted("END");
 
-    ImGui::SetCursorPos(ImVec2(80, 15));
+    ImGui::SetCursorPos(ImVec2(80 * layout_scale, 15 * layout_scale));
     ImGui::TextUnformatted("|");
 
-    float line_y = p_min.y + 25.0f;
-    float line_start_x = p_min.x + 102.0f;
+    float line_y = p_min.y + 25.0f * layout_scale;
+    float line_start_x = p_min.x + 102.0f * layout_scale;
     float line_end_x = line_start_x + cellAreaWidth;
     draw_list->AddLine(ImVec2(line_start_x, line_y), ImVec2(line_end_x, line_y),
                        IM_COL32(100, 100, 100, 255), 2.0f);
@@ -426,12 +448,14 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
         ImGui::GetColorU32(ImGuiCol_ChildBg));
     draw_list->AddText(textPos, IM_COL32_BLACK, endText);
 
-    ImGui::SetCursorPos(ImVec2(line_end_x + 5, 15));
+    ImGui::SetCursorPos(ImVec2(line_end_x + 5 * layout_scale,
+                               15 * layout_scale));
     ImGui::TextUnformatted("|");
 
     if (!is_monitor_mode_) {
       ImGui::SameLine();
-      ImGui::Dummy(ImVec2(deleteButtonWidth, 35));
+      ImGui::Dummy(
+          ImVec2(deleteButtonWidth, 35 * layout_scale));
     }
   }
   ImGui::EndChild();
@@ -441,6 +465,7 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
 
 void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
                                        float cellWidth) {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushID(cellIndex);
   const auto& instruction = ladder_program_.rungs[rungIndex].cells[cellIndex];
   bool isSelected =
@@ -449,7 +474,8 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
   ImGui::PushStyleColor(ImGuiCol_Button,
                         GetInstructionColor(isSelected, instruction.isActive));
 
-  if (ImGui::Button("##cell", ImVec2(cellWidth, 35))) {
+  if (ImGui::Button("##cell",
+                    ImVec2(cellWidth, 35 * layout_scale))) {
     selected_rung_ = rungIndex;
     selected_cell_ = cellIndex;
   }
@@ -458,33 +484,64 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
     ImVec2 p_min = ImGui::GetItemRectMin();
     ImVec2 p_max = ImGui::GetItemRectMax();
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    bool isTimerCounter = (instruction.type == LadderInstructionType::TON ||
+                           instruction.type == LadderInstructionType::CTU ||
+                           instruction.type == LadderInstructionType::RST_TMR_CTR);
 
     if (instruction.type == LadderInstructionType::HLINE) {
-      float centerY = p_min.y + 17.5f;
+      float centerY = p_min.y + 17.5f * layout_scale;
       ImU32 lineColor = instruction.isActive ? IM_COL32(100, 100, 100, 255)
                                              : IM_COL32(50, 50, 50, 255);
       draw_list->AddLine(ImVec2(p_min.x, centerY), ImVec2(p_max.x, centerY),
                          lineColor, 2.0f);
+    } else if (isTimerCounter) {
+      const char* symbol = GetInstructionSymbol(instruction.type);
+      float fontSize = ImGui::GetFontSize();
+      float topY = p_min.y + 1.0f * layout_scale;
+      float midY = p_min.y + (35.0f * layout_scale - fontSize) * 0.5f;
+      float bottomY =
+          p_min.y + 35.0f * layout_scale - fontSize - 1.0f * layout_scale;
+
+      draw_list->AddText(ImVec2(p_min.x + 2.0f, topY), IM_COL32_BLACK, symbol);
+
+      if (!instruction.address.empty()) {
+        ImVec2 addr_size = ImGui::CalcTextSize(instruction.address.c_str());
+        draw_list->AddText(
+            ImVec2(p_min.x + (cellWidth - addr_size.x) * 0.5f, midY),
+            IM_COL32(20, 20, 200, 255), instruction.address.c_str());
+      }
+
+      if (!instruction.preset.empty()) {
+        ImVec2 preset_size = ImGui::CalcTextSize(instruction.preset.c_str());
+        draw_list->AddText(
+            ImVec2(p_min.x + (cellWidth - preset_size.x) * 0.5f, bottomY),
+            IM_COL32(20, 20, 200, 255), instruction.preset.c_str());
+      }
     } else {
       const char* symbol = GetInstructionSymbol(instruction.type);
       ImVec2 text_size = ImGui::CalcTextSize(symbol);
-      draw_list->AddText(ImVec2(p_min.x + (cellWidth - text_size.x) * 0.5f,
-                                p_min.y + (35 - text_size.y) * 0.5f),
+      draw_list->AddText(
+          ImVec2(p_min.x + (cellWidth - text_size.x) * 0.5f,
+                 p_min.y + (35 * layout_scale - text_size.y) * 0.5f),
                          IM_COL32_BLACK, symbol);
     }
 
-    if (!instruction.address.empty()) {
-      ImVec2 addr_size = ImGui::CalcTextSize(instruction.address.c_str());
-      draw_list->AddText(
-          ImVec2(p_min.x + (cellWidth - addr_size.x) * 0.5f, p_min.y - 2),
-          IM_COL32(20, 20, 200, 255), instruction.address.c_str());
-    }
+    if (!isTimerCounter) {
+      if (!instruction.address.empty()) {
+        ImVec2 addr_size = ImGui::CalcTextSize(instruction.address.c_str());
+        draw_list->AddText(
+            ImVec2(p_min.x + (cellWidth - addr_size.x) * 0.5f,
+                   p_min.y - 2 * layout_scale),
+            IM_COL32(20, 20, 200, 255), instruction.address.c_str());
+      }
 
-    if (!instruction.preset.empty()) {
-      ImVec2 preset_size = ImGui::CalcTextSize(instruction.preset.c_str());
-      draw_list->AddText(
-          ImVec2(p_min.x + (cellWidth - preset_size.x) * 0.5f, p_min.y + 12),
-          IM_COL32(20, 20, 200, 255), instruction.preset.c_str());
+      if (!instruction.preset.empty()) {
+        ImVec2 preset_size = ImGui::CalcTextSize(instruction.preset.c_str());
+        draw_list->AddText(
+            ImVec2(p_min.x + (cellWidth - preset_size.x) * 0.5f,
+                   p_min.y + 12 * layout_scale),
+            IM_COL32(20, 20, 200, 255), instruction.preset.c_str());
+      }
     }
   }
   ImGui::PopStyleColor();
@@ -492,8 +549,9 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
 }
 
 void ProgrammingMode::RenderDeviceMonitor() {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.96f, 0.96f, 0.96f, 1.0f));
-  if (ImGui::BeginChild("DeviceMonitor", ImVec2(0, -35), true,
+  if (ImGui::BeginChild("DeviceMonitor", ImVec2(0, -35 * layout_scale), true,
                         ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
     if (!is_monitor_mode_) {
       RenderKeyboardHelp();
@@ -504,7 +562,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
       GetUsedDevices(usedM, usedT, usedC);
 
       if (!usedT.empty() || !usedC.empty()) {
-        ImGui::Text("Timers / Counters");
+        ImGui::Text("%s", TR("ui.programming.timers_counters", "Timers / Counters"));
         ImGui::Separator();
 
         for (const auto& addr : usedT) {
@@ -516,36 +574,26 @@ void ProgrammingMode::RenderDeviceMonitor() {
           ImGui::PushID(addr.c_str());
           ImGui::PushStyleColor(ImGuiCol_ChildBg,
                                 ImVec4(0.92f, 0.92f, 0.98f, 1.0f));
-          if (ImGui::BeginChild(addr.c_str(), ImVec2(0, 0), true,
-                                ImGuiWindowFlags_AlwaysAutoResize |
-                                    ImGuiWindowFlags_NoScrollbar)) {
-            ImGui::Columns(2, nullptr, false);
-            float buttonColumnWidth = 90.0f;
-            ImGui::SetColumnWidth(
-                0, ImGui::GetContentRegionAvail().x - buttonColumnWidth);
-
-            ImGui::Text("%s", addr.c_str());
-            ImGui::Text("Timer: %d / Preset: %d", timer.value, timer.preset);
-
-            ImGui::NextColumn();
-            const char* statusText =
-                timer.done ? "DONE" : (timer.enabled ? "RUN" : "STOP");
-            ImVec4 statusColor =
-                timer.done ? ImVec4(0.2f, 0.7f, 0.2f, 1.0f)
-                           : (timer.enabled ? ImVec4(0.2f, 0.5f, 0.8f, 1.0f)
-                                            : ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-            ImGui::PushStyleColor(ImGuiCol_Button, statusColor);
-            ImGui::Button(statusText, ImVec2(-1, 40.0f));
-            ImGui::PopStyleColor();
-            ImGui::Columns(1);
+          if (ImGui::BeginChild(addr.c_str(),
+                                ImVec2(0, 80.0f * layout_scale), true,
+                                ImGuiWindowFlags_NoScrollbar)) {
+            int timerValueK = timer.value / 100;
+            char value_buf[128] = {0};
+            FormatString(value_buf, sizeof(value_buf),
+                         "ui.programming.timer_value_fmt", "%s  K%d/%d",
+                         addr.c_str(), timerValueK, timer.preset);
+            ImGui::TextUnformatted(value_buf);
 
             float progress =
-                (timer.preset > 0) ? static_cast<float>(timer.value) / timer.preset : 0.0f;
+                (timer.preset > 0) ? static_cast<float>(timer.value) / (timer.preset * 100) : 0.0f;
+            if (progress > 1.0f)
+              progress = 1.0f;
             ImGui::ProgressBar(progress, ImVec2(-1, 0));
           }
           ImGui::EndChild();
           ImGui::PopStyleColor();
           ImGui::PopID();
+          ImGui::Spacing();
         }
 
         for (const auto& addr : usedC) {
@@ -557,49 +605,43 @@ void ProgrammingMode::RenderDeviceMonitor() {
           ImGui::PushID(addr.c_str());
           ImGui::PushStyleColor(ImGuiCol_ChildBg,
                                 ImVec4(0.98f, 0.92f, 0.92f, 1.0f));
-          if (ImGui::BeginChild(addr.c_str(), ImVec2(0, 0), true,
-                                ImGuiWindowFlags_AlwaysAutoResize |
-                                    ImGuiWindowFlags_NoScrollbar)) {
-            ImGui::Columns(2, nullptr, false);
-            float buttonColumnWidth = 90.0f;
-            ImGui::SetColumnWidth(
-                0, ImGui::GetContentRegionAvail().x - buttonColumnWidth);
-
-            ImGui::Text("%s", addr.c_str());
-            ImGui::Text("Counter: %d / Preset: %d", counter.value, counter.preset);
-
-            ImGui::NextColumn();
-            const char* statusText = counter.done ? "DONE" : "COUNTING";
-            ImVec4 statusColor = counter.done ? ImVec4(0.2f, 0.7f, 0.2f, 1.0f)
-                                              : ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
-            ImGui::PushStyleColor(ImGuiCol_Button, statusColor);
-            ImGui::Button(statusText, ImVec2(-1, 40.0f));
-            ImGui::PopStyleColor();
-            ImGui::Columns(1);
+          if (ImGui::BeginChild(addr.c_str(),
+                                ImVec2(0, 80.0f * layout_scale), true,
+                                ImGuiWindowFlags_NoScrollbar)) {
+            char value_buf[128] = {0};
+            FormatString(value_buf, sizeof(value_buf),
+                         "ui.programming.counter_value_fmt", "%s  K%d/%d",
+                         addr.c_str(), counter.value, counter.preset);
+            ImGui::TextUnformatted(value_buf);
 
             float progress = (counter.preset > 0)
                                  ? static_cast<float>(counter.value) / counter.preset
                                  : 0.0f;
+            if (progress > 1.0f)
+              progress = 1.0f;
             ImGui::ProgressBar(progress, ImVec2(-1, 0));
           }
           ImGui::EndChild();
           ImGui::PopStyleColor();
           ImGui::PopID();
+          ImGui::Spacing();
         }
         ImGui::Spacing();
       }
 
       if (!usedM.empty()) {
-        ImGui::Text("Memory (M)");
+        ImGui::Text("%s", TR("ui.programming.memory_m", "Memory (M)"));
         ImGui::Separator();
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5, 5));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                            ImVec2(5 * layout_scale, 5 * layout_scale));
         for (size_t i = 0; i < usedM.size(); ++i) {
           const std::string& address = usedM[i];
           bool state = GetDeviceState(address);
           ImGui::PushStyleColor(ImGuiCol_Button,
                                 state ? ImVec4(0.8f, 0.6f, 0.2f, 1.0f)
                                       : ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-          ImGui::Button(address.c_str(), ImVec2(55, 35));
+          ImGui::Button(address.c_str(),
+                        ImVec2(55 * layout_scale, 35 * layout_scale));
           ImGui::PopStyleColor();
           if ((i + 1) % 4 != 0 && i + 1 < usedM.size())
             ImGui::SameLine();
@@ -615,7 +657,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
   ImGui::PopStyleColor();
 }
 void ProgrammingMode::RenderKeyboardHelp() {
-  ImGui::Text("Keyboard Shortcuts");
+  ImGui::Text("%s", TR("ui.programming.shortcuts", "Keyboard Shortcuts"));
   ImGui::BulletText("F5: XIC (NO)");
   ImGui::BulletText("F6: XIO (NC)");
   ImGui::BulletText("F7: Coil (OUT)");
@@ -627,21 +669,28 @@ void ProgrammingMode::RenderKeyboardHelp() {
 }
 
 void ProgrammingMode::RenderCursorInfo() {
-  ImGui::Text("Cursor Info");
-  ImGui::Text("Rung %04d, Cell: %d", selected_rung_, selected_cell_);
+  ImGui::Text("%s", TR("ui.programming.cursor_info", "Cursor Info"));
+  char cursor_buf[128] = {0};
+  FormatString(cursor_buf, sizeof(cursor_buf),
+               "ui.programming.cursor_pos_fmt", "Rung %04d, Cell: %d",
+               selected_rung_, selected_cell_);
+  ImGui::TextUnformatted(cursor_buf);
 }
 
 void ProgrammingMode::RenderSimulationControl() {
-  ImGui::Text("Input Controls");
-  ImGui::Text("Inputs (X0-X15)");
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5, 5));
+  const float layout_scale = GetLayoutScale();
+  ImGui::Text("%s", TR("ui.programming.input_controls", "Input Controls"));
+  ImGui::Text("%s", TR("ui.programming.inputs_label", "Inputs (X0-X15)"));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                      ImVec2(5 * layout_scale, 5 * layout_scale));
   for (int i = 0; i < 16; i++) {
     std::string address = "X" + std::to_string(i);
     bool state = GetDeviceState(address);
     ImGui::PushStyleColor(ImGuiCol_Button,
                           state ? ImVec4(0.2f, 0.8f, 0.2f, 1.0f)
                                 : ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-    if (ImGui::Button(address.c_str(), ImVec2(55, 35))) {
+    if (ImGui::Button(address.c_str(),
+                      ImVec2(55 * layout_scale, 35 * layout_scale))) {
       SetDeviceState(address, !state);
     }
     ImGui::PopStyleColor();
@@ -650,15 +699,17 @@ void ProgrammingMode::RenderSimulationControl() {
   }
   ImGui::PopStyleVar();
   ImGui::Spacing();
-  ImGui::Text("Outputs (Y0-Y15)");
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(5, 5));
+  ImGui::Text("%s", TR("ui.programming.outputs_label", "Outputs (Y0-Y15)"));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                      ImVec2(5 * layout_scale, 5 * layout_scale));
   for (int i = 0; i < 16; i++) {
     std::string address = "Y" + std::to_string(i);
     bool state = GetDeviceState(address);
     ImGui::PushStyleColor(ImGuiCol_Button,
                           state ? ImVec4(0.8f, 0.2f, 0.2f, 1.0f)
                                 : ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-    ImGui::Button(address.c_str(), ImVec2(55, 35));
+    ImGui::Button(address.c_str(),
+                  ImVec2(55 * layout_scale, 35 * layout_scale));
     ImGui::PopStyleColor();
     if ((i + 1) % 4 != 0)
       ImGui::SameLine();
@@ -667,55 +718,79 @@ void ProgrammingMode::RenderSimulationControl() {
 }
 
 void ProgrammingMode::RenderStatusBar(bool isPlcRunning) {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
   if (ImGui::BeginChild("StatusBar", ImVec2(0, 0), true,
                         ImGuiWindowFlags_NoScrollbar)) {
-    ImGui::SetCursorPosY(5);
+    ImGui::SetCursorPosY(5 * layout_scale);
     ImGui::Columns(5, "StatusColumns", false);
 
-    ImGui::Text("Mode: %s", is_monitor_mode_ ? "Monitor" : "Edit");
+    char status_buf[128] = {0};
+    FormatString(status_buf, sizeof(status_buf),
+                 "ui.programming.mode_fmt", "Mode: %s",
+                 is_monitor_mode_
+                     ? TR("ui.programming.mode_monitor", "Monitor")
+                     : TR("ui.programming.mode_edit", "Edit"));
+    ImGui::TextUnformatted(status_buf);
     ImGui::NextColumn();
 
     if (!is_monitor_mode_) {
-      ImGui::Text("Cursor: %04d: X%d", selected_rung_, selected_cell_);
+      FormatString(status_buf, sizeof(status_buf),
+                   "ui.programming.cursor_fmt", "Cursor: %04d: X%d",
+                   selected_rung_, selected_cell_);
+      ImGui::TextUnformatted(status_buf);
     } else {
-      ImGui::Text("Steps: %zu", ladder_program_.rungs.size() > 0
-                                   ? ladder_program_.rungs.size() - 1
-                                   : 0);
+      FormatString(status_buf, sizeof(status_buf),
+                   "ui.programming.steps_fmt", "Steps: %zu",
+                   ladder_program_.rungs.size() > 0
+                       ? ladder_program_.rungs.size() - 1
+                       : 0);
+      ImGui::TextUnformatted(status_buf);
     }
     ImGui::NextColumn();
 
-    if (!ladder_program_.verticalConnections.empty()) {
-      std::string verticalInfo = "Vertical: ";
-      for (size_t i = 0; i < ladder_program_.verticalConnections.size(); i++) {
-        const auto& conn = ladder_program_.verticalConnections[i];
-        if (i > 0)
-          verticalInfo += ", ";
-        char connInfo[50];
-        snprintf(connInfo, 50, "X%d (R%04d-%04d)", conn.x, conn.startRung(), conn.endRung());
-
-        verticalInfo += connInfo;
-      }
-      ImGui::Text("%s", verticalInfo.c_str());
+      if (!ladder_program_.verticalConnections.empty()) {
+          const char* prefix =
+              TR("ui.programming.vertical_prefix", "Vertical: ");
+          const char* separator = TR("ui.programming.vertical_sep", ", ");
+          std::string verticalInfo = prefix;
+          for (size_t i = 0; i < ladder_program_.verticalConnections.size();
+               i++) {
+            const auto& conn = ladder_program_.verticalConnections[i];
+          if (i > 0) {
+            verticalInfo += separator;
+          }
+            char connInfo[64] = {0};
+            FormatString(connInfo, sizeof(connInfo),
+                         "ui.programming.vertical_item_fmt",
+                         "X%d (R%04d-%04d)",
+                         conn.x, conn.startRung(), conn.endRung());
+            verticalInfo += connInfo;
+          }
+        ImGui::Text("%s", verticalInfo.c_str());
     } else {
-      ImGui::Text("No vertical connections");
+      ImGui::Text("%s", TR("ui.programming.no_vertical", "No vertical connections"));
     }
     ImGui::NextColumn();
 
     if (compile_failed_) {
-      ImGui::TextColored(ImVec4(0.8f, 0.1f, 0.1f, 1.0f), "Compile: FAIL");
+      ImGui::TextColored(ImVec4(0.8f, 0.1f, 0.1f, 1.0f), "%s", TR("ui.programming.compile_fail", "Compile: FAIL"));
       if (ImGui::IsItemHovered() && !last_compile_error_.empty()) {
         ImGui::SetTooltip("%s", last_compile_error_.c_str());
       }
     } else {
-      ImGui::Text("Compile: OK");
+      ImGui::Text("%s", TR("ui.programming.compile_ok", "Compile: OK"));
     }
     ImGui::NextColumn();
 
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetColumnWidth() -
-                         100);
-    ImGui::Text("PLC: %s", isPlcRunning ? "RUN" : "STOP");
+                         100 * layout_scale);
+    FormatString(status_buf, sizeof(status_buf),
+                 "ui.programming.plc_status_fmt", "PLC: %s",
+                 isPlcRunning ? TR("ui.common.run", "RUN")
+                              : TR("ui.common.stop", "STOP"));
+    ImGui::TextUnformatted(status_buf);
 
     ImGui::Columns(1);
   }
@@ -731,8 +806,13 @@ void ProgrammingMode::RenderAddressPopup() {
 
   if (ImGui::BeginPopupModal("Address Input", &show_address_popup_,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("Enter device address for %s:",
-                GetInstructionSymbol(pending_instruction_type_));
+    const float layout_scale = GetLayoutScale();
+    char prompt_buf[128] = {0};
+    FormatString(prompt_buf, sizeof(prompt_buf),
+                 "ui.programming.enter_device_fmt",
+                 "Enter device address for %s:",
+                 GetInstructionSymbol(pending_instruction_type_));
+    ImGui::TextUnformatted(prompt_buf);
     ImGui::Spacing();
 
     if (ImGui::IsWindowAppearing()) {
@@ -748,17 +828,17 @@ void ProgrammingMode::RenderAddressPopup() {
     }
 
     if (pending_instruction_type_ == LadderInstructionType::OTE) {
-      ImGui::TextDisabled("Example: Y0, T1 K10, C2 K5, SET M0, RST Y0");
+      ImGui::TextDisabled("%s", TR("ui.programming.device_example", "Example: Y0, T1 K10, C2 K5, SET M0, RST Y0"));
     }
 
     ImGui::Spacing();
-    if (ImGui::Button("OK", ImVec2(120, 0))) {
+    if (ImGui::Button("OK", ImVec2(120 * layout_scale, 0))) {
       ConfirmInstruction();
       ImGui::CloseCurrentPopup();
       show_address_popup_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(120 * layout_scale, 0))) {
       ImGui::CloseCurrentPopup();
       show_address_popup_ = false;
     }
@@ -772,19 +852,34 @@ void ProgrammingMode::RenderVerticalDialog() {
 
   if (ImGui::BeginPopupModal("Vertical Connection", &show_vertical_dialog_,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("Vertical connection (X%d to X%d)", selected_cell_ - 1, selected_cell_);
+    const float layout_scale = GetLayoutScale();
+    char vertical_buf[128] = {0};
+    FormatString(vertical_buf, sizeof(vertical_buf),
+                 "ui.programming.vertical_conn_fmt",
+                 "Vertical connection (X%d to X%d)",
+                 selected_cell_ - 1, selected_cell_);
+    ImGui::TextUnformatted(vertical_buf);
     ImGui::Spacing();
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.95f, 0.95f, 0.95f, 1.0f));
-    if (ImGui::BeginChild("PositionInfo", ImVec2(350, 60), true)) {
-      ImGui::Text("Start rung: %04d", selected_rung_);
-    ImGui::Text("Vertical connection (X%d to X%d)", selected_cell_ - 1, selected_cell_);
+    if (ImGui::BeginChild("PositionInfo",
+                          ImVec2(350 * layout_scale, 60 * layout_scale),
+                          true)) {
+      FormatString(vertical_buf, sizeof(vertical_buf),
+                   "ui.programming.start_rung_fmt", "Start rung: %04d",
+                   selected_rung_);
+      ImGui::TextUnformatted(vertical_buf);
+      FormatString(vertical_buf, sizeof(vertical_buf),
+                   "ui.programming.vertical_conn_fmt",
+                   "Vertical connection (X%d to X%d)",
+                   selected_cell_ - 1, selected_cell_);
+      ImGui::TextUnformatted(vertical_buf);
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
-    ImGui::Text("Vertical connection info");
+    ImGui::Text("%s", TR("ui.programming.vertical_info", "Vertical connection info"));
 
     if (ImGui::IsWindowAppearing()) {
       ImGui::SetKeyboardFocusHere();
@@ -806,16 +901,19 @@ void ProgrammingMode::RenderVerticalDialog() {
     }
 
     ImGui::Spacing();
-    ImGui::Text("End rung: %04d", selected_rung_ + vertical_line_count_);
+    FormatString(vertical_buf, sizeof(vertical_buf),
+                 "ui.programming.end_rung_fmt", "End rung: %04d",
+                 selected_rung_ + vertical_line_count_);
+    ImGui::TextUnformatted(vertical_buf);
 
     ImGui::Spacing();
-    if (ImGui::Button("Confirm", ImVec2(120, 0))) {
+    if (ImGui::Button("Confirm", ImVec2(120 * layout_scale, 0))) {
       ConfirmVerticalConnection();
       ImGui::CloseCurrentPopup();
       show_vertical_dialog_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(120 * layout_scale, 0))) {
       ImGui::CloseCurrentPopup();
       show_vertical_dialog_ = false;
     }
@@ -864,3 +962,5 @@ ImVec4 ProgrammingMode::GetInstructionColor(bool isSelected,
 }
 
 }  // namespace plc
+
+

@@ -9,7 +9,12 @@
 // src/Application.cpp
 
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/core/win32_input.h"
+
+#include "plc_emulator/components/component_registry.h"
+#include "plc_emulator/lang/lang_manager.h"
+#include "plc_emulator/core/ui_settings.h"
 
 
 
@@ -77,6 +82,8 @@
 
 #include <cstdio>
 
+#include <cstring>
+
 #include <fstream>
 
 #include <iostream>
@@ -105,9 +112,6 @@ void PhysicsWarningDialogCallback(const char* message) {
 
 
 
-Position GetPortRelativePositionById(const PlacedComponent& comp, int portId);
-
-
 
 Application::Application(bool enable_debug_mode)
 
@@ -132,6 +136,8 @@ Application::Application(bool enable_debug_mode)
       is_moving_component_(false),
 
       moving_component_id_(-1),
+      component_list_view_mode_(ComponentListViewMode::NAME),
+      component_list_filter_(ComponentListFilter::ALL),
 
       next_wire_id_(0),
 
@@ -163,7 +169,8 @@ Application::Application(bool enable_debug_mode)
       enable_debug_logging_(false),
       debug_update_counter_(0),
       show_physics_warning_dialog_(false),
-      physics_warning_message_("") {
+      physics_warning_message_(""),
+      show_restart_popup_(false) {
 
   drag_start_offset_ = {0, 0};
 
@@ -182,9 +189,11 @@ Application::Application(bool enable_debug_mode)
   touch_anchor_screen_pos_ = {0.0f, 0.0f};
   prev_right_button_down_ = false;
   prev_side_button_down_ = false;
-  win32_right_click_ = false;
+      win32_right_click_ = false;
   win32_side_click_ = false;
   win32_side_down_ = false;
+  ui_settings_ = {};
+  SetDefaultUiSettings(&ui_settings_);
 
   canvas_top_left_ = {0.0f, 0.0f};
 
@@ -214,6 +223,9 @@ Application::~Application() {
   SetPhysicsWarningCallback(nullptr);
 }
 bool Application::Initialize() {
+  InitializeLanguage();
+  LoadUiSettings(&ui_settings_);
+
 
   if (!InitializeWindow())
 
@@ -586,6 +598,7 @@ bool Application::InitializeImGui() {
   ImFontConfig font_config;
 
   font_config.PixelSnapH = true;
+  float font_size = 16.0f * ui_settings_.font_scale;
 
   static const ImWchar korean_ranges[] = {
 
@@ -595,9 +608,12 @@ bool Application::InitializeImGui() {
 
   };
 
-  io.Fonts->AddFontFromFileTTF("unifont.ttf", 16.0f, &font_config,
-
+  io.Fonts->AddFontFromFileTTF("unifont.ttf", font_size, &font_config,
                                korean_ranges);
+  ImFontConfig merge_config = font_config;
+  merge_config.MergeMode = true;
+  const ImWchar* jp_ranges = io.Fonts->GetGlyphRangesJapanese();
+  io.Fonts->AddFontFromFileTTF("JP.ttf", font_size, &merge_config, jp_ranges);
 
 
 
@@ -703,106 +719,237 @@ void Application::SetupCustomStyle() {
 
   colors[ImGuiCol_SeparatorActive] = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
 
+  style.ScaleAllSizes(ui_settings_.ui_scale);
 }
 
 
 
 void Application::RenderUI() {
+  float menu_height = 0.0f;
+  RenderMainMenuBar(&menu_height);
 
-  ImGui::SetNextWindowPos(ImVec2(0, 0));
+  ImVec2 display_size = ImGui::GetIO().DisplaySize;
+  if (menu_height > display_size.y) {
+    menu_height = 0.0f;
+  }
 
-  ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+  ImGui::SetNextWindowPos(ImVec2(0, menu_height));
+  ImGui::SetNextWindowSize(
+      ImVec2(display_size.x, display_size.y - menu_height));
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
-
-
   ImGuiWindowFlags window_flags =
-
       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
-
       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-
       ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
-
-
   if (ImGui::Begin("MainAppWindow", nullptr, window_flags)) {
-
     RenderHeader();
 
-
-
     switch (current_mode_) {
-
       case Mode::WIRING:
-
         RenderWiringModeUI();
-
         break;
-
       case Mode::PROGRAMMING:
-
         if (programming_mode_) {
-
           programming_mode_->RenderProgrammingModeUI(is_plc_running_);
-
         }
-
         break;
-
     }
-
   }
-
   ImGui::End();
-
   ImGui::PopStyleVar(3);
   if (current_mode_ == Mode::PROGRAMMING && programming_mode_) {
-
     RenderPLCDebugPanel();
+  }
+  RenderPhysicsWarningDialog();
+}
 
+void Application::RenderWiringModeUI() {
+  RenderToolbar();
+  RenderMainArea();
+}
+
+void Application::RenderMainMenuBar(float* out_height) {
+  if (out_height) {
+    *out_height = 0.0f;
   }
 
-  RenderPhysicsWarningDialog();
+  if (!ImGui::BeginMainMenuBar()) {
+    return;
+  }
 
+  if (out_height) {
+    *out_height = ImGui::GetFrameHeight();
+  }
+
+  if (ImGui::BeginMenu(TR("menu.settings", "Settings"))) {
+    if (ImGui::BeginMenu(TR("menu.language", "Language"))) {
+      const char* user_lang = GetUserLanguageCode();
+      const char* active_lang = GetActiveLanguageCode();
+      const char* selected = (user_lang && user_lang[0] != '\0')
+                                 ? user_lang
+                                 : active_lang;
+
+      bool is_en = std::strcmp(selected, "en") == 0;
+      bool is_ko = std::strcmp(selected, "ko") == 0;
+      bool is_ja = std::strcmp(selected, "ja") == 0;
+
+      if (ImGui::MenuItem(TR("lang.english", "English"), nullptr, is_en)) {
+        SetUserLanguageCode("en");
+      }
+      if (ImGui::MenuItem(TR("lang.korean", "Korean"), nullptr, is_ko)) {
+        SetUserLanguageCode("ko");
+      }
+      if (ImGui::MenuItem(TR("lang.japanese", "Japanese"), nullptr, is_ja)) {
+        SetUserLanguageCode("ja");
+      }
+      ImGui::EndMenu();
+    }
+    RenderUiSettingsMenu();
+    if (IsLanguageRestartRequired()) {
+      ImGui::TextDisabled(
+          "%s", TR("lang.restart_required", "Restart required to apply."));
+      if (ImGui::MenuItem(TR("lang.restart_now", "Restart now..."))) {
+        show_restart_popup_ = true;
+      }
+    }
+    ImGui::EndMenu();
+  }
+
+  ImGui::EndMainMenuBar();
+
+  if (show_restart_popup_) {
+    ImGui::OpenPopup("Restart Application");
+    show_restart_popup_ = false;
+  }
+
+  bool restart_popup_open = true;
+  if (ImGui::BeginPopupModal("Restart Application", &restart_popup_open,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextUnformatted(
+        TR("lang.restart_prompt", "Restart application now?"));
+    ImGui::Spacing();
+    if (ImGui::Button(TR("lang.restart_yes", "Restart"), ImVec2(120, 0))) {
+      RestartApplication();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(TR("lang.restart_no", "Cancel"), ImVec2(120, 0))) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
 }
-void Application::RenderWiringModeUI() {
 
-  RenderToolbar();
-
-  RenderMainArea();
-
+bool Application::RestartApplication() {
+#ifdef _WIN32
+  const char* cmd = GetCommandLineA();
+  if (!cmd || cmd[0] == '\0') {
+    return false;
+  }
+  char cmdline[32768] = {0};
+  std::strncpy(cmdline, cmd, sizeof(cmdline) - 1);
+  STARTUPINFOA startup_info = {};
+  PROCESS_INFORMATION process_info = {};
+  startup_info.cb = sizeof(startup_info);
+  BOOL created = CreateProcessA(nullptr, cmdline, nullptr, nullptr, FALSE, 0,
+                                nullptr, nullptr, &startup_info,
+                                &process_info);
+  if (!created) {
+    return false;
+  }
+  CloseHandle(process_info.hProcess);
+  CloseHandle(process_info.hThread);
+  running_ = false;
+  if (window_) {
+    glfwSetWindowShouldClose(window_, GLFW_TRUE);
+  }
+  return true;
+#else
+  return false;
+#endif
 }
 
+float Application::GetLayoutScale() const {
+  return ui_settings_.layout_scale;
+}
 
+void Application::RenderUiSettingsMenu() {
+  if (!ImGui::BeginMenu(TR("menu.ui_settings", "UI"))) {
+    return;
+  }
+
+  float ui_scale = ui_settings_.ui_scale;
+  float font_scale = ui_settings_.font_scale;
+  float layout_scale = ui_settings_.layout_scale;
+  bool changed = false;
+
+  if (ImGui::SliderFloat(TR("ui.settings.ui_scale", "UI Scale"), &ui_scale,
+                         0.75f, 1.5f, "%.2f")) {
+    ui_settings_.ui_scale = ui_scale;
+    changed = true;
+  }
+  if (ImGui::SliderFloat(TR("ui.settings.font_scale", "Font Scale"), &font_scale,
+                         0.75f, 1.5f, "%.2f")) {
+    ui_settings_.font_scale = font_scale;
+    changed = true;
+  }
+  if (ImGui::SliderFloat(TR("ui.settings.layout_scale", "Layout Scale"),
+                         &layout_scale, 0.75f, 1.5f, "%.2f")) {
+    ui_settings_.layout_scale = layout_scale;
+    changed = true;
+  }
+
+  if (ImGui::Button(TR("ui.settings.reset_defaults", "Reset Defaults"))) {
+    SetDefaultUiSettings(&ui_settings_);
+    SaveUiSettings(ui_settings_);
+    ui_settings_.restart_required = true;
+    changed = false;
+  }
+
+  if (changed) {
+    SaveUiSettings(ui_settings_);
+    MarkUiSettingsRestartRequired(&ui_settings_);
+  }
+
+  if (ui_settings_.restart_required) {
+    ImGui::TextDisabled("%s", TR("ui.settings.restart_required",
+                                 "Restart required to apply UI changes."));
+    if (ImGui::Button(TR("ui.settings.restart_now", "Restart now..."))) {
+      show_restart_popup_ = true;
+    }
+  }
+
+  ImGui::EndMenu();
+}
 
 void Application::RenderHeader() {
 
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
 
   ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
 
-  if (ImGui::BeginChild("Header", ImVec2(0, 80), true,
+  if (ImGui::BeginChild("Header", ImVec2(0, 80 * layout_scale), true,
 
                         ImGuiWindowFlags_NoScrollbar)) {
 
     ImGui::Columns(3, "HeaderColumns", false);
 
-    ImGui::SetColumnWidth(0, 300);
+    ImGui::SetColumnWidth(0, 300 * layout_scale);
 
 
 
-    ImGui::SetCursorPos(ImVec2(20, 25));
+    ImGui::SetCursorPos(ImVec2(20 * layout_scale, 25 * layout_scale));
 
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
 
-    ImGui::Text("FX3U PLC Simulator");
+      ImGui::Text("%s", TR("ui.header.title", "FX3U PLC Simulator"));
 
     ImGui::PopStyleColor();
 
@@ -810,11 +957,13 @@ void Application::RenderHeader() {
 
     ImGui::NextColumn();
 
-    float centerX = ImGui::GetCursorPosX() + ImGui::GetColumnWidth() / 2 - 115;
+    float centerX =
+        ImGui::GetCursorPosX() + ImGui::GetColumnWidth() / 2 -
+        115 * layout_scale;
 
     ImGui::SetCursorPosX(centerX);
 
-    ImGui::SetCursorPosY(25);
+    ImGui::SetCursorPosY(25 * layout_scale);
 
 
 
@@ -832,7 +981,8 @@ void Application::RenderHeader() {
 
                                              : ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
 
-    if (ImGui::Button("Wiring", ImVec2(100, 30))) {
+      if (ImGui::Button(TR("ui.header.mode_wiring", "Wiring"),
+                        ImVec2(100 * layout_scale, 30 * layout_scale))) {
 
       current_mode_ = Mode::WIRING;
 
@@ -854,7 +1004,8 @@ void Application::RenderHeader() {
 
                                              : ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
 
-    if (ImGui::Button("Programming", ImVec2(120, 30))) {
+      if (ImGui::Button(TR("ui.header.mode_programming", "Programming"),
+                        ImVec2(120 * layout_scale, 30 * layout_scale))) {
 
       current_mode_ = Mode::PROGRAMMING;
 
@@ -866,17 +1017,20 @@ void Application::RenderHeader() {
 
     ImGui::NextColumn();
 
-    float rightX = ImGui::GetCursorPosX() + ImGui::GetColumnWidth() - 150;
+    float rightX = ImGui::GetCursorPosX() + ImGui::GetColumnWidth() -
+                   150 * layout_scale;
 
     ImGui::SetCursorPosX(rightX);
 
-    ImGui::SetCursorPosY(25);
+    ImGui::SetCursorPosY(25 * layout_scale);
 
     ImVec4 statusColor = is_plc_running_ ? ImVec4(0.2f, 0.7f, 0.2f, 1.0f)
 
                                         : ImVec4(0.8f, 0.2f, 0.2f, 1.0f);
 
-    const char* statusText = is_plc_running_ ? "[RUN]" : "[STOP]";
+      const char* statusText = is_plc_running_
+                                   ? TR("ui.header.status_run", "[RUN]")
+                                   : TR("ui.header.status_stop", "[STOP]");
 
     ImGui::PushStyleColor(ImGuiCol_Text, statusColor);
 
@@ -888,7 +1042,10 @@ void Application::RenderHeader() {
 
 
 
-    if (ImGui::Button(is_plc_running_ ? "STOP" : "RUN", ImVec2(80, 30))) {
+      if (ImGui::Button(is_plc_running_
+                            ? TR("ui.header.btn_stop", "STOP")
+                            : TR("ui.header.btn_run", "RUN"),
+                        ImVec2(80 * layout_scale, 30 * layout_scale))) {
 
       if (!is_plc_running_) {
 
@@ -1020,15 +1177,20 @@ void Application::RenderHeader() {
 
 void Application::RenderToolbar() {
 
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.96f, 0.96f, 0.96f, 1.0f));
 
-  if (ImGui::BeginChild("Toolbar", ImVec2(0, 60), true,
+  if (ImGui::BeginChild("Toolbar", ImVec2(0, 60 * layout_scale), true,
 
                         ImGuiWindowFlags_NoScrollbar)) {
 
-    ImGui::SetCursorPos(ImVec2(20, 15));
+    ImGui::SetCursorPos(ImVec2(20 * layout_scale, 15 * layout_scale));
 
-    const char* toolNames[] = {"Select", "Pneumatic", "Electric"};
+      const char* toolNames[] = {
+          TR("ui.toolbar.tool_select", "Select"),
+          TR("ui.toolbar.tool_pneumatic", "Pneumatic"),
+          TR("ui.toolbar.tool_electric", "Electric"),
+      };
 
     const ToolType toolTypes[] = {ToolType::SELECT, ToolType::PNEUMATIC,
 
@@ -1058,7 +1220,8 @@ void Application::RenderToolbar() {
 
                                         : ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
 
-      if (ImGui::Button(toolNames[i], ImVec2(180, 30))) {
+      if (ImGui::Button(toolNames[i],
+                        ImVec2(180 * layout_scale, 30 * layout_scale))) {
 
         current_tool_ = toolTypes[i];
 
@@ -1072,11 +1235,12 @@ void Application::RenderToolbar() {
 
     ImGui::SameLine();
 
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 200);
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 200 * layout_scale);
 
 
 
-    if (ImGui::Button("Load Project", ImVec2(180, 30))) {
+      if (ImGui::Button(TR("ui.toolbar.load_project", "Load Project"),
+                        ImVec2(180 * layout_scale, 30 * layout_scale))) {
 
 
 #ifdef _WIN32
@@ -1165,7 +1329,8 @@ void Application::RenderToolbar() {
 
 void Application::RenderMainArea() {
 
-  const float status_bar_height = 25.0f;
+  const float layout_scale = GetLayoutScale();
+  const float status_bar_height = 25.0f * layout_scale;
   ImVec2 available = ImGui::GetContentRegionAvail();
   float main_area_height = available.y - status_bar_height;
   if (main_area_height < 0.0f)
@@ -1194,25 +1359,25 @@ void Application::RenderMainArea() {
 
                         ImGuiWindowFlags_NoScrollbar)) {
 
-    ImGui::SetCursorPosY(5);
+    ImGui::SetCursorPosY(5 * layout_scale);
 
-    ImGui::SetCursorPosX(10);
+    ImGui::SetCursorPosX(10 * layout_scale);
 
 
 
-    ImGui::Text(
-
-        "Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %zu",
-
-        camera_zoom_, camera_offset_.x, camera_offset_.y,
-
-        placed_components_.size(), wires_.size());
+    char status_buf[256] = {0};
+    FormatString(status_buf, sizeof(status_buf),
+                 "ui.status.zoom_info",
+                 "Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %zu",
+                 camera_zoom_, camera_offset_.x, camera_offset_.y,
+                 placed_components_.size(), wires_.size());
+    ImGui::TextUnformatted(status_buf);
 
 
 
     ImGui::SameLine();
 
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 200);
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 200 * layout_scale);
 
     const char* tool_name = "";
 
@@ -1238,7 +1403,10 @@ void Application::RenderMainArea() {
 
     }
 
-    ImGui::Text("Tool: %s", tool_name);
+    char tool_buf[128] = {0};
+    FormatString(tool_buf, sizeof(tool_buf),
+                 "ui.status.tool_fmt", "Tool: %s", tool_name);
+    ImGui::TextUnformatted(tool_buf);
 
   }
 
@@ -1273,95 +1441,21 @@ void Application::Cleanup() {
 
 
 void Application::UpdatePortPositions() {
-
   port_positions_.clear();
 
   for (const auto& comp : placed_components_) {
-
-    int max_ports = 0;
-
-    switch (comp.type) {
-
-      case ComponentType::PLC:
-
-        max_ports = 32;
-
-        break;
-
-      case ComponentType::FRL:
-
-        max_ports = 1;
-
-        break;
-
-      case ComponentType::MANIFOLD:
-
-        max_ports = 5;
-
-        break;
-
-      case ComponentType::LIMIT_SWITCH:
-
-        max_ports = 3;
-
-        break;
-
-      case ComponentType::SENSOR:
-
-        max_ports = 3;
-
-        break;
-
-      case ComponentType::CYLINDER:
-
-        max_ports = 2;
-
-        break;
-
-      case ComponentType::VALVE_SINGLE:
-
-        max_ports = 5;
-
-        break;
-
-      case ComponentType::VALVE_DOUBLE:
-
-        max_ports = 7;
-
-        break;
-
-      case ComponentType::BUTTON_UNIT:
-
-        max_ports = 15;
-
-        break;
-
-      case ComponentType::POWER_SUPPLY:
-
-        max_ports = 2;
-
-        break;
-
+    const ComponentDefinition* def = GetComponentDefinition(comp.type);
+    if (!def || !def->ports || def->port_count <= 0) {
+      continue;
     }
-
-    for (int portId = 0; portId < max_ports; ++portId) {
-
-      Position relPos = GetPortRelativePositionById(comp, portId);
-
-      Position worldPos = {comp.position.x + relPos.x,
-
-                           comp.position.y + relPos.y};
-
-      port_positions_[{comp.instanceId, portId}] = worldPos;
-
+    for (int i = 0; i < def->port_count; ++i) {
+      const ComponentPortDef& port_def = def->ports[i];
+      Position worldPos = {comp.position.x + port_def.rel_pos.x,
+                           comp.position.y + port_def.rel_pos.y};
+      port_positions_[{comp.instanceId, port_def.id}] = worldPos;
     }
-
   }
-
 }
-
-
-
 ImVec2 Application::WorldToScreen(const ImVec2& world_pos) const {
 
   float x = canvas_top_left_.x + (world_pos.x + camera_offset_.x) * camera_zoom_;
@@ -2105,7 +2199,7 @@ void Application::RenderPhysicsWarningDialog() {
   bool open = true;
   if (ImGui::BeginPopupModal("Physics Warning", &open,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::TextUnformatted("Fixed buffer limit reached.");
+    ImGui::TextUnformatted(TR("ui.debug.fixed_buffer_limit", "Fixed buffer limit reached."));
     ImGui::Separator();
     ImGui::TextWrapped("%s", message.c_str());
 
@@ -2156,27 +2250,27 @@ void Application::LogComponentStates() {
 
         cylinderCount++;
 
-        float position = comp.internalStates.count("position")
+        float position = comp.internalStates.count(state_keys::kPosition)
 
-                             ? comp.internalStates.at("position")
-
-                             : 0.0f;
-
-        float velocity = comp.internalStates.count("velocity")
-
-                             ? comp.internalStates.at("velocity")
+                             ? comp.internalStates.at(state_keys::kPosition)
 
                              : 0.0f;
 
-        float pressureA = comp.internalStates.count("pressure_a")
+        float velocity = comp.internalStates.count(state_keys::kVelocity)
 
-                              ? comp.internalStates.at("pressure_a")
+                             ? comp.internalStates.at(state_keys::kVelocity)
+
+                             : 0.0f;
+
+        float pressureA = comp.internalStates.count(state_keys::kPressureA)
+
+                              ? comp.internalStates.at(state_keys::kPressureA)
 
                               : 0.0f;
 
-        float pressureB = comp.internalStates.count("pressure_b")
+        float pressureB = comp.internalStates.count(state_keys::kPressureB)
 
-                              ? comp.internalStates.at("pressure_b")
+                              ? comp.internalStates.at(state_keys::kPressureB)
 
                               : 0.0f;
 
@@ -2202,13 +2296,13 @@ void Application::LogComponentStates() {
 
         limitSwitchCount++;
 
-        bool isPressed = comp.internalStates.count("is_pressed") &&
+        bool isPressed = comp.internalStates.count(state_keys::kIsPressed) &&
 
-                         comp.internalStates.at("is_pressed") > 0.5f;
+                         comp.internalStates.at(state_keys::kIsPressed) > 0.5f;
 
-        bool manualPress = comp.internalStates.count("is_pressed_manual") &&
+        bool manualPress = comp.internalStates.count(state_keys::kIsPressedManual) &&
 
-                           comp.internalStates.at("is_pressed_manual") > 0.5f;
+                           comp.internalStates.at(state_keys::kIsPressedManual) > 0.5f;
 
 
 
@@ -2223,9 +2317,9 @@ void Application::LogComponentStates() {
 
             float cylinderX_body_start = cylinder.position.x + 170.0f;
 
-            float pistonPosition = cylinder.internalStates.count("position")
+            float pistonPosition = cylinder.internalStates.count(state_keys::kPosition)
 
-                                       ? cylinder.internalStates.at("position")
+                                       ? cylinder.internalStates.at(state_keys::kPosition)
 
                                        : 0.0f;
 
@@ -2287,13 +2381,13 @@ void Application::LogComponentStates() {
 
         sensorCount++;
 
-        bool isDetected = comp.internalStates.count("is_detected") &&
+        bool isDetected = comp.internalStates.count(state_keys::kIsDetected) &&
 
-                          comp.internalStates.at("is_detected") > 0.5f;
+                          comp.internalStates.at(state_keys::kIsDetected) > 0.5f;
 
-        bool isPowered = comp.internalStates.count("is_powered") &&
+        bool isPowered = comp.internalStates.count(state_keys::kIsPowered) &&
 
-                         comp.internalStates.at("is_powered") > 0.5f;
+                         comp.internalStates.at(state_keys::kIsPowered) > 0.5f;
 
 
 
@@ -2807,14 +2901,26 @@ void Application::RenderPLCDebugPanel() {
     bool compiledLoaded = programming_mode_->HasCompiledCodeLoaded();
 
     bool needRecompile = programming_mode_->IsRecompileNeeded();
+    char debug_buf[256] = {0};
 
 
 
-    ImGui::Text("Engine: %s", engineType);
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.engine_fmt", "Engine: %s", engineType);
+    ImGui::TextUnformatted(debug_buf);
 
-    ImGui::Text("Compiled Code: %s", compiledLoaded ? "Loaded" : "Not Loaded");
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.compiled_fmt", "Compiled Code: %s",
+                 compiledLoaded ? TR("ui.debug.compiled_loaded", "Loaded")
+                                : TR("ui.debug.compiled_not_loaded",
+                                     "Not Loaded"));
+    ImGui::TextUnformatted(debug_buf);
 
-    ImGui::Text("Recompile Needed: %s", needRecompile ? "Yes" : "No");
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.recompile_fmt", "Recompile Needed: %s",
+                 needRecompile ? TR("ui.common.yes", "Yes")
+                               : TR("ui.common.no", "No"));
+    ImGui::TextUnformatted(debug_buf);
 
 
 
@@ -2826,7 +2932,10 @@ void Application::RenderPLCDebugPanel() {
 
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.2f, 0.2f, 1.0f));
 
-      ImGui::TextWrapped("Compile Error: %s", lastCompileErr.c_str());
+      FormatString(debug_buf, sizeof(debug_buf),
+                   "ui.debug.compile_error_fmt", "Compile Error: %s",
+                   lastCompileErr.c_str());
+      ImGui::TextWrapped("%s", debug_buf);
 
       ImGui::PopStyleColor();
 
@@ -2846,17 +2955,26 @@ void Application::RenderPLCDebugPanel() {
 
 
 
-    ImGui::Text("Last Scan: %s", lastScanOk ? "OK" : "FAIL");
-
-    ImGui::Text("Cycle Time: %d us", cycleUs);
-
-    ImGui::Text("Instructions: %d", instr);
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.last_scan_fmt", "Last Scan: %s",
+                 lastScanOk ? TR("ui.common.ok", "OK")
+                            : TR("ui.common.fail", "FAIL"));
+    ImGui::TextUnformatted(debug_buf);
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.cycle_time_fmt", "Cycle Time: %d us", cycleUs);
+    ImGui::TextUnformatted(debug_buf);
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.instructions_fmt", "Instructions: %d", instr);
+    ImGui::TextUnformatted(debug_buf);
 
     if (!scanErr.empty()) {
 
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.2f, 0.2f, 1.0f));
 
-      ImGui::TextWrapped("Scan Error: %s", scanErr.c_str());
+      FormatString(debug_buf, sizeof(debug_buf),
+                   "ui.debug.scan_error_fmt", "Scan Error: %s",
+                   scanErr.c_str());
+      ImGui::TextWrapped("%s", debug_buf);
 
       ImGui::PopStyleColor();
 
@@ -2870,13 +2988,18 @@ void Application::RenderPLCDebugPanel() {
 
     bool gx2 = programming_mode_->IsGX2NormalizationEnabled();
 
-    ImGui::Text("GX2 Normalize: %s", gx2 ? "Enabled" : "Disabled");
+    FormatString(debug_buf, sizeof(debug_buf),
+                 "ui.debug.gx2_norm_fmt", "GX2 Normalize: %s",
+                 gx2 ? TR("ui.common.enabled", "Enabled")
+                     : TR("ui.common.disabled", "Disabled"));
+    ImGui::TextUnformatted(debug_buf);
 
     if (gx2) {
 
-      ImGui::Text("Fix Count: %d",
-
-                  programming_mode_->GetNormalizationFixCount());
+      FormatString(debug_buf, sizeof(debug_buf),
+                   "ui.debug.fix_count_fmt", "Fix Count: %d",
+                   programming_mode_->GetNormalizationFixCount());
+      ImGui::TextUnformatted(debug_buf);
 
       if (ImGui::CollapsingHeader("Normalization Summary",
 
@@ -2888,7 +3011,7 @@ void Application::RenderPLCDebugPanel() {
 
         if (summary.empty()) {
 
-          ImGui::TextUnformatted("(no fixes)");
+          ImGui::TextUnformatted(TR("ui.debug.no_fixes", "(no fixes)"));
 
         } else {
 
@@ -2911,4 +3034,10 @@ void Application::RenderPLCDebugPanel() {
 }
 
 }  // namespace plc
+
+
+
+
+
+
 

@@ -254,7 +254,8 @@ void ProgrammingMode::SyncOpenPLCToTimersCounters() {
     timer.value = plc_executor_->GetTimerValue(idx);
     timer.enabled = plc_executor_->GetTimerEnabled(idx);
     if (timer.preset > 0) {
-      timer.done = (timer.value >= timer.preset);
+      int preset_ms = timer.preset * 100;
+      timer.done = (timer.value >= preset_ms);
     } else {
       timer.done = timer.enabled;
     }

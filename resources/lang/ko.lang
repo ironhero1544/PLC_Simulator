@@ -1,0 +1,177 @@
+# Menu
+menu.settings=설정
+menu.language=언어
+lang.english=영어(English)
+lang.korean=한국어
+lang.japanese=일본어(日本語)
+lang.restart_required=재시작후 적용됩니다.
+
+# Header
+ui.header.title=PLC 시뮬레이터
+ui.header.mode_wiring=실배선 모드
+ui.header.mode_programming=프로그래밍 모드
+ui.header.status_run=[RUN]
+ui.header.status_stop=[STOP]
+ui.header.btn_run=시작
+ui.header.btn_stop=중지
+
+# Toolbar
+ui.toolbar.tool_select=선택도구
+ui.toolbar.tool_pneumatic=공압 배선
+ui.toolbar.tool_electric=전기 배선
+ui.toolbar.load_project=프로젝트 불러오기
+
+# Status bar
+ui.status.zoom_info=Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %zu
+ui.status.tool_fmt=Tool: %s
+
+# Common
+ui.common.yes=Yes
+ui.common.no=No
+ui.common.ok=OK
+ui.common.fail=실패
+ui.common.enabled=활성화
+ui.common.disabled=비활성화
+ui.common.run=RUN
+ui.common.stop=STOP
+
+# Debug panel
+ui.debug.engine_fmt=엔진: %s
+ui.debug.compiled_fmt=컴파일 코드: %s
+ui.debug.compiled_loaded=로드됨
+ui.debug.compiled_not_loaded=로드되지 않음
+ui.debug.recompile_fmt=재컴파일 필요: %s
+ui.debug.last_scan_fmt=마지막 스캔: %s
+ui.debug.cycle_time_fmt=사이클 횟수: %d us
+ui.debug.instructions_fmt=명령어 수: %d
+ui.debug.compile_error_fmt=컴파일 에러: %s
+ui.debug.scan_error_fmt=스켄 에러: %s
+ui.debug.gx2_norm_fmt=명령어 표준화: %s
+ui.debug.fix_count_fmt=보정 수: %d
+ui.debug.no_fixes=(no fixes)
+ui.debug.fixed_buffer_limit=보정 버퍼가 한계입니다.
+
+# Component list
+ui.component_list.title=부품 리스트
+ui.component_list.tooltip_drag=켄버스에 드래그 하세요.
+ui.component_list.tooltip_place=켄버스에 배치.
+
+# Components
+component.plc.name=PLC
+component.plc.desc=X:16 / Y:16
+component.plc.label=PLC
+component.frl.name=에어 서비스 유닛
+component.frl.desc=공압의 공급정도를 결정하는 유닛입니다.
+component.frl.label=FRL UNIT
+component.manifold.name=공압 분배기
+component.manifold.desc=하나의 공압을 여러 출력으로 분배합니다.
+component.manifold.label=MANIFOLD
+component.limit_switch.name=리밋스위치
+component.limit_switch.desc=기계적 접점 스위치
+component.limit_switch.label=LIMIT
+component.sensor.name=용량형 근접 센서
+component.sensor.desc=모든 유동물질을 검출합니다.
+component.cylinder.name=복동 실린더
+component.cylinder.desc=전진과 복귀를 정할수 있습니다.
+component.valve_single.name=단동 솔레노이드
+component.valve_single.desc=전자석 하나로 솔레노이드를 제어합니다.
+component.valve_double.name=복동 솔레노이드
+component.valve_double.desc=전자석 두개로 솔레노이드를 제어합니다.
+component.valve.label_5_2=5/2WAY
+component.button_unit.name=램프/버튼 유닛
+component.button_unit.desc= 램프와 버튼이 있는 유닛
+component.button_unit.label=BUTTON UNIT
+component.power_supply.name=DC 전원 공급기
+component.power_supply.desc=24V DC 전원 공급
+component.power_supply.label=24V DC
+component.workpiece_metal.name=금속 공작물
+component.workpiece_metal.desc=금속 재질 공작물
+component.workpiece_nonmetal.name=비금속 공작물
+component.workpiece_nonmetal.desc=비금속 재질 공작물
+component.ring_sensor.name=공작물 감지 센서
+component.ring_sensor.desc=링 타입 공작물 감지
+component.meter_valve.name=미터 인/아웃 밸브
+component.meter_valve.desc=유량 조절 밸브
+component.inductive_sensor.name=유도형 센서
+component.inductive_sensor.desc=금속 공작물 감지
+component.conveyor.name=컨베이어
+component.conveyor.desc=공작물 이송 장치
+component.processing_cylinder.name=가공 실린더
+component.processing_cylinder.desc=모터 포함 가공 실린더
+component.box.name=상자
+component.box.desc=공작물 보관 상자
+component.tower_lamp.name=타워 램프
+component.tower_lamp.desc=적/황/녹 표시 램프
+component.emergency_stop.name=비상정지
+component.emergency_stop.desc=비상 정지 버튼
+
+
+# Wiring tooltips
+ui.wiring.tooltip_port_ids=부품 번호: %d, 포트 번호: %d
+ui.wiring.tooltip_type_fmt=Type: %s
+ui.wiring.port_type_electric=전기 포트
+ui.wiring.port_type_pneumatic=공압 포트
+ui.wiring.tooltip_role_fmt=Role: %s
+ui.wiring.tooltip_direction_fmt=방향: %s
+ui.wiring.direction_input=입력
+ui.wiring.direction_output=출력
+ui.wiring.tooltip_state_fmt=상태: %s
+ui.wiring.state_pressed=눌림
+ui.wiring.state_released=안눌림
+ui.wiring.tooltip_pressure_fmt=작동 압력: %.1f bar
+ui.wiring.tooltip_pressure_hint=마우스 휠로 조절하세요.
+
+# Wiring camera help
+ui.wiring.camera_help.title=켄버스 카매라
+ui.wiring.camera_help.zoom=Zoom: 마우스 휠 (버튼 홀드로 이동 가능)
+ui.wiring.camera_help.pan_middle=팬:도구 선택과 배선이 가능합니다.
+ui.wiring.camera_help.pan_alt=트랙패드: 핀치하면 줌이 됩니다.
+ui.wiring.camera_help.trackpad=이동은 ctrl+ 두손가락으로 할 수 있습니다.
+ui.wiring.camera_help.touch=터치: 핀치로 줌, 터치로 이동할 수 있습니다.
+
+# Programming UI
+ui.programming.timers_counters=타이머 / 카운터
+ui.programming.timer_value_fmt=%s  K%d/%d
+ui.programming.counter_value_fmt=%s  K%d/%d
+ui.programming.memory_m=메모리 (M)
+ui.programming.shortcuts=키보드 단축키
+ui.programming.cursor_info=커서 정보
+ui.programming.cursor_pos_fmt=룽: %04d, 셀: %d
+ui.programming.input_controls=입력 제어
+ui.programming.inputs_label=입력 (X0-X15)
+ui.programming.outputs_label=출력 (Y0-Y15)
+ui.programming.mode_fmt=Mode: %s
+ui.programming.mode_monitor=모니터모드
+ui.programming.mode_edit=작성모드
+ui.programming.cursor_fmt=커서: %04d: X%d
+ui.programming.steps_fmt=스텝: %zu
+ui.programming.vertical_prefix=세로 줄: 
+ui.programming.vertical_sep=, 
+ui.programming.vertical_item_fmt=X%d (R%04d-%04d)
+ui.programming.no_vertical=세로 연결 없음
+ui.programming.compile_fail=컴파일 실패
+ui.programming.compile_ok=컴파일 됨
+ui.programming.plc_status_fmt=PLC: %s
+ui.programming.enter_device_fmt=디바이스 주소 및 명령을 입력하세요 %s:
+ui.programming.device_example=예시: Y0, T1 K10, C2 K5, SET M0, RST Y0
+ui.programming.vertical_conn_fmt=세로 연결 (X%d to X%d)
+ui.programming.start_rung_fmt=시작 룽: %04d
+ui.programming.vertical_info=세로 연결 정보
+ui.programming.end_rung_fmt=끝 룽: %04d
+
+# UI settings
+menu.ui_settings=UI
+ui.settings.ui_scale=UI 스케일
+ui.settings.font_scale=폰트 스케일
+ui.settings.layout_scale=레이아웃 크기
+ui.settings.reset_defaults=기본값으로
+ui.settings.restart_required=UI 크기는 재시작 후 적용됩니다.
+ui.settings.restart_now=재시작하기...
+ui.settings.reset_defaults=기본값으로
+ui.settings.restart_required=재시작후 UI변경이 적용됩니다.
+ui.settings.restart_now=재시작하기...
+lang.restart_required=재시작후 적용됩니다.
+lang.restart_now=재시작하기...
+lang.restart_prompt=정말로 재시작 하시겠습니까?
+lang.restart_yes=재시작
+lang.restart_no=취소

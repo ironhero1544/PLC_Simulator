@@ -6,15 +6,117 @@
 
 #include "plc_emulator/core/application.h"
 
+#include "plc_emulator/components/component_registry.h"
+#include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/lang/lang_manager.h"
+
 #include <algorithm>  // For std::remove_if
-#include <cmath>
 #include <iostream>
 #include <string>
 
 namespace plc {
 
+namespace {
+
+bool IsWorkpieceType(ComponentType type) {
+  return type == ComponentType::WORKPIECE_METAL ||
+         type == ComponentType::WORKPIECE_NONMETAL;
+}
+
+bool IsComponentVisibleByFilter(ComponentCategory category, int filter) {
+  if (filter == 0) {
+    return true;
+  }
+  if (filter == 1) {
+    return category == ComponentCategory::AUTOMATION ||
+           category == ComponentCategory::BOTH ||
+           category == ComponentCategory::ALL;
+  }
+  return category == ComponentCategory::SEMICONDUCTOR ||
+         category == ComponentCategory::BOTH ||
+         category == ComponentCategory::ALL;
+}
+
+void DrawGridToggleIcon(ImDrawList* draw_list, ImVec2 pos, float size,
+                        bool active) {
+  ImU32 stroke = active ? IM_COL32(60, 60, 60, 255) : IM_COL32(90, 90, 90, 255);
+  ImU32 fill = active ? IM_COL32(0, 0, 0, 12) : IM_COL32(0, 0, 0, 0);
+  float rounding = 6.0f;
+
+  ImVec2 max = ImVec2(pos.x + size, pos.y + size);
+  draw_list->AddRectFilled(pos, max, fill, rounding);
+
+  float inset = size * 0.22f;
+  ImVec2 inner_min = ImVec2(pos.x + inset, pos.y + inset);
+  ImVec2 inner_max = ImVec2(max.x - inset, max.y - inset);
+  draw_list->AddRect(inner_min, inner_max, stroke, 2.0f);
+
+  float mid_x = (inner_min.x + inner_max.x) * 0.5f;
+  float mid_y = (inner_min.y + inner_max.y) * 0.5f;
+  draw_list->AddLine(ImVec2(mid_x, inner_min.y), ImVec2(mid_x, inner_max.y),
+                     stroke, 1.5f);
+  draw_list->AddLine(ImVec2(inner_min.x, mid_y), ImVec2(inner_max.x, mid_y),
+                     stroke, 1.5f);
+}
+
+void DrawListToggleIcon(ImDrawList* draw_list, ImVec2 pos, float size,
+                        bool active) {
+  ImU32 stroke = active ? IM_COL32(60, 60, 60, 255) : IM_COL32(90, 90, 90, 255);
+  ImU32 fill = active ? IM_COL32(0, 0, 0, 12) : IM_COL32(0, 0, 0, 0);
+  float rounding = 6.0f;
+
+  ImVec2 max = ImVec2(pos.x + size, pos.y + size);
+  draw_list->AddRectFilled(pos, max, fill, rounding);
+
+  float inset = size * 0.22f;
+  float square = size * 0.18f;
+  ImVec2 icon_min =
+      ImVec2(pos.x + inset, pos.y + (size - square) * 0.5f);
+  ImVec2 icon_max = ImVec2(icon_min.x + square, icon_min.y + square);
+  draw_list->AddRectFilled(icon_min, icon_max, stroke, 2.0f);
+
+  float line_start_x = icon_max.x + size * 0.12f;
+  float line_end_x = max.x - inset;
+  float line_y = icon_min.y + square * 0.2f;
+  float line_gap = square * 0.5f;
+  draw_list->AddLine(ImVec2(line_start_x, line_y),
+                     ImVec2(line_end_x, line_y), stroke, 1.5f);
+  draw_list->AddLine(ImVec2(line_start_x, line_y + line_gap),
+                     ImVec2(line_end_x, line_y + line_gap), stroke, 1.5f);
+}
+
+void RenderComponentPreview(ImDrawList* draw_list,
+                            const ComponentDefinition* def,
+                            ImVec2 preview_pos,
+                            ImVec2 preview_size) {
+  if (!def || !def->Render) {
+    return;
+  }
+  float zoom_x = preview_size.x / def->size.width;
+  float zoom_y = preview_size.y / def->size.height;
+  float zoom = std::min(zoom_x, zoom_y);
+  if (zoom <= 0.01f) {
+    return;
+  }
+
+  ImVec2 draw_pos = ImVec2(preview_pos.x + (preview_size.x - def->size.width * zoom) * 0.5f,
+                           preview_pos.y + (preview_size.y - def->size.height * zoom) * 0.5f);
+  PlacedComponent temp;
+  temp.type = def->type;
+  temp.size = def->size;
+  temp.position = {0.0f, 0.0f};
+  temp.rotation = 0.0f;
+  if (def->InitDefaultState) {
+    def->InitDefaultState(&temp);
+  }
+  def->Render(draw_list, temp, draw_pos, zoom);
+}
+
+}  // namespace
+
 void Application::HandleComponentDragStart(int componentIndex) {
-  if (componentIndex >= 0 && componentIndex < 10) {
+  int count = GetComponentDefinitionCount();
+  if (componentIndex >= 0 && componentIndex < count) {
     is_dragging_ = true;
     dragged_component_index_ = componentIndex;
     std::cout << "Drag started successfully! isDragging=" << is_dragging_
@@ -32,55 +134,31 @@ void Application::HandleComponentDrag() {
 
 // src/Application_Components.cpp
 
-// 이 함수 전체를 아래 내용으로 교체해 주세요.
+// ????? ???????? ?????? ??????????
 void Application::HandleComponentDrop(Position position) {
   std::cout << "DROP: isDrag=" << is_dragging_
             << " index=" << dragged_component_index_ << std::endl;
 
   if (is_dragging_ && dragged_component_index_ >= 0) {
+    const ComponentDefinition* def =
+        GetComponentDefinitionByIndex(dragged_component_index_);
+    if (!def) {
+      std::cout << "FAIL: Definition missing" << std::endl;
+      is_dragging_ = false;
+      dragged_component_index_ = -1;
+      return;
+    }
     std::cout << "CREATE: type=" << dragged_component_index_ << " at ("
               << position.x << "," << position.y << ")" << std::endl;
 
     PlacedComponent newComponent;
     newComponent.instanceId = next_instance_id_++;
-    newComponent.type = static_cast<ComponentType>(dragged_component_index_);
+    newComponent.type = def->type;
     newComponent.position = position;
 
-    switch (newComponent.type) {
-      case ComponentType::PLC:
-        newComponent.size = {320.0f, 180.0f};
-        break;
-      case ComponentType::FRL:
-        newComponent.size = {80.0f, 100.0f};
-        break;
-      case ComponentType::MANIFOLD:
-        newComponent.size = {120.0f, 60.0f};
-        break;
-      case ComponentType::LIMIT_SWITCH:
-        newComponent.size = {60.0f, 60.0f};
-        break;
-      case ComponentType::SENSOR:
-        newComponent.size = {100.0f, 120.0f};
-        break;
-      // ★★★ FIX: 늘어난 이동 반경을 포함하도록 실린더의 전체 너비 증가
-      case ComponentType::CYLINDER:
-        newComponent.size = {340.0f, 60.0f};
-        break;
-      case ComponentType::VALVE_SINGLE:
-        newComponent.size = {80.0f, 100.0f};
-        break;
-      case ComponentType::VALVE_DOUBLE:
-        newComponent.size = {100.0f, 100.0f};
-        break;
-      case ComponentType::BUTTON_UNIT:
-        newComponent.size = {200.0f, 100.0f};
-        break;
-      case ComponentType::POWER_SUPPLY:
-        newComponent.size = {100.0f, 80.0f};
-        break;
-      default:
-        newComponent.size = {80.0f, 60.0f};
-        break;
+    newComponent.size = def->size;
+    if (def->InitDefaultState) {
+      def->InitDefaultState(&newComponent);
     }
 
     newComponent.position.x -= newComponent.size.width / 2.0f;
@@ -98,14 +176,14 @@ void Application::HandleComponentDrop(Position position) {
 }
 
 void Application::HandleComponentSelection(int instanceId) {
-  // 와이어 선택 해제
+  // ????? ??? ???
   selected_wire_id_ = -1;
   wire_edit_mode_ = WireEditMode::NONE;
   editing_wire_id_ = -1;
   editing_point_index_ = -1;
 
-  // [PPT: 수업 내용] for문을 사용하여 모든 컴포넌트의 선택 상태를
-  // 업데이트합니다.
+  // [PPT: ??? ???] for??? ?????? ??? ??????????? ?????
+  // ???????????
   for (auto& comp : placed_components_) {
     comp.selected = (comp.instanceId == instanceId);
   }
@@ -114,7 +192,7 @@ void Application::HandleComponentSelection(int instanceId) {
 
 void Application::DeleteSelectedComponent() {
   if (selected_component_id_ >= 0) {
-    // 선택된 컴포넌트와 연결된 모든 와이어 삭제
+    // ????????????? ???????? ????? ???
     wires_.erase(
         std::remove_if(wires_.begin(), wires_.end(),
                        [this](const Wire& wire) {
@@ -123,7 +201,7 @@ void Application::DeleteSelectedComponent() {
                        }),
         wires_.end());
 
-    // 컴포넌트 삭제
+    // ?????? ???
     for (auto it = placed_components_.begin(); it != placed_components_.end();
          ++it) {
       if (it->instanceId == selected_component_id_) {
@@ -136,13 +214,19 @@ void Application::DeleteSelectedComponent() {
 }
 
 void Application::HandleComponentMoveStart(int instanceId, ImVec2 mousePos) {
-  // [PPT: 수업 내용] for문을 사용하여 이동할 컴포넌트를 찾습니다.
+  // [PPT: ??? ???] for??? ?????? ???????????????????.
   for (auto& comp : placed_components_) {
     if (comp.instanceId == instanceId) {
       is_moving_component_ = true;
       moving_component_id_ = instanceId;
       drag_start_offset_.x = mousePos.x - comp.position.x;
       drag_start_offset_.y = mousePos.y - comp.position.y;
+      if (IsWorkpieceType(comp.type)) {
+        comp.internalStates[state_keys::kIsManualDrag] = 1.0f;
+        comp.internalStates[state_keys::kVelX] = 0.0f;
+        comp.internalStates[state_keys::kVelY] = 0.0f;
+        comp.internalStates[state_keys::kIsStuckBox] = 0.0f;
+      }
       break;
     }
   }
@@ -151,56 +235,31 @@ void Application::HandleComponentMoveStart(int instanceId, ImVec2 mousePos) {
 void Application::HandleComponentMoveEnd() {
   is_moving_component_ = false;
   moving_component_id_ = -1;
+  for (auto& comp : placed_components_) {
+    if (IsWorkpieceType(comp.type)) {
+      comp.internalStates[state_keys::kIsManualDrag] = 0.0f;
+    }
+  }
 }
 
 void Application::RenderPlacedComponents(ImDrawList* draw_list) {
-  // [PPT: 수업 내용] for문을 사용하여 배치된 모든 컴포넌트를 렌더링합니다.
+  // [PPT: ??? ???] for??? ?????? ???????? ?????????????????.
   for (const auto& comp : placed_components_) {
     ImVec2 screen_pos = WorldToScreen({comp.position.x, comp.position.y});
 
-    // [PPT: 수업 내용] switch문을 사용하여 컴포넌트 타입별로 다른 렌더링을
-    // 수행합니다.
-    switch (comp.type) {
-      case ComponentType::PLC:
-        RenderPLCComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::FRL:
-        RenderFRLComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::MANIFOLD:
-        RenderManifoldComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::LIMIT_SWITCH:
-        RenderLimitSwitchComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::SENSOR:
-        RenderSensorComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::CYLINDER:
-        RenderCylinderComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::VALVE_SINGLE:
-        RenderValveSingleComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::VALVE_DOUBLE:
-        RenderValveDoubleComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::BUTTON_UNIT:
-        RenderButtonUnitComponent(draw_list, comp, screen_pos);
-        break;
-      case ComponentType::POWER_SUPPLY:
-        RenderPowerSupplyComponent(draw_list, comp, screen_pos);
-        break;
-      default:
-        // 기본 렌더링
-        ImVec2 end_pos = {screen_pos.x + comp.size.width * camera_zoom_,
-                          screen_pos.y + comp.size.height * camera_zoom_};
-        draw_list->AddRectFilled(screen_pos, end_pos,
-                                 IM_COL32(128, 128, 128, 255));
-        break;
+    // [PPT: ??? ???] switch??? ?????? ?????? ?????????? ??????
+    // ????????
+    const ComponentDefinition* def = GetComponentDefinition(comp.type);
+    if (def && def->Render) {
+      def->Render(draw_list, comp, screen_pos, camera_zoom_);
+    } else {
+      ImVec2 end_pos = {screen_pos.x + comp.size.width * camera_zoom_,
+                        screen_pos.y + comp.size.height * camera_zoom_};
+      draw_list->AddRectFilled(screen_pos, end_pos,
+                               IM_COL32(128, 128, 128, 255));
     }
 
-    // 선택된 컴포넌트 하이라이트
+    // ??????????? ????????
     if (comp.selected) {
       ImVec2 end_pos = {screen_pos.x + comp.size.width * camera_zoom_,
                         screen_pos.y + comp.size.height * camera_zoom_};
@@ -211,83 +270,240 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
 }
 
 void Application::RenderComponentList() {
+  const float layout_scale = GetLayoutScale();
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.96f, 0.96f, 0.96f, 1.0f));
   if (ImGui::BeginChild("ComponentList", ImVec2(0, 0), true)) {
-    ImGui::SetCursorPos(ImVec2(15, 15));
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImGui::SetCursorPos(ImVec2(15 * layout_scale, 12 * layout_scale));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
-    ImGui::Text("실배선 오브젝트");
+    ImGui::Text("%s", TR("ui.component_list.title", "Components"));
     ImGui::PopStyleColor();
-    ImGui::SetCursorPosX(15);
+
+    float toggle_size = 26.0f * layout_scale;
+    float right_padding = 36.0f * layout_scale;
+    float filter_width = 120.0f * layout_scale;
+    float total_width = ImGui::GetWindowWidth();
+    float filter_start_x =
+        (total_width - filter_width) * 0.5f;
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(filter_start_x);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * layout_scale);
+    ImGui::PushItemWidth(filter_width);
+    const char* filter_label = TR("ui.component_list.filter_all", "All");
+    if (component_list_filter_ == ComponentListFilter::AUTOMATION) {
+      filter_label = TR("ui.component_list.filter_auto", "Automation");
+    } else if (component_list_filter_ == ComponentListFilter::SEMICONDUCTOR) {
+      filter_label = TR("ui.component_list.filter_semi", "Semiconductor");
+    }
+
+    if (ImGui::BeginCombo("##ComponentFilter", filter_label,
+                          ImGuiComboFlags_HeightSmall)) {
+      if (ImGui::Selectable(TR("ui.component_list.filter_all", "All"),
+                            component_list_filter_ ==
+                                ComponentListFilter::ALL)) {
+        component_list_filter_ = ComponentListFilter::ALL;
+      }
+      if (ImGui::Selectable(TR("ui.component_list.filter_auto", "Automation"),
+                            component_list_filter_ ==
+                                ComponentListFilter::AUTOMATION)) {
+        component_list_filter_ = ComponentListFilter::AUTOMATION;
+      }
+      if (ImGui::Selectable(
+              TR("ui.component_list.filter_semi", "Semiconductor"),
+              component_list_filter_ ==
+                  ComponentListFilter::SEMICONDUCTOR)) {
+        component_list_filter_ = ComponentListFilter::SEMICONDUCTOR;
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::PopItemWidth();
+    ImGui::PopStyleVar();
+
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(total_width - right_padding - toggle_size);
+    ImVec2 toggle_pos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("ViewToggle", ImVec2(toggle_size, toggle_size));
+    if (ImGui::IsItemClicked()) {
+      component_list_view_mode_ =
+          (component_list_view_mode_ == ComponentListViewMode::ICON)
+              ? ComponentListViewMode::NAME
+              : ComponentListViewMode::ICON;
+    }
+    bool grid_active = component_list_view_mode_ == ComponentListViewMode::ICON;
+    if (grid_active) {
+      DrawGridToggleIcon(draw_list, toggle_pos, toggle_size, false);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", TR("ui.component_list.view_icon", "Icon view"));
+      }
+    } else {
+      DrawListToggleIcon(draw_list, toggle_pos, toggle_size, false);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", TR("ui.component_list.view_name", "Name view"));
+      }
+    }
+
+    ImGui::SetCursorPosX(15 * layout_scale);
     ImGui::Separator();
     ImGui::Spacing();
 
-    const char* components[] = {"FX3U-32M PLC",         "에어 서비스 유닛",
-                                "에어 메니폴드",        "리밋 스위치",
-                                "정전 용량형 센서",     "복동 공압 실린더",
-                                "단측 솔레노이드 밸브", "양측 솔레노이드 밸브",
-                                "푸시버튼 유닛",        "파워 서플라이"};
-    const char* descriptions[] = {"입력 16개, 출력 16개",
-                                  "공압 공급원",
-                                  "에어 분배기",
-                                  "물리적 접촉 센서",
-                                  "비접촉 센서",
-                                  "공압 액추에이터",
-                                  "전자석 1개, 스프링 리턴",
-                                  "전자석 2개",
-                                  "입력/표시 장치",
-                                  "DC 전원 공급"};
+    ImGui::SetCursorPosX(10 * layout_scale);
 
-    ImGui::SetCursorPosX(10);
+    int count = GetComponentDefinitionCount();
+    int visible_count = 0;
+    if (component_list_view_mode_ == ComponentListViewMode::ICON) {
+      float spacing = 6.0f * layout_scale;
+      float content_width = ImGui::GetContentRegionAvail().x;
+      float card_size = (content_width - spacing) * 0.5f;
+      float min_card = 90.0f * layout_scale;
+      card_size = std::max(min_card, card_size);
+      int columns = 2;
+      int col = 0;
 
-    for (int i = 0; i < 10; i++) {
-      ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-      ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
-
-      if (ImGui::BeginChild(("Component" + std::to_string(i)).c_str(),
-                            ImVec2(-10, 85), true,
-                            ImGuiWindowFlags_NoScrollbar)) {
-        ImGui::SetCursorPos(ImVec2(10, 10));
-
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.05f, 0.05f, 0.05f, 1.0f));
-        ImGui::TextWrapped("%s", components[i]);
-        ImGui::PopStyleColor();
-
-        ImGui::SetCursorPosX(10);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
-        ImGui::TextWrapped("%s", descriptions[i]);
-        ImGui::PopStyleColor();
-
-        ImGui::SetCursorPos(ImVec2(0, 0));
-        ImGui::InvisibleButton(("DragButton" + std::to_string(i)).c_str(),
-                               ImVec2(-1, -1));
-
-        bool is_hovered = ImGui::IsItemHovered();
-        bool is_dragging_this = ImGui::IsItemActive() &&
-                                ImGui::IsMouseDragging(ImGuiMouseButton_Left);
-
-        if (is_dragging_this && !is_dragging_) {
-          HandleComponentDragStart(i);
+      for (int i = 0; i < count; i++) {
+        const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
+        if (!def || !IsComponentVisibleByFilter(
+                        def->category,
+                        static_cast<int>(component_list_filter_))) {
+          continue;
         }
+        visible_count++;
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f * layout_scale);
 
-        if (is_dragging_this) {
-          ImGui::GetWindowDrawList()->AddRectFilled(
-              ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-              IM_COL32(0, 0, 0, 50), 6.0f);
-          ImGui::SetTooltip("드래그 중... 캔버스에 놓으세요!");
-        } else if (is_hovered) {
-          ImGui::GetWindowDrawList()->AddRect(
-              ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
-              IM_COL32(0, 123, 255, 150), 6.0f, 0, 2.0f);
-          ImGui::SetTooltip("드래그하여 캔버스에 배치하세요\n%s",
-                            descriptions[i]);
+        if (ImGui::BeginChild(("ComponentIcon" + std::to_string(i)).c_str(),
+                              ImVec2(card_size, card_size), true,
+                              ImGuiWindowFlags_NoScrollbar)) {
+          float preview_padding = 10.0f * layout_scale;
+          ImVec2 preview_pos = ImGui::GetCursorScreenPos();
+          ImVec2 preview_size = ImVec2(card_size - preview_padding * 2.0f,
+                                       card_size - 22 * layout_scale -
+                                           preview_padding * 2.0f);
+          preview_pos.x += preview_padding;
+          preview_pos.y += preview_padding;
+          draw_list->PushClipRect(preview_pos,
+                                  ImVec2(preview_pos.x + preview_size.x,
+                                         preview_pos.y + preview_size.y),
+                                  true);
+          RenderComponentPreview(draw_list, def, preview_pos, preview_size);
+          draw_list->PopClipRect();
+
+          ImGui::SetCursorPosY(card_size - 20 * layout_scale);
+          ImGui::SetCursorPosX(6 * layout_scale);
+          const char* label =
+              def->short_name ? def->short_name
+                              : TR(def->display_name, "Component");
+          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
+          ImGui::TextUnformatted(label);
+          ImGui::PopStyleColor();
+
+          ImGui::SetCursorPos(ImVec2(0, 0));
+          ImGui::InvisibleButton(("DragButtonIcon" + std::to_string(i)).c_str(),
+                                 ImVec2(-1, -1));
+          bool is_hovered = ImGui::IsItemHovered();
+          bool is_dragging_this =
+              ImGui::IsItemActive() &&
+              ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+
+          if (is_dragging_this && !is_dragging_) {
+            HandleComponentDragStart(i);
+          }
+          if (is_dragging_this) {
+            draw_list->AddRectFilled(ImGui::GetItemRectMin(),
+                                     ImGui::GetItemRectMax(),
+                                     IM_COL32(0, 0, 0, 50), 6.0f);
+            ImGui::SetTooltip("%s", TR("ui.component_list.tooltip_drag",
+                                       "Drag to the canvas."));
+          } else if (is_hovered) {
+            draw_list->AddRect(ImGui::GetItemRectMin(),
+                               ImGui::GetItemRectMax(),
+                               IM_COL32(0, 123, 255, 150), 6.0f, 0, 2.0f);
+            ImGui::SetTooltip("%s\n%s",
+                              TR("ui.component_list.tooltip_place",
+                                 "Drag to place."),
+                              TR(def->description, "No description"));
+          }
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+
+        col++;
+        if (col < columns) {
+          ImGui::SameLine(0.0f, spacing);
+        } else {
+          col = 0;
+          ImGui::Dummy(ImVec2(0.0f, spacing));
+          ImGui::SetCursorPosX(10 * layout_scale);
         }
       }
-      ImGui::EndChild();
-      ImGui::PopStyleVar();
-      ImGui::PopStyleColor();
+    } else {
+      for (int i = 0; i < count; i++) {
+        const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
+        if (!def || !IsComponentVisibleByFilter(
+                        def->category,
+                        static_cast<int>(component_list_filter_))) {
+          continue;
+        }
+        visible_count++;
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f * layout_scale);
 
+        if (ImGui::BeginChild(("Component" + std::to_string(i)).c_str(),
+                              ImVec2(-10, 85 * layout_scale), true,
+                              ImGuiWindowFlags_NoScrollbar)) {
+          ImGui::SetCursorPos(ImVec2(10 * layout_scale, 10 * layout_scale));
+          ImGui::PushStyleColor(ImGuiCol_Text,
+                                ImVec4(0.05f, 0.05f, 0.05f, 1.0f));
+          ImGui::TextWrapped("%s", TR(def->display_name, "Component"));
+          ImGui::PopStyleColor();
+
+          ImGui::SetCursorPosX(10 * layout_scale);
+          ImGui::PushStyleColor(ImGuiCol_Text,
+                                ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+          ImGui::TextWrapped("%s", TR(def->description, "No description"));
+          ImGui::PopStyleColor();
+
+          ImGui::SetCursorPos(ImVec2(0, 0));
+          ImGui::InvisibleButton(("DragButton" + std::to_string(i)).c_str(),
+                                 ImVec2(-1, -1));
+
+          bool is_hovered = ImGui::IsItemHovered();
+          bool is_dragging_this = ImGui::IsItemActive() &&
+                                  ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+
+          if (is_dragging_this && !is_dragging_) {
+            HandleComponentDragStart(i);
+          }
+
+          if (is_dragging_this) {
+            draw_list->AddRectFilled(ImGui::GetItemRectMin(),
+                                     ImGui::GetItemRectMax(),
+                                     IM_COL32(0, 0, 0, 50), 6.0f);
+            ImGui::SetTooltip("%s", TR("ui.component_list.tooltip_drag",
+                                       "Drag to the canvas."));
+          } else if (is_hovered) {
+            draw_list->AddRect(ImGui::GetItemRectMin(),
+                               ImGui::GetItemRectMax(),
+                               IM_COL32(0, 123, 255, 150), 6.0f, 0, 2.0f);
+            ImGui::SetTooltip("%s\n%s",
+                              TR("ui.component_list.tooltip_place",
+                                 "Drag to place."),
+                              TR(def->description, "No description"));
+          }
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+
+        ImGui::Spacing();
+        ImGui::SetCursorPosX(10 * layout_scale);
+      }
+    }
+    if (visible_count == 0) {
       ImGui::Spacing();
-      ImGui::SetCursorPosX(10);
+      ImGui::SetCursorPosX(20 * layout_scale);
+      ImGui::Text("%s",
+                  TR("ui.component_list.empty", "No components in this category."));
     }
 
     if (is_dragging_) {
@@ -298,549 +514,5 @@ void Application::RenderComponentList() {
   ImGui::PopStyleColor();
 }
 
-void Application::RenderPLCComponent(ImDrawList* draw_list,
-                                     const PlacedComponent& comp,
-                                     ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  // PLC 본체
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(240, 240, 240, 255),
-                           5.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     5.0f * zoom, 0, 2.0f);
-
-  // 입력 단자대
-  ImVec2 input_start = {screen_pos.x + 20 * zoom, screen_pos.y + 15 * zoom};
-  ImVec2 input_end = {screen_pos.x + 230 * zoom, screen_pos.y + 65 * zoom};
-  draw_list->AddRectFilled(input_start, input_end, IM_COL32(232, 232, 232, 255),
-                           3.0f * zoom);
-  draw_list->AddRect(input_start, input_end, IM_COL32(100, 100, 100, 255),
-                     3.0f * zoom, 0, 1.0f);
-
-  // 출력 단자대
-  ImVec2 output_start = {screen_pos.x + 20 * zoom, screen_pos.y + 115 * zoom};
-  ImVec2 output_end = {screen_pos.x + 230 * zoom, screen_pos.y + 165 * zoom};
-  draw_list->AddRectFilled(output_start, output_end,
-                           IM_COL32(232, 232, 232, 255), 3.0f * zoom);
-  draw_list->AddRect(output_start, output_end, IM_COL32(100, 100, 100, 255),
-                     3.0f * zoom, 0, 1.0f);
-
-  // 입력 포트 (X0-X15)
-  for (int i = 0; i < 16; i++) {
-    ImVec2 port_pos = WorldToScreen({comp.position.x + 30.0f + static_cast<float>(i % 8) * 25.0f,
-                                     comp.position.y + 25.0f + static_cast<float>(i / 8) * 20.0f});
-    draw_list->AddCircleFilled(port_pos, 6 * zoom, IM_COL32(76, 175, 80, 255));
-    draw_list->AddCircle(port_pos, 6 * zoom, IM_COL32(50, 50, 50, 255), 0,
-                         2.0f);
-  }
-
-  // 출력 포트 (Y0-Y15)
-  for (int i = 0; i < 16; i++) {
-    ImVec2 port_pos = WorldToScreen({comp.position.x + 30.0f + static_cast<float>(i % 8) * 25.0f,
-                                     comp.position.y + 135.0f + static_cast<float>(i / 8) * 20.0f});
-    draw_list->AddCircleFilled(port_pos, 6 * zoom, IM_COL32(255, 152, 0, 255));
-    draw_list->AddCircle(port_pos, 6 * zoom, IM_COL32(50, 50, 50, 255), 0,
-                         2.0f);
-  }
-
-  // 전원 및 COM 단자대
-  ImVec2 power_block_start = {screen_pos.x + 245 * zoom,
-                              screen_pos.y + 15 * zoom};
-  ImVec2 power_block_end = {screen_pos.x + 310 * zoom,
-                            screen_pos.y + 140 * zoom};
-  draw_list->AddRectFilled(power_block_start, power_block_end,
-                           IM_COL32(232, 232, 232, 255), 3.0f * zoom);
-  draw_list->AddRect(power_block_start, power_block_end,
-                     IM_COL32(100, 100, 100, 255), 3.0f * zoom, 0, 1.0f);
-
-  // 전원 및 COM 포트들
-  const char* labels[] = {"24V", "0V", "COM0", "COM1"};
-  ImU32 colors[] = {IM_COL32(255, 0, 0, 255), IM_COL32(0, 0, 0, 255),
-                    IM_COL32(128, 128, 128, 255), IM_COL32(128, 128, 128, 255)};
-  for (int i = 0; i < 4; ++i) {
-    ImVec2 port_pos =
-        WorldToScreen({comp.position.x + 265, comp.position.y + 40.0f + static_cast<float>(i) * 25.0f});
-    draw_list->AddCircleFilled(port_pos, 6 * zoom, colors[i]);
-    draw_list->AddCircle(port_pos, 6 * zoom, IM_COL32(50, 50, 50, 255), 0,
-                         2.0f);
-    if (zoom > 0.4f) {
-      draw_list->AddText(ImVec2(port_pos.x + 10 * zoom, port_pos.y - 8 * zoom),
-                         IM_COL32(50, 50, 50, 255), labels[i]);
-    }
-  }
-
-  // PLC 상태 LED
-  ImVec2 status_led_area_start = {screen_pos.x + 250 * zoom,
-                                  screen_pos.y + 145 * zoom};
-  ImVec2 status_led_area_end = {screen_pos.x + 300 * zoom,
-                                screen_pos.y + 165 * zoom};
-  draw_list->AddRectFilled(status_led_area_start, status_led_area_end,
-                           IM_COL32(44, 62, 80, 255), 3.0f * zoom);
-
-  bool is_running = comp.internalStates.count("is_running") &&
-                    comp.internalStates.at("is_running") > 0.5f;
-  ImVec2 led_pos = {screen_pos.x + 275 * zoom, screen_pos.y + 155 * zoom};
-  draw_list->AddCircleFilled(
-      led_pos, 5 * zoom,
-      is_running ? IM_COL32(0, 255, 0, 255) : IM_COL32(100, 100, 100, 255));
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 5 * zoom),
-                       IM_COL32(50, 50, 50, 255), "FX3U-32M");
-  }
-}
-void Application::RenderFRLComponent(ImDrawList* draw_list,
-                                     const PlacedComponent& comp,
-                                     ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  // 메인 본체 - 연한 파란색
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(232, 248, 253, 255),
-                           5.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     5.0f * zoom, 0, 2.0f);
-
-  // 출력 포트 (하단 중앙)
-  ImVec2 output_port = {screen_pos.x + 40 * zoom, screen_pos.y + 90 * zoom};
-  draw_list->AddCircleFilled(output_port, 6 * zoom,
-                             IM_COL32(33, 150, 243, 255));
-  draw_list->AddCircle(output_port, 6 * zoom, IM_COL32(50, 50, 50, 255), 0,
-                       2.0f);
-
-  // ★★★ FIX: 압력 조절 핸들 렌더링 추가 ★★★
-  float pressure = comp.internalStates.count("air_pressure")
-                       ? comp.internalStates.at("air_pressure")
-                       : 6.0f;
-  float angle =
-      (pressure / 10.0f) * 2.0f * 3.14159265f;  // 0~10 bar를 0~360도로 매핑
-
-  ImVec2 handle_center = {screen_pos.x + 40 * zoom, screen_pos.y + 25 * zoom};
-  float handle_radius = 15 * zoom;
-  draw_list->AddCircleFilled(handle_center, handle_radius,
-                             IM_COL32(80, 80, 80, 255));
-  draw_list->AddCircle(handle_center, handle_radius, IM_COL32(50, 50, 50, 255),
-                       12, 1.5f * zoom);
-  // 핸들 위 표시선
-  ImVec2 line_end = {
-      static_cast<float>(handle_center.x +
-                         (handle_radius - 2 * zoom) * cos(angle - 1.57f)),
-      static_cast<float>(handle_center.y +
-                         (handle_radius - 2 * zoom) * sin(angle - 1.57f))};
-  draw_list->AddLine(handle_center, line_end, IM_COL32(255, 255, 255, 200),
-                     2.0f * zoom);
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 50 * zoom),
-        IM_COL32(50, 50, 50, 255), "FRL UNIT");
-    // 압력 텍스트 표시
-    char pressure_text[16];
-    sprintf(pressure_text, "%.1f bar", pressure);
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 65 * zoom),
-        IM_COL32(50, 50, 50, 255), pressure_text);
-  }
-}
-void Application::RenderManifoldComponent(ImDrawList* draw_list,
-                                          const PlacedComponent& comp,
-                                          ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(180, 180, 180, 255),
-                           3.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     3.0f * zoom, 0, 2.0f);
-
-  ImVec2 input_port = {screen_pos.x + 10 * zoom, screen_pos.y + 30 * zoom};
-  draw_list->AddCircleFilled(input_port, 6 * zoom, IM_COL32(33, 150, 243, 255));
-
-  for (int i = 0; i < 4; i++) {
-    ImVec2 output_port = {screen_pos.x + (30.0f + static_cast<float>(i) * 20.0f) * zoom,
-                          screen_pos.y + 50 * zoom};
-    draw_list->AddCircleFilled(output_port, 5 * zoom,
-                               IM_COL32(33, 150, 243, 255));
-  }
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 25 * zoom, screen_pos.y + 15 * zoom),
-        IM_COL32(50, 50, 50, 255), "MANIFOLD");
-  }
-}
-
-// src/Application_Components.cpp
-
-// 이 함수 전체를 아래 내용으로 교체해 주세요.
-void Application::RenderLimitSwitchComponent(ImDrawList* draw_list,
-                                             const PlacedComponent& comp,
-                                             ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  // 메인 본체 - 어두운 회색
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                           3.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(80, 80, 80, 255),
-                     3.0f * zoom, 0, 2.0f);
-
-  // ★★★ FIX: 물리 엔진 상태를 읽어 시각적 피드백 구현 ★★★
-  bool is_pressed = comp.internalStates.count("is_pressed") &&
-                    comp.internalStates.at("is_pressed") > 0.5f;
-  float actuator_y_offset = is_pressed ? 5.0f * zoom : -5.0f * zoom;
-  ImU32 wheel_color =
-      is_pressed ? IM_COL32(255, 220, 50, 255) : IM_COL32(255, 193, 7, 255);
-
-  // 액추에이터 (눌림 상태에 따라 Y 위치 변경)
-  ImVec2 actuator_base_pos = {screen_pos.x + 30 * zoom, screen_pos.y};
-  draw_list->AddRectFilled(
-      ImVec2(actuator_base_pos.x - 5 * zoom,
-             actuator_base_pos.y + actuator_y_offset),
-      ImVec2(actuator_base_pos.x + 5 * zoom,
-             actuator_base_pos.y + 15 * zoom + actuator_y_offset),
-      IM_COL32(150, 150, 150, 255));
-  draw_list->AddCircleFilled(
-      ImVec2(actuator_base_pos.x, actuator_base_pos.y + actuator_y_offset),
-      5 * zoom, wheel_color);
-
-  // 접점 포트들 (하단)
-  ImVec2 p_com = {screen_pos.x + 15 * zoom, screen_pos.y + 55 * zoom};
-  ImVec2 p_no = {screen_pos.x + 30 * zoom, screen_pos.y + 55 * zoom};
-  ImVec2 p_nc = {screen_pos.x + 45 * zoom, screen_pos.y + 55 * zoom};
-
-  draw_list->AddCircleFilled(p_com, 3 * zoom, IM_COL32(158, 158, 158, 255));
-  draw_list->AddCircleFilled(p_no, 3 * zoom, IM_COL32(158, 158, 158, 255));
-  draw_list->AddCircleFilled(p_nc, 3 * zoom, IM_COL32(158, 158, 158, 255));
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 25 * zoom),
-        IM_COL32(255, 255, 255, 255), "LIMIT");
-  }
-}
-
-void Application::RenderSensorComponent(ImDrawList* draw_list,
-                                        const PlacedComponent& comp,
-                                        ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  ImVec2 body_start = {screen_pos.x + 15 * zoom, screen_pos.y + 6 * zoom};
-  ImVec2 body_end = {screen_pos.x + 85 * zoom, screen_pos.y + 107 * zoom};
-  draw_list->AddRectFilled(body_start, body_end, IM_COL32(192, 192, 192, 255),
-                           12.0f * zoom);
-  draw_list->AddRect(body_start, body_end, IM_COL32(51, 51, 51, 255),
-                     12.0f * zoom, 0, 2.0f);
-
-  ImVec2 head_start = {screen_pos.x + 25 * zoom, screen_pos.y + 2 * zoom};
-  ImVec2 head_end = {screen_pos.x + 75 * zoom, screen_pos.y + 15 * zoom};
-  draw_list->AddRectFilled(head_start, head_end, IM_COL32(25, 118, 210, 255),
-                           3.0f * zoom);
-  draw_list->AddRect(head_start, head_end, IM_COL32(51, 51, 51, 255),
-                     3.0f * zoom, 0, 2.0f);
-
-  // ★★★ FIX: 전원 상태와 감지 상태를 모두 반영하여 LED 색상 결정 ★★★
-  bool is_powered = comp.internalStates.count("is_powered") &&
-                    comp.internalStates.at("is_powered") > 0.5f;
-  bool is_detected = comp.internalStates.count("is_detected") &&
-                     comp.internalStates.at("is_detected") > 0.5f;
-
-  ImU32 led_color;
-  if (is_powered) {
-    led_color =
-        is_detected
-            ? IM_COL32(0, 255, 0, 255)
-            : IM_COL32(255, 0, 0, 255);  // 전원 ON: 감지(초록), 비감지(빨강)
-  } else {
-    led_color = IM_COL32(80, 80, 80, 255);  // 전원 OFF: 꺼진 상태(회색)
-  }
-
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 50 * zoom, screen_pos.y + 19 * zoom), 4 * zoom,
-      led_color);
-  draw_list->AddCircle(
-      ImVec2(screen_pos.x + 50 * zoom, screen_pos.y + 19 * zoom), 4 * zoom,
-      IM_COL32(51, 51, 51, 255), 0, 1.0f);
-
-  ImVec2 p1 = {screen_pos.x + 30 * zoom, screen_pos.y + 110 * zoom};
-  ImVec2 p2 = {screen_pos.x + 50 * zoom, screen_pos.y + 110 * zoom};
-  ImVec2 p3 = {screen_pos.x + 70 * zoom, screen_pos.y + 110 * zoom};
-
-  draw_list->AddCircleFilled(p1, 4 * zoom, IM_COL32(255, 0, 0, 255));
-  draw_list->AddCircleFilled(p2, 4 * zoom, IM_COL32(0, 0, 0, 255));
-  draw_list->AddCircleFilled(p3, 4 * zoom, IM_COL32(128, 128, 128, 255));
-}
-void Application::RenderCylinderComponent(ImDrawList* draw_list,
-                                          const PlacedComponent& comp,
-                                          ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  // 1. 물리 상태 읽기
-  float position = comp.internalStates.count("position")
-                       ? comp.internalStates.at("position")
-                       : 0.0f;
-  float status = comp.internalStates.count("status")
-                     ? comp.internalStates.at("status")
-                     : 0.0f;
-  float pressure_a = comp.internalStates.count("pressure_a")
-                         ? comp.internalStates.at("pressure_a")
-                         : 0.0f;
-  float pressure_b = comp.internalStates.count("pressure_b")
-                         ? comp.internalStates.at("pressure_b")
-                         : 0.0f;
-
-  // 2. 실린더 몸체(Casing) 렌더링
-  ImVec2 body_start = {screen_pos.x + 170 * zoom, screen_pos.y + 10 * zoom};
-  ImVec2 body_end = {screen_pos.x + 310 * zoom, screen_pos.y + 50 * zoom};
-  draw_list->AddRectFilled(body_start, body_end, IM_COL32(210, 210, 210, 255),
-                           4.0f * zoom);
-  draw_list->AddRect(body_start, body_end, IM_COL32(100, 100, 100, 255),
-                     4.0f * zoom, 0, 2.0f);
-
-  draw_list->AddRectFilled(ImVec2(body_start.x, body_start.y),
-                           ImVec2(body_start.x + 15 * zoom, body_end.y),
-                           IM_COL32(180, 180, 180, 255), 4.0f * zoom,
-                           ImDrawFlags_RoundCornersLeft);
-  draw_list->AddRectFilled(ImVec2(body_end.x - 15 * zoom, body_start.y),
-                           ImVec2(body_end.x, body_end.y),
-                           IM_COL32(180, 180, 180, 255), 4.0f * zoom,
-                           ImDrawFlags_RoundCornersRight);
-
-  // 3. 피스톤 로드(Rod) 렌더링
-  float rod_extended_length = position;
-  ImVec2 rod_base_pos = {body_start.x, screen_pos.y + 25 * zoom};
-  ImVec2 rod_tip_pos = {rod_base_pos.x - rod_extended_length * zoom,
-                        rod_base_pos.y};
-
-  draw_list->AddRectFilled(
-      ImVec2(rod_tip_pos.x - 15 * zoom, rod_tip_pos.y - 5 * zoom),
-      ImVec2(rod_tip_pos.x, rod_tip_pos.y + 5 * zoom),
-      IM_COL32(150, 150, 150, 255));
-  // ★★★ FIX: 로드 두께 증가 (3.0f -> 5.0f)
-  draw_list->AddLine(rod_tip_pos,
-                     ImVec2(body_start.x + 125 * zoom, rod_base_pos.y),
-                     IM_COL32(120, 120, 120, 255), 5.0f * zoom);
-
-  // 4. 움직임 상태 시각화 (화살표)
-  if (std::abs(status) > 0.1f && zoom > 0.4f) {
-    ImVec2 arrow_center = {screen_pos.x + 240 * zoom, screen_pos.y + 5 * zoom};
-    ImU32 arrow_color =
-        (status > 0) ? IM_COL32(0, 200, 0, 200) : IM_COL32(255, 0, 0, 200);
-    float dir = (status > 0) ? -1.0f : 1.0f;
-
-    draw_list->AddLine(ImVec2(arrow_center.x - 10 * dir * zoom, arrow_center.y),
-                       ImVec2(arrow_center.x + 10 * dir * zoom, arrow_center.y),
-                       arrow_color, 3.0f * zoom);
-    draw_list->AddTriangleFilled(
-        ImVec2(arrow_center.x + 10 * dir * zoom, arrow_center.y - 5 * zoom),
-        ImVec2(arrow_center.x + 10 * dir * zoom, arrow_center.y + 5 * zoom),
-        ImVec2(arrow_center.x + 18 * dir * zoom, arrow_center.y), arrow_color);
-  }
-
-  // 5. 공압 포트
-  ImVec2 port_a_pos = {body_start.x + 5 * zoom, screen_pos.y + 40 * zoom};
-  ImVec2 port_b_pos = {body_end.x - 5 * zoom, screen_pos.y + 40 * zoom};
-
-  ImU32 port_a_color = (pressure_a > 1.0f) ? IM_COL32(0, 180, 255, 255)
-                                           : IM_COL32(33, 150, 243, 128);
-  ImU32 port_b_color = (pressure_b > 1.0f) ? IM_COL32(0, 180, 255, 255)
-                                           : IM_COL32(33, 150, 243, 128);
-
-  draw_list->AddCircleFilled(port_a_pos, 5 * zoom, port_a_color);
-  draw_list->AddCircle(port_a_pos, 5 * zoom, IM_COL32(50, 50, 50, 255), 12,
-                       1.5f * zoom);
-  draw_list->AddCircleFilled(port_b_pos, 5 * zoom, port_b_color);
-  draw_list->AddCircle(port_b_pos, 5 * zoom, IM_COL32(50, 50, 50, 255), 12,
-                       1.5f * zoom);
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(port_a_pos.x - 5 * zoom, port_a_pos.y - 20 * zoom),
-        IM_COL32(50, 50, 50, 255), "A");
-    draw_list->AddText(
-        ImVec2(port_b_pos.x - 5 * zoom, port_b_pos.y - 20 * zoom),
-        IM_COL32(50, 50, 50, 255), "B");
-  }
-
-  if (comp.selected && zoom > 0.3f) {
-    // ★★★ FIX: 시각적 감지 범위 증가 (35.0f -> 50.0f)
-    float detection_range_pixels = 50.0f * zoom;
-    draw_list->AddCircle(rod_tip_pos, detection_range_pixels,
-                         IM_COL32(255, 165, 0, 100), 32, 2.0f);
-    draw_list->AddCircleFilled(rod_tip_pos, 4.0f, IM_COL32(255, 165, 0, 200));
-  }
-}
-void Application::RenderValveSingleComponent(ImDrawList* draw_list,
-                                             const PlacedComponent& comp,
-                                             ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(224, 224, 224, 255),
-                           5.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     5.0f * zoom, 0, 2.0f);
-
-  ImVec2 coil_start = {screen_pos.x + 5 * zoom, screen_pos.y + 10 * zoom};
-  ImVec2 coil_end = {screen_pos.x + 25 * zoom, screen_pos.y + 40 * zoom};
-  draw_list->AddRectFilled(coil_start, coil_end, IM_COL32(200, 200, 200, 255),
-                           3.0f * zoom);
-  draw_list->AddRect(coil_start, coil_end, IM_COL32(100, 100, 100, 255),
-                     3.0f * zoom, 0, 1.0f);
-
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 15 * zoom), 5 * zoom,
-      IM_COL32(244, 67, 54, 255));
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 30 * zoom), 5 * zoom,
-      IM_COL32(0, 0, 0, 255));
-
-  ImVec2 port_p = {screen_pos.x + 40 * zoom, screen_pos.y + 90 * zoom};
-  ImVec2 port_a = {screen_pos.x + 25 * zoom, screen_pos.y + 55 * zoom};
-  ImVec2 port_b = {screen_pos.x + 55 * zoom, screen_pos.y + 55 * zoom};
-
-  draw_list->AddCircleFilled(port_p, 6 * zoom, IM_COL32(33, 150, 243, 255));
-  draw_list->AddCircleFilled(port_a, 6 * zoom, IM_COL32(33, 150, 243, 255));
-  draw_list->AddCircleFilled(port_b, 6 * zoom, IM_COL32(33, 150, 243, 255));
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 40 * zoom),
-        IM_COL32(50, 50, 50, 255), "5/2WAY");
-  }
-}
-
-void Application::RenderValveDoubleComponent(ImDrawList* draw_list,
-                                             const PlacedComponent& comp,
-                                             ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(224, 224, 224, 255),
-                           5.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     5.0f * zoom, 0, 2.0f);
-
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 15 * zoom), 5 * zoom,
-      IM_COL32(244, 67, 54, 255));
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 30 * zoom), 5 * zoom,
-      IM_COL32(0, 0, 0, 255));
-
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 85 * zoom, screen_pos.y + 15 * zoom), 5 * zoom,
-      IM_COL32(244, 67, 54, 255));
-  draw_list->AddCircleFilled(
-      ImVec2(screen_pos.x + 85 * zoom, screen_pos.y + 30 * zoom), 5 * zoom,
-      IM_COL32(0, 0, 0, 255));
-
-  ImVec2 port_p = {screen_pos.x + 50 * zoom, screen_pos.y + 90 * zoom};
-  ImVec2 port_a = {screen_pos.x + 25 * zoom, screen_pos.y + 55 * zoom};
-  ImVec2 port_b = {screen_pos.x + 75 * zoom, screen_pos.y + 55 * zoom};
-
-  draw_list->AddCircleFilled(port_p, 6 * zoom, IM_COL32(33, 150, 243, 255));
-  draw_list->AddCircleFilled(port_a, 6 * zoom, IM_COL32(33, 150, 243, 255));
-  draw_list->AddCircleFilled(port_b, 6 * zoom, IM_COL32(33, 150, 243, 255));
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 20 * zoom, screen_pos.y + 40 * zoom),
-        IM_COL32(50, 50, 50, 255), "5/2WAY");
-  }
-}
-
-void Application::RenderButtonUnitComponent(ImDrawList* draw_list,
-                                            const PlacedComponent& comp,
-                                            ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(240, 240, 240, 255),
-                           5.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     5.0f * zoom, 0, 2.0f);
-
-  ImU32 colors_off[] = {IM_COL32(180, 40, 30, 255), IM_COL32(190, 170, 40, 255),
-                        IM_COL32(50, 130, 50, 255)};
-  ImU32 colors_on[] = {IM_COL32(255, 80, 70, 255), IM_COL32(255, 235, 60, 255),
-                       IM_COL32(90, 220, 90, 255)};
-
-  for (int btn = 0; btn < 3; btn++) {
-    float y_offset = screen_pos.y + (20.0f + static_cast<float>(btn) * 30.0f) * zoom;
-    ImVec2 button_pos = ImVec2(screen_pos.x + 25 * zoom, y_offset);
-
-    bool lamp_on =
-        comp.internalStates.count("lamp_on_" + std::to_string(btn)) &&
-        comp.internalStates.at("lamp_on_" + std::to_string(btn)) > 0.5f;
-    bool is_pressed =
-        comp.internalStates.count("is_pressed_" + std::to_string(btn)) &&
-        comp.internalStates.at("is_pressed_" + std::to_string(btn)) > 0.5f;
-
-    if (is_pressed) {
-      draw_list->AddCircleFilled(
-          ImVec2(button_pos.x + 2 * zoom, button_pos.y + 2 * zoom), 10 * zoom,
-          IM_COL32(0, 0, 0, 50));
-    }
-
-    draw_list->AddCircleFilled(button_pos, 8 * zoom,
-                               lamp_on ? colors_on[btn] : colors_off[btn]);
-    draw_list->AddCircle(button_pos, 8 * zoom, IM_COL32(50, 50, 50, 255), 0,
-                         2.0f);
-
-    ImVec2 port_com = ImVec2(screen_pos.x + 80 * zoom, y_offset);
-    ImVec2 port_no = ImVec2(screen_pos.x + 100 * zoom, y_offset);
-    ImVec2 port_nc = ImVec2(screen_pos.x + 120 * zoom, y_offset);
-    ImVec2 port_led_plus = ImVec2(screen_pos.x + 155 * zoom, y_offset);
-    ImVec2 port_led_minus = ImVec2(screen_pos.x + 175 * zoom, y_offset);
-
-    draw_list->AddCircleFilled(port_com, 5 * zoom,
-                               IM_COL32(128, 128, 128, 255));
-    draw_list->AddCircleFilled(port_no, 5 * zoom, IM_COL32(128, 128, 128, 255));
-    draw_list->AddCircleFilled(port_nc, 5 * zoom, IM_COL32(128, 128, 128, 255));
-    draw_list->AddCircleFilled(port_led_plus, 5 * zoom,
-                               IM_COL32(244, 67, 54, 255));
-    draw_list->AddCircleFilled(port_led_minus, 5 * zoom,
-                               IM_COL32(0, 0, 0, 255));
-  }
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 5 * zoom),
-                       IM_COL32(50, 50, 50, 255), "BUTTON UNIT");
-  }
-}
-
-void Application::RenderPowerSupplyComponent(ImDrawList* draw_list,
-                                             const PlacedComponent& comp,
-                                             ImVec2 screen_pos) {
-  float zoom = camera_zoom_;
-
-  ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
-                     screen_pos.y + comp.size.height * zoom};
-  draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(44, 62, 80, 255),
-                           5.0f * zoom);
-  draw_list->AddRect(screen_pos, body_end, IM_COL32(100, 100, 100, 255),
-                     5.0f * zoom, 0, 2.0f);
-
-  ImVec2 plus_port = {screen_pos.x + 85 * zoom, screen_pos.y + 20 * zoom};
-  ImVec2 minus_port = {screen_pos.x + 85 * zoom, screen_pos.y + 40 * zoom};
-
-  draw_list->AddCircleFilled(plus_port, 6 * zoom, IM_COL32(244, 67, 54, 255));
-  draw_list->AddCircleFilled(minus_port, 6 * zoom, IM_COL32(0, 0, 0, 255));
-
-  if (zoom > 0.5f) {
-    draw_list->AddText(
-        ImVec2(screen_pos.x + 10 * zoom, screen_pos.y + 25 * zoom),
-        IM_COL32(255, 255, 255, 255), "24V DC");
-  }
-}
-
 }  // namespace plc
+

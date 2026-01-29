@@ -313,6 +313,24 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
     return false;
   }
 
+  auto timer_done = [&](int idx) -> bool {
+    if (idx < 0 || idx >= 256)
+      return false;
+    int preset = timer_presets_[idx];
+    if (preset > 0)
+      return memory_.T[idx] >= preset;
+    return timer_enabled_[idx];
+  };
+
+  auto counter_done = [&](int idx) -> bool {
+    if (idx < 0 || idx >= 256)
+      return false;
+    int preset = counter_presets_[idx];
+    if (preset > 0)
+      return memory_.C[idx] >= preset;
+    return memory_.C[idx] > 0;
+  };
+
   // BOUNDS-CHECKED DEVICE ACCESS
   switch (deviceType) {
     case 'X':
@@ -324,6 +342,10 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
     case 'M':
       return (deviceAddr >= 0 && deviceAddr < 1000) ? memory_.M[deviceAddr]
                                                     : false;
+    case 'T':
+      return timer_done(deviceAddr);
+    case 'C':
+      return counter_done(deviceAddr);
     default:
       return false;
   }
@@ -437,6 +459,8 @@ void CompiledPLCExecutor::ResetMemory() {
   current_elapsed_ms_ = 0;
   timer_enabled_.fill(false);
   counter_last_power_.fill(false);
+  timer_presets_.fill(0);
+  counter_presets_.fill(0);
 
   DebugLog("Memory reset completed");
 }
@@ -664,6 +688,7 @@ bool CompiledPLCExecutor::ExecuteInstruction(
       if (preset < 0) {
         preset = 0;
       }
+      timer_presets_[idx] = preset;
       if (memory_.accumulator) {
         timer_enabled_[idx] = true;
         if (preset == 0) {
@@ -696,6 +721,7 @@ bool CompiledPLCExecutor::ExecuteInstruction(
       if (preset < 0) {
         preset = 0;
       }
+      counter_presets_[idx] = preset;
       bool power = memory_.accumulator;
       if (power && !counter_last_power_[idx]) {
         memory_.C[idx] += 1;
@@ -909,10 +935,54 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
     return !memory_.accumulator;
   }
 
+  auto timer_done = [&](int idx) -> bool {
+    if (idx < 0 || idx >= 256)
+      return false;
+    int preset = timer_presets_[idx];
+    if (preset > 0)
+      return memory_.T[idx] >= preset;
+    return timer_enabled_[idx];
+  };
+
+  auto counter_done = [&](int idx) -> bool {
+    if (idx < 0 || idx >= 256)
+      return false;
+    int preset = counter_presets_[idx];
+    if (preset > 0)
+      return memory_.C[idx] >= preset;
+    return memory_.C[idx] > 0;
+  };
+
+  auto parse_tc_index = [](const std::string& s, char type, int* out) -> bool {
+    if (s.size() < 2 || s[0] != type)
+      return false;
+    std::string number;
+    if (s[1] == '[' && s.back() == ']') {
+      if (s.size() <= 3)
+        return false;
+      number = s.substr(2, s.size() - 3);
+    } else {
+      number = s.substr(1);
+    }
+    try {
+      *out = std::stoi(number);
+    } catch (...) {
+      return false;
+    }
+    return true;
+  };
+
   // SIMPLE VARIABLE CASE: Direct variable access
   if (expr.find("&&") == std::string::npos &&
       expr.find("||") == std::string::npos &&
       (expr.empty() || expr[0] != '!')) {
+    int idx = -1;
+    if (parse_tc_index(expr, 'T', &idx)) {
+      return timer_done(idx);
+    }
+    if (parse_tc_index(expr, 'C', &idx)) {
+      return counter_done(idx);
+    }
     bool* varPtr = GetVariablePointer(expr);
     return varPtr ? *varPtr : false;
   }
