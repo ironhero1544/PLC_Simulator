@@ -60,7 +60,10 @@ void RenderValveSingle(ImDrawList* draw_list,
   }
 
   if (zoom > 0.5f) {
+    float text_scale = zoom / 1.3f;
+    float font_size = ImGui::GetFontSize() * text_scale;
     draw_list->AddText(
+        ImGui::GetFont(), font_size,
         ImVec2(screen_pos.x + 15 * zoom, screen_pos.y + 40 * zoom),
         IM_COL32(50, 50, 50, 255),
         TR("component.valve.label_5_2", "5/2WAY"));

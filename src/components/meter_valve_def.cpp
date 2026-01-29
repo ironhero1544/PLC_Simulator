@@ -274,7 +274,7 @@ void RenderMeterValve(ImDrawList* draw_list,
   float angle = 0.0f;
   if (comp.internalStates.count(state_keys::kFlowSetting)) {
     float normalized = comp.internalStates.at(state_keys::kFlowSetting);
-    angle = (normalized - 0.5f) * 6.0f;
+    angle = (normalized - 0.5f) * 5.0f;
   }
   ImVec2 rotated = ImVec2(center.x + std::sin(angle) * 12.0f * zoom,
                           center.y - std::cos(angle) * 12.0f * zoom);

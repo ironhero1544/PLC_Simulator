@@ -1739,7 +1739,6 @@ static char nsvg__parseFillRule(const char* str)
 		return NSVG_FILLRULE_NONZERO;
 	else if (strcmp(str, "evenodd") == 0)
 		return NSVG_FILLRULE_EVENODD;
-
 	return NSVG_FILLRULE_NONZERO;
 }
 

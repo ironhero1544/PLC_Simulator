@@ -389,9 +389,7 @@ void Application::RenderComponentList() {
 
           ImGui::SetCursorPosY(card_size - 20 * layout_scale);
           ImGui::SetCursorPosX(6 * layout_scale);
-          const char* label =
-              def->short_name ? def->short_name
-                              : TR(def->display_name, "Component");
+          const char* label = TR(def->display_name, "Component");
           ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
           ImGui::TextUnformatted(label);
           ImGui::PopStyleColor();

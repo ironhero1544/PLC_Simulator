@@ -27,10 +27,15 @@ void RenderBox(ImDrawList* draw_list,
                      IM_COL32(0, 0, 0, 255), 0, 0, 5.0f * zoom);
 
   const char* text = "BOX";
+  float text_scale = zoom / 1.3f;
+  float font_size = ImGui::GetFontSize() * text_scale;
   ImVec2 txt_size = ImGui::CalcTextSize(text);
+  txt_size.x *= text_scale;
+  txt_size.y *= text_scale;
   ImVec2 text_pos = {pos.x + (size.x - txt_size.x) * 0.5f,
                      pos.y + (size.y - txt_size.y) * 0.5f};
-  draw_list->AddText(text_pos, IM_COL32(255, 255, 255, 255), text);
+  draw_list->AddText(ImGui::GetFont(), font_size, text_pos,
+                     IM_COL32(255, 255, 255, 255), text);
 }
 
 const ComponentDefinition kDefinition = {

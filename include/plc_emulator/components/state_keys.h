@@ -35,6 +35,8 @@ constexpr const char* kIsContacted = "is_contacted";
 constexpr const char* kIsStuckBox = "is_stuck_box";
 constexpr const char* kVelX = "vel_x";
 constexpr const char* kVelY = "vel_y";
+constexpr const char* kPlcRunning = "is_running";
+constexpr const char* kPlcError = "plc_error";
 }
 }  // namespace plc
 

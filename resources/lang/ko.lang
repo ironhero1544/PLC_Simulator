@@ -104,6 +104,10 @@ component.tower_lamp.name=타워 램프
 component.tower_lamp.desc=적/황/녹 표시 램프
 component.emergency_stop.name=비상정지
 component.emergency_stop.desc=비상 정지 버튼
+component.plc.indicator_power=POWER
+component.plc.indicator_run=RUN
+component.plc.indicator_batt=BATT
+component.plc.indicator_error=ERROR
 
 
 # Wiring tooltips
@@ -175,3 +179,12 @@ lang.restart_now=재시작하기...
 lang.restart_prompt=정말로 재시작 하시겠습니까?
 lang.restart_yes=재시작
 lang.restart_no=취소
+ui.toolbar.tool_tag=배선 임베딩
+ui.component_list.filter_all=전체
+ui.component_list.filter_auto=자동화 설비 기능사
+ui.component_list.filter_semi=반도체 설비 보전 기능사
+ui.component_list.view_icon=아이콘 보기
+ui.component_list.view_name=이름 보기
+ui.component_list.empty=이 카테고리에 부품이 없습니다.
+ui.wiring.tag_title=배선 태그
+ui.wiring.tag_color=색상

@@ -66,13 +66,17 @@ void RenderFrl(ImDrawList* draw_list,
                      2.0f * zoom);
 
   if (zoom > 0.5f) {
+    float text_scale = zoom / 1.3f;
+    float font_size = ImGui::GetFontSize() * text_scale;
     draw_list->AddText(
+        ImGui::GetFont(), font_size,
         ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 50 * zoom),
         IM_COL32(50, 50, 50, 255),
         TR("component.frl.label", "FRL UNIT"));
     char pressure_text[16];
     std::snprintf(pressure_text, sizeof(pressure_text), "%.1f bar", pressure);
     draw_list->AddText(
+        ImGui::GetFont(), font_size,
         ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 65 * zoom),
         IM_COL32(50, 50, 50, 255), pressure_text);
   }

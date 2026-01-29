@@ -10,8 +10,12 @@
 #include "plc_emulator/lang/lang_manager.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
+#include <cstdio>
 #include <iostream>
+#include <map>
+#include <utility>
 #include <vector>
 #include <string>
 
@@ -20,6 +24,8 @@
 namespace plc {
 
 namespace {
+
+using PortRef = std::pair<int, int>;
 
 bool IsPointInsideComponent(const PlacedComponent& comp, ImVec2 world_pos) {
   return world_pos.x >= comp.position.x &&
@@ -36,6 +42,258 @@ int FindFirstComponentIndexAtPosition(
     }
   }
   return -1;
+}
+
+constexpr ImU32 kTagColors[] = {
+    IM_COL32(200, 40, 40, 255),   // red
+    IM_COL32(220, 110, 20, 255),  // orange
+    IM_COL32(190, 140, 0, 255),   // yellow
+    IM_COL32(0, 130, 70, 255),    // green
+    IM_COL32(0, 90, 200, 255),    // blue
+    IM_COL32(0, 60, 120, 255),    // navy
+    IM_COL32(130, 50, 170, 255)   // purple
+};
+
+constexpr ImU32 kPneumaticTagBackground = IM_COL32(210, 235, 250, 255);
+constexpr ImU32 kElectricTagBackground = IM_COL32(255, 255, 255, 255);
+constexpr ImU32 kTagTextColor = IM_COL32(20, 20, 20, 255);
+constexpr float kTagOutwardDotThreshold = 0.35f;
+
+ImU32 GetTagColor(int index) {
+  const int count = static_cast<int>(sizeof(kTagColors) / sizeof(kTagColors[0]));
+  if (count <= 0) {
+    return IM_COL32(0, 0, 0, 255);
+  }
+  if (index < 0) {
+    index = 0;
+  }
+  index %= count;
+  return kTagColors[index];
+}
+
+enum class TagPointerSide { Left, Right, Top, Bottom };
+
+struct TagDirectionInfo {
+  ImVec2 dir = {1.0f, 0.0f};
+  ImVec2 perp = {0.0f, 1.0f};
+  TagPointerSide side = TagPointerSide::Right;
+};
+
+TagDirectionInfo ResolveTagDirection(ImVec2 port_pos,
+                                     ImVec2 neighbor_pos,
+                                     ImVec2 component_center,
+                                     bool has_component_center) {
+  TagDirectionInfo info;
+  ImVec2 dir = {neighbor_pos.x - port_pos.x, neighbor_pos.y - port_pos.y};
+  float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+  if (len > 0.001f) {
+    dir.x /= len;
+    dir.y /= len;
+  } else {
+    dir = {1.0f, 0.0f};
+  }
+  if (has_component_center) {
+    ImVec2 outward = {port_pos.x - component_center.x,
+                      port_pos.y - component_center.y};
+    float outward_len =
+        std::sqrt(outward.x * outward.x + outward.y * outward.y);
+    if (outward_len > 0.001f) {
+      outward.x /= outward_len;
+      outward.y /= outward_len;
+      float dot = dir.x * outward.x + dir.y * outward.y;
+      if (dot < kTagOutwardDotThreshold) {
+        dir = outward;
+      }
+    }
+  }
+
+  info.dir = dir;
+  info.perp = {-dir.y, dir.x};
+
+  if (std::abs(dir.x) >= std::abs(dir.y)) {
+    info.side = (dir.x >= 0.0f) ? TagPointerSide::Right : TagPointerSide::Left;
+  } else {
+    info.side = (dir.y >= 0.0f) ? TagPointerSide::Bottom : TagPointerSide::Top;
+  }
+
+  return info;
+}
+
+struct TagLabelLayout {
+  ImVec2 rect_min = {};
+  ImVec2 rect_max = {};
+  TagPointerSide side = TagPointerSide::Right;
+  float tip_length = 0.0f;
+  float tail_half_width = 0.0f;
+  float padding = 0.0f;
+};
+
+TagLabelLayout BuildTagLabelLayout(ImVec2 port_pos,
+                                   ImVec2 neighbor_pos,
+                                   ImVec2 component_center,
+                                   bool has_component_center,
+                                   const std::string& text,
+                                   float layout_scale,
+                                   int stack_index) {
+  TagLabelLayout layout;
+  if (text.empty()) {
+    layout.rect_min = port_pos;
+    layout.rect_max = port_pos;
+    return layout;
+  }
+  TagDirectionInfo direction = ResolveTagDirection(
+      port_pos, neighbor_pos, component_center, has_component_center);
+  ImVec2 dir = direction.dir;
+  ImVec2 perp = direction.perp;
+  layout.side = direction.side;
+
+  layout.padding = 4.0f * layout_scale;
+  layout.tip_length = 10.0f * layout_scale;
+  layout.tail_half_width = 2.0f * layout_scale;
+  ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
+  float half_w = text_size.x * 0.5f + layout.padding;
+  float half_h = text_size.y * 0.5f + layout.padding;
+
+  float base_offset = 12.0f * layout_scale + layout.tip_length;
+  if (layout.side == TagPointerSide::Left ||
+      layout.side == TagPointerSide::Right) {
+    base_offset += half_w;
+  } else {
+    base_offset += half_h;
+  }
+
+  float stack_offset = 0.0f;
+  if (stack_index > 0) {
+    int step = (stack_index + 1) / 2;
+    float sign = (stack_index % 2 == 1) ? 1.0f : -1.0f;
+    stack_offset = sign * static_cast<float>(step) * 12.0f * layout_scale;
+  }
+
+  ImVec2 anchor = {port_pos.x + dir.x * base_offset + perp.x * stack_offset,
+                   port_pos.y + dir.y * base_offset + perp.y * stack_offset};
+  layout.rect_min = {anchor.x - half_w, anchor.y - half_h};
+  layout.rect_max = {anchor.x + half_w, anchor.y + half_h};
+  return layout;
+}
+
+struct TagLayoutEntry {
+  Wire* wire = nullptr;
+  int component_id = 0;
+  ImVec2 port_pos = {};
+  ImVec2 neighbor_pos = {};
+  ImVec2 component_center = {};
+  bool has_component_center = false;
+  TagPointerSide side = TagPointerSide::Right;
+  TagLabelLayout layout;
+};
+
+template <typename WorldToScreenFn>
+std::vector<TagLayoutEntry> BuildTagLayouts(
+    std::vector<Wire>* wires,
+    const std::map<PortRef, Position>& port_positions,
+    const std::vector<PlacedComponent>& placed_components,
+    WorldToScreenFn world_to_screen,
+    float layout_scale) {
+  std::vector<TagLayoutEntry> entries;
+  std::map<int, ImVec2> component_centers;
+  for (const auto& comp : placed_components) {
+    Position center_world(comp.position.x + comp.size.width * 0.5f,
+                          comp.position.y + comp.size.height * 0.5f);
+    component_centers[comp.instanceId] = world_to_screen(center_world);
+  }
+
+  for (auto& wire : *wires) {
+    if (!wire.isTagged || wire.tagText.empty()) {
+      continue;
+    }
+    auto startIt =
+        port_positions.find({wire.fromComponentId, wire.fromPortId});
+    auto endIt = port_positions.find({wire.toComponentId, wire.toPortId});
+    if (startIt == port_positions.end() || endIt == port_positions.end()) {
+      continue;
+    }
+
+    ImVec2 start_screen_pos = world_to_screen(startIt->second);
+    ImVec2 end_screen_pos = world_to_screen(endIt->second);
+    ImVec2 start_neighbor = end_screen_pos;
+    ImVec2 end_neighbor = start_screen_pos;
+    if (!wire.wayPoints.empty()) {
+      start_neighbor = world_to_screen(wire.wayPoints.front());
+      end_neighbor = world_to_screen(wire.wayPoints.back());
+    }
+
+    auto append_entry = [&](int component_id,
+                            ImVec2 port_pos,
+                            ImVec2 neighbor_pos) {
+      TagLayoutEntry entry;
+      entry.wire = &wire;
+      entry.component_id = component_id;
+      entry.port_pos = port_pos;
+      entry.neighbor_pos = neighbor_pos;
+      auto center_it = component_centers.find(component_id);
+      if (center_it != component_centers.end()) {
+        entry.component_center = center_it->second;
+        entry.has_component_center = true;
+      }
+      TagDirectionInfo direction = ResolveTagDirection(
+          port_pos, neighbor_pos, entry.component_center,
+          entry.has_component_center);
+      entry.side = direction.side;
+      entry.layout = BuildTagLabelLayout(
+          port_pos, neighbor_pos, entry.component_center,
+          entry.has_component_center, wire.tagText, layout_scale, 0);
+      entries.push_back(entry);
+    };
+
+    append_entry(wire.fromComponentId, start_screen_pos, start_neighbor);
+    append_entry(wire.toComponentId, end_screen_pos, end_neighbor);
+  }
+
+  using TagGroupKey = std::pair<int, TagPointerSide>;
+  std::map<TagGroupKey, std::vector<TagLayoutEntry*>> groups;
+  for (auto& entry : entries) {
+    groups[{entry.component_id, entry.side}].push_back(&entry);
+  }
+
+  const float spacing = 8.0f * layout_scale;
+  for (auto& [key, group] : groups) {
+    if (group.empty()) {
+      continue;
+    }
+    TagPointerSide side = key.second;
+    const bool vertical = (side == TagPointerSide::Left ||
+                           side == TagPointerSide::Right);
+    std::sort(group.begin(), group.end(),
+              [&](const TagLayoutEntry* a, const TagLayoutEntry* b) {
+                return vertical ? (a->layout.rect_min.y <
+                                   b->layout.rect_min.y)
+                                : (a->layout.rect_min.x <
+                                   b->layout.rect_min.x);
+              });
+
+    float last_max = -FLT_MAX;
+    for (auto* entry : group) {
+      float min_axis =
+          vertical ? entry->layout.rect_min.y : entry->layout.rect_min.x;
+      float max_axis =
+          vertical ? entry->layout.rect_max.y : entry->layout.rect_max.x;
+      if (min_axis < last_max + spacing) {
+        float delta = (last_max + spacing) - min_axis;
+        if (vertical) {
+          entry->layout.rect_min.y += delta;
+          entry->layout.rect_max.y += delta;
+        } else {
+          entry->layout.rect_min.x += delta;
+          entry->layout.rect_max.x += delta;
+        }
+        min_axis += delta;
+        max_axis += delta;
+      }
+      last_max = max_axis;
+    }
+  }
+
+  return entries;
 }
 
 }  // namespace
@@ -104,12 +362,73 @@ void Application::CompleteWireConnection(int componentId, int portId,
 }
 
 void Application::RenderWires(ImDrawList* draw_list) {
+  const float layout_scale = GetLayoutScale();
+  const ImGuiIO& io = ImGui::GetIO();
+  const bool reveal_tagged = io.KeyAlt;
+  Wire* hovered_tagged_wire =
+      reveal_tagged ? FindTaggedWireAtScreenPos(io.MousePos) : nullptr;
+
+  auto draw_tag_label = [&](const TagLabelLayout& layout,
+                            ImVec2 port_pos,
+                            bool is_electric,
+                            int color_index,
+                            const std::string& text) {
+    if (text.empty()) {
+      return;
+    }
+    ImU32 border = GetTagColor(color_index);
+    ImU32 fill = is_electric ? kElectricTagBackground : kPneumaticTagBackground;
+    float mid_x = (layout.rect_min.x + layout.rect_max.x) * 0.5f;
+    float mid_y = (layout.rect_min.y + layout.rect_max.y) * 0.5f;
+
+    draw_list->AddRectFilled(layout.rect_min, layout.rect_max, fill,
+                             4.0f * layout_scale);
+    draw_list->AddRect(layout.rect_min, layout.rect_max, border,
+                       4.0f * layout_scale, 0, 1.5f * layout_scale);
+
+    ImVec2 to_port = {port_pos.x - mid_x, port_pos.y - mid_y};
+    ImVec2 tail_p1 = {};
+    ImVec2 tail_p2 = {};
+    ImVec2 tail_tip = port_pos;
+    if (std::abs(to_port.x) >= std::abs(to_port.y)) {
+      if (to_port.x >= 0.0f) {
+        tail_p1 = {layout.rect_max.x, mid_y - layout.tail_half_width};
+        tail_p2 = {layout.rect_max.x, mid_y + layout.tail_half_width};
+      } else {
+        tail_p1 = {layout.rect_min.x, mid_y - layout.tail_half_width};
+        tail_p2 = {layout.rect_min.x, mid_y + layout.tail_half_width};
+      }
+    } else {
+      if (to_port.y >= 0.0f) {
+        tail_p1 = {mid_x - layout.tail_half_width, layout.rect_max.y};
+        tail_p2 = {mid_x + layout.tail_half_width, layout.rect_max.y};
+      } else {
+        tail_p1 = {mid_x - layout.tail_half_width, layout.rect_min.y};
+        tail_p2 = {mid_x + layout.tail_half_width, layout.rect_min.y};
+      }
+    }
+
+    draw_list->AddTriangleFilled(tail_p1, tail_p2, tail_tip, fill);
+    draw_list->AddLine(tail_p1, tail_tip, border, 1.5f * layout_scale);
+    draw_list->AddLine(tail_p2, tail_tip, border, 1.5f * layout_scale);
+    draw_list->AddText(ImVec2(layout.rect_min.x + layout.padding,
+                              layout.rect_min.y + layout.padding),
+                       kTagTextColor, text.c_str());
+  };
+
   for (auto& wire : wires_) {
     auto startIt =
         port_positions_.find({wire.fromComponentId, wire.fromPortId});
     auto endIt = port_positions_.find({wire.toComponentId, wire.toPortId});
 
     if (startIt == port_positions_.end() || endIt == port_positions_.end()) {
+      continue;
+    }
+    if (wire.isTagged && !reveal_tagged) {
+      continue;
+    }
+    if (wire.isTagged && reveal_tagged && hovered_tagged_wire &&
+        wire.id != hovered_tagged_wire->id) {
       continue;
     }
 
@@ -140,6 +459,10 @@ void Application::RenderWires(ImDrawList* draw_list) {
       wire_color =
           IM_COL32(static_cast<int>(wire.color.r * 255), static_cast<int>(wire.color.g * 255),
                    static_cast<int>(wire.color.b * 255), static_cast<int>(wire.color.a * 255));
+    }
+
+    if (wire.isTagged && reveal_tagged) {
+      wire_color = GetTagColor(wire.tagColorIndex);
     }
 
     ImVec2 current_pos = start_screen_pos;
@@ -173,6 +496,22 @@ void Application::RenderWires(ImDrawList* draw_list) {
         draw_list->AddCircleFilled(wp_pos, radius, IM_COL32(255, 255, 0, 255));
         draw_list->AddCircle(wp_pos, radius, IM_COL32(0, 0, 0, 255), 12, 1.5f);
       }
+    }
+  }
+
+  if (!reveal_tagged) {
+    auto world_to_screen = [&](const Position& pos) {
+      return WorldToScreen(pos);
+    };
+    std::vector<TagLayoutEntry> tag_layouts = BuildTagLayouts(
+        &wires_, port_positions_, placed_components_, world_to_screen,
+        layout_scale);
+    for (const auto& entry : tag_layouts) {
+      if (!entry.wire) {
+        continue;
+      }
+      draw_tag_label(entry.layout, entry.port_pos, entry.wire->isElectric,
+                     entry.wire->tagColorIndex, entry.wire->tagText);
     }
   }
 }
@@ -239,39 +578,67 @@ void Application::RenderWiringCanvas() {
     // Handle component drop and wire deletion
     HandleComponentDropAndWireDelete(is_canvas_hovered, mouse_world_pos, io);
 
-    if (current_tool_ == ToolType::SELECT) {
-      if (wire_edit_mode_ == WireEditMode::MOVING_POINT) {
-        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-          for (auto& wire : wires_) {
-            if (wire.id == editing_wire_id_ && editing_point_index_ >= 0 &&
-                editing_point_index_ < static_cast<int>(wire.wayPoints.size())) {
-          ImVec2 reference_point = mouse_world_pos;
-          if (editing_point_index_ > 0) {
-            const Position& prev =
-                wire.wayPoints[static_cast<size_t>(editing_point_index_ - 1)];
-            reference_point = ImVec2(prev.x, prev.y);
-          } else {
-            auto it = port_positions_.find(
-                {wire.fromComponentId, wire.fromPortId});
-            if (it != port_positions_.end()) {
-              reference_point = ImVec2(it->second.x, it->second.y);
-            }
-          }
+    auto clear_component_selection = [&]() {
+      for (auto& comp : placed_components_) {
+        comp.selected = false;
+      }
+      selected_component_id_ = -1;
+    };
 
-          ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
-          if (snapped_pos.x == mouse_world_pos.x &&
-              snapped_pos.y == mouse_world_pos.y) {
-            snapped_pos = ApplyAngleSnap(mouse_world_pos, reference_point);
-          }
-          wire.wayPoints[static_cast<size_t>(editing_point_index_)] =
-              snapped_pos;
-            }
-          }
-        } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-          wire_edit_mode_ = WireEditMode::NONE;
-          editing_point_index_ = -1;
+    auto try_begin_wire_edit = [&](ImVec2 world_pos) {
+      constexpr float kWaypointRadius = 8.0f;
+      for (auto& wire : wires_) {
+        int idx = FindWayPointAtPosition(wire, world_pos, kWaypointRadius);
+        if (idx >= 0) {
+          clear_component_selection();
+          selected_wire_id_ = wire.id;
+          wire_edit_mode_ = WireEditMode::MOVING_POINT;
+          editing_wire_id_ = wire.id;
+          editing_point_index_ = idx;
+          return true;
         }
-      } else if (is_moving_component_) {
+      }
+      return false;
+    };
+
+    bool wire_edit_active = (wire_edit_mode_ == WireEditMode::MOVING_POINT);
+    if (wire_edit_active) {
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        for (auto& wire : wires_) {
+          if (wire.id == editing_wire_id_ && editing_point_index_ >= 0 &&
+              editing_point_index_ < static_cast<int>(wire.wayPoints.size())) {
+            ImVec2 reference_point = mouse_world_pos;
+            if (editing_point_index_ > 0) {
+              const Position& prev =
+                  wire.wayPoints[static_cast<size_t>(editing_point_index_ - 1)];
+              reference_point = ImVec2(prev.x, prev.y);
+            } else {
+              auto it = port_positions_.find(
+                  {wire.fromComponentId, wire.fromPortId});
+              if (it != port_positions_.end()) {
+                reference_point = ImVec2(it->second.x, it->second.y);
+              }
+            }
+
+            ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
+            if (snapped_pos.x == mouse_world_pos.x &&
+                snapped_pos.y == mouse_world_pos.y) {
+              snapped_pos = ApplyAngleSnap(mouse_world_pos, reference_point);
+            }
+            wire.wayPoints[static_cast<size_t>(editing_point_index_)] =
+                snapped_pos;
+          }
+        }
+      } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        wire_edit_mode_ = WireEditMode::NONE;
+        editing_wire_id_ = -1;
+        editing_point_index_ = -1;
+      }
+    }
+
+    if (!wire_edit_active &&
+        (current_tool_ == ToolType::SELECT || current_tool_ == ToolType::TAG)) {
+      if (is_moving_component_) {
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
           for (auto& comp : placed_components_) {
             if (comp.instanceId == moving_component_id_) {
@@ -286,34 +653,68 @@ void Application::RenderWiringCanvas() {
       } else {
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
           bool interaction_handled = false;
-          for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
-            const auto& comp = placed_components_[static_cast<size_t>(i)];
-            if (mouse_world_pos.x >= comp.position.x &&
-                mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                mouse_world_pos.y >= comp.position.y &&
-                mouse_world_pos.y <= comp.position.y + comp.size.height) {
-              HandleComponentSelection(comp.instanceId);
+          if (current_tool_ == ToolType::TAG) {
+            Wire* tagged_wire = FindTaggedWireAtScreenPos(mouse_screen_pos);
+            if (tagged_wire && tagged_wire->isTagged) {
+              selected_wire_id_ = tagged_wire->id;
               interaction_handled = true;
-              break;
+            } else {
+              Wire* wire = FindWireAtPosition(mouse_world_pos);
+              if (wire && !wire->isTagged) {
+                OpenTagPopupForWire(wire->id);
+                interaction_handled = true;
+              }
             }
           }
-          if (!interaction_handled)
-            HandleComponentSelection(-1);
+          if (!interaction_handled) {
+            for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
+              const auto& comp = placed_components_[static_cast<size_t>(i)];
+              if (mouse_world_pos.x >= comp.position.x &&
+                  mouse_world_pos.x <= comp.position.x + comp.size.width &&
+                  mouse_world_pos.y >= comp.position.y &&
+                  mouse_world_pos.y <= comp.position.y + comp.size.height) {
+                HandleComponentSelection(comp.instanceId);
+                interaction_handled = true;
+                break;
+              }
+            }
+          }
+          if (!interaction_handled) {
+            if (!try_begin_wire_edit(mouse_world_pos)) {
+              HandleWireSelection(mouse_world_pos);
+            }
+          }
         }
 
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
             is_canvas_hovered) {
-          for (auto& comp : placed_components_) {
-            if (mouse_world_pos.x >= comp.position.x &&
-                mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                mouse_world_pos.y >= comp.position.y &&
-                mouse_world_pos.y <= comp.position.y + comp.size.height) {
-              const ComponentBehavior* behavior =
-                  GetComponentBehavior(comp.type);
-              if (behavior && behavior->OnDoubleClick &&
-                  behavior->OnDoubleClick(&comp, mouse_world_pos,
-                                          ImGuiMouseButton_Left)) {
-                break;
+          bool handled = false;
+          if (current_tool_ == ToolType::TAG) {
+            Wire* tagged_wire = FindTaggedWireAtScreenPos(mouse_screen_pos);
+            if (!tagged_wire) {
+              Wire* wire = FindWireAtPosition(mouse_world_pos);
+              if (wire && wire->isTagged) {
+                tagged_wire = wire;
+              }
+            }
+            if (tagged_wire) {
+              OpenTagPopupForWire(tagged_wire->id);
+              handled = true;
+            }
+          }
+          if (!handled) {
+            for (auto& comp : placed_components_) {
+              if (mouse_world_pos.x >= comp.position.x &&
+                  mouse_world_pos.x <= comp.position.x + comp.size.width &&
+                  mouse_world_pos.y >= comp.position.y &&
+                  mouse_world_pos.y <= comp.position.y + comp.size.height) {
+                const ComponentBehavior* behavior =
+                    GetComponentBehavior(comp.type);
+                if (behavior && behavior->OnDoubleClick &&
+                    behavior->OnDoubleClick(&comp, mouse_world_pos,
+                                            ImGuiMouseButton_Left)) {
+                  break;
+                }
               }
             }
           }
@@ -362,7 +763,7 @@ void Application::RenderWiringCanvas() {
           }
         }
       }
-    } else {
+    } else if (!wire_edit_active) {
       if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
         int clickedComponentId = -1;
         Port* clickedPort =
@@ -374,15 +775,20 @@ void Application::RenderWiringCanvas() {
           if (it != port_positions_.end()) {
             port_world_pos = ImVec2(it->second.x, it->second.y);
           }
-          if (!is_connecting_)
+          if (!is_connecting_) {
             StartWireConnection(clickedComponentId, clickedPort->id,
                                 port_world_pos);
-          else
+          } else {
             CompleteWireConnection(clickedComponentId, clickedPort->id,
                                    port_world_pos);
-          } else if (is_connecting_) {
-            HandleWayPointClick(mouse_world_pos, true);
           }
+        } else if (is_connecting_) {
+          HandleWayPointClick(mouse_world_pos, true);
+        } else {
+          if (!try_begin_wire_edit(mouse_world_pos)) {
+            HandleWireSelection(mouse_world_pos);
+          }
+        }
       }
       if (is_connecting_ && is_pan_input && is_canvas_hovered) {
         const double idle_threshold = 0.25;
@@ -518,10 +924,121 @@ void Application::RenderWiringCanvas() {
       ImGui::PopStyleVar(2);
       ImGui::PopStyleColor();
     }
+
+    RenderTagPopup();
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
+}
+
+void Application::OpenTagPopupForWire(int wire_id) {
+  tag_edit_wire_id_ = wire_id;
+  tag_color_index_ = 0;
+  tag_text_buffer_[0] = '\0';
+  for (const auto& wire : wires_) {
+    if (wire.id != wire_id) {
+      continue;
+    }
+    if (wire.isTagged) {
+      std::snprintf(tag_text_buffer_, sizeof(tag_text_buffer_), "%s",
+                    wire.tagText.c_str());
+      tag_color_index_ = wire.tagColorIndex;
+    }
+    break;
+  }
+  show_tag_popup_ = true;
+}
+
+void Application::RenderTagPopup() {
+  if (show_tag_popup_ && !ImGui::IsPopupOpen("Wire Tag")) {
+    ImGui::OpenPopup("Wire Tag");
+  }
+
+  bool popup_open = show_tag_popup_;
+  if (ImGui::BeginPopupModal("Wire Tag", &popup_open,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    const float layout_scale = GetLayoutScale();
+    ImGui::TextUnformatted(TR("ui.wiring.tag_title", "Wire Tag"));
+    ImGui::Spacing();
+
+    if (ImGui::IsWindowAppearing()) {
+      ImGui::SetKeyboardFocusHere();
+    }
+
+    bool confirm = false;
+    if (ImGui::InputText("Tag", tag_text_buffer_, sizeof(tag_text_buffer_),
+                         ImGuiInputTextFlags_EnterReturnsTrue)) {
+      confirm = true;
+    }
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(TR("ui.wiring.tag_color", "Color"));
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    const int color_count =
+        static_cast<int>(sizeof(kTagColors) / sizeof(kTagColors[0]));
+    ImVec2 button_size(22.0f * layout_scale, 22.0f * layout_scale);
+    for (int i = 0; i < color_count; ++i) {
+      ImGui::PushID(i);
+      ImVec4 color = ImGui::ColorConvertU32ToFloat4(kTagColors[i]);
+      if (ImGui::ColorButton("##tagcolor", color,
+                             ImGuiColorEditFlags_NoTooltip |
+                                 ImGuiColorEditFlags_NoDragDrop |
+                                 ImGuiColorEditFlags_NoPicker,
+                             button_size)) {
+        tag_color_index_ = i;
+      }
+      if (tag_color_index_ == i) {
+        ImVec2 rect_min = ImGui::GetItemRectMin();
+        ImVec2 rect_max = ImGui::GetItemRectMax();
+        draw_list->AddRect(rect_min, rect_max, GetTagColor(i), 3.0f, 0,
+                           2.0f * layout_scale);
+      }
+      ImGui::PopID();
+      if (i < color_count - 1) {
+        ImGui::SameLine();
+      }
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button("OK", ImVec2(120 * layout_scale, 0))) {
+      confirm = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(120 * layout_scale, 0))) {
+      popup_open = false;
+    }
+
+    if (confirm) {
+      Wire* target = nullptr;
+      for (auto& wire : wires_) {
+        if (wire.id == tag_edit_wire_id_) {
+          target = &wire;
+          break;
+        }
+      }
+      if (target) {
+        std::string tag_text(tag_text_buffer_);
+        if (tag_text.empty()) {
+          target->isTagged = false;
+          target->tagText.clear();
+          target->tagColorIndex = 0;
+        } else {
+          target->isTagged = true;
+          target->tagText = tag_text;
+          target->tagColorIndex = tag_color_index_;
+        }
+      }
+      popup_open = false;
+    }
+
+    ImGui::EndPopup();
+  }
+
+  show_tag_popup_ = popup_open;
+  if (!show_tag_popup_) {
+    tag_edit_wire_id_ = -1;
+  }
 }
 void Application::HandleWayPointClick(ImVec2 worldPos, bool use_port_snap_only) {
   (void)use_port_snap_only;
@@ -560,7 +1077,13 @@ void Application::HandleWireSelection(ImVec2 worldPos) {
   Wire* selectedWire = FindWireAtPosition(worldPos);
   if (selectedWire) {
     selected_wire_id_ = selectedWire->id;
-    HandleComponentSelection(-1);
+    for (auto& comp : placed_components_) {
+      comp.selected = false;
+    }
+    selected_component_id_ = -1;
+    wire_edit_mode_ = WireEditMode::NONE;
+    editing_wire_id_ = -1;
+    editing_point_index_ = -1;
   } else {
     selected_wire_id_ = -1;
     wire_edit_mode_ = WireEditMode::NONE;
@@ -630,6 +1153,25 @@ Wire* Application::FindWireAtPosition(ImVec2 worldPos, float tolerance) {
     }
   }
   return closestWire;
+}
+
+Wire* Application::FindTaggedWireAtScreenPos(ImVec2 screen_pos) {
+  const float layout_scale = GetLayoutScale();
+  auto world_to_screen = [&](const Position& pos) {
+    return WorldToScreen(pos);
+  };
+  std::vector<TagLayoutEntry> tag_layouts = BuildTagLayouts(
+      &wires_, port_positions_, placed_components_, world_to_screen,
+      layout_scale);
+  for (const auto& entry : tag_layouts) {
+    ImVec2 min = entry.layout.rect_min;
+    ImVec2 max = entry.layout.rect_max;
+    if (screen_pos.x >= min.x && screen_pos.x <= max.x &&
+        screen_pos.y >= min.y && screen_pos.y <= max.y) {
+      return entry.wire;
+    }
+  }
+  return nullptr;
 }
 
 // ============================================================================
@@ -785,6 +1327,22 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
   }
   win32_right_click_ = false;
   prev_right_button_down_ = right_down;
+
+  if (right_click && is_canvas_hovered && io.KeyAlt) {
+    Wire* tagged_wire = FindTaggedWireAtScreenPos(io.MousePos);
+    if (!tagged_wire) {
+      Wire* wire = FindWireAtPosition(mouse_world_pos);
+      if (wire && wire->isTagged) {
+        tagged_wire = wire;
+      }
+    }
+    if (tagged_wire && tagged_wire->isTagged) {
+      tagged_wire->isTagged = false;
+      tagged_wire->tagText.clear();
+      tagged_wire->tagColorIndex = 0;
+    }
+    return;
+  }
 
   // Right click: cancel wire if connecting, otherwise delete under cursor.
   if (right_click && !is_canvas_hovered) {

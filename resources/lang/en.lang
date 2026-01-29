@@ -30,6 +30,7 @@ ui.header.btn_stop=STOP
 ui.toolbar.tool_select=Select
 ui.toolbar.tool_pneumatic=Pneumatic
 ui.toolbar.tool_electric=Electric
+ui.toolbar.tool_tag=Tag
 ui.toolbar.load_project=Load Project
 
 # Status bar
@@ -66,6 +67,12 @@ ui.debug.fixed_buffer_limit=Fixed buffer limit reached.
 ui.component_list.title=Components
 ui.component_list.tooltip_drag=Drag to the canvas.
 ui.component_list.tooltip_place=Drag to place.
+ui.component_list.filter_all=All
+ui.component_list.filter_auto=Automation
+ui.component_list.filter_semi=Semiconductor
+ui.component_list.view_icon=Icon view
+ui.component_list.view_name=Name view
+ui.component_list.empty=No components in this category.
 
 # Components
 component.plc.name=FX3U-32M PLC
@@ -115,6 +122,10 @@ component.tower_lamp.name=Tower Lamp
 component.tower_lamp.desc=Red/Yellow/Green status lamp
 component.emergency_stop.name=Emergency Stop
 component.emergency_stop.desc=Emergency stop button
+component.plc.indicator_power=POWER
+component.plc.indicator_run=RUN
+component.plc.indicator_batt=BATT
+component.plc.indicator_error=ERROR
 
 
 # Wiring tooltips
@@ -131,6 +142,8 @@ ui.wiring.state_pressed=Pressed
 ui.wiring.state_released=Released
 ui.wiring.tooltip_pressure_fmt=Current Pressure: %.1f bar
 ui.wiring.tooltip_pressure_hint=Use mouse wheel to adjust.
+ui.wiring.tag_title=Wire Tag
+ui.wiring.tag_color=Color
 
 # Wiring camera help
 ui.wiring.camera_help.title=Canvas Camera

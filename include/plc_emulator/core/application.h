@@ -399,6 +399,8 @@ namespace plc {
          * @brief Renders the main canvas for wiring and component placement.
          */
         void RenderWiringCanvas();
+        void RenderTagPopup();
+        void OpenTagPopupForWire(int wire_id);
 
         // RenderWiringCanvas helper functions
 
@@ -524,6 +526,7 @@ namespace plc {
          * ??????????? ???????? ??????????????.
          */
         Wire* FindWireAtPosition(ImVec2 worldPos, float tolerance = 5.0f);
+        Wire* FindTaggedWireAtScreenPos(ImVec2 screen_pos);
 
         /**
          * @brief Finds a waypoint in a wire at a given world position.
@@ -629,6 +632,10 @@ namespace plc {
         // ID of the currently selected wire.
         // ???? ????????????ID??????
         int selected_wire_id_;
+        bool show_tag_popup_;
+        int tag_edit_wire_id_;
+        int tag_color_index_;
+        char tag_text_buffer_[64];
 
         // State variables for the interactive wire creation process.
         // ???????????? ???? ???? ?????????? ???? ?????????????

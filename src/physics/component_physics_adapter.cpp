@@ -307,7 +307,7 @@ const ComponentPhysicsAdapter* GetComponentPhysicsAdapter(ComponentType type) {
       // METER_VALVE
       {nullptr, nullptr, nullptr},
       // INDUCTIVE_SENSOR
-      {nullptr, nullptr, nullptr},
+      {UpdateSensorElectrical, nullptr, nullptr},
       // CONVEYOR
       {UpdateConveyorElectrical, nullptr, nullptr},
       // PROCESSING_CYLINDER

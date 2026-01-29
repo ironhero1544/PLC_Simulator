@@ -287,7 +287,6 @@ void PLCSimulatorCore::SyncIOMapping() {
   std::cout << "I/O mapping synchronized with current wiring state"
             << std::endl;
 
-  // TODO Phase 3: 프로그래밍 모드의 X, Y 디바이스와 실제 매핑 연동
   // - m_deviceStates와 실제 컴포넌트 상태 연결
   // - 매핑된 주소에 따른 자동 디바이스 상태 업데이트
 }

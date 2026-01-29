@@ -59,7 +59,7 @@ enum class ComponentType {
   EMERGENCY_STOP
 };
 
-enum class ToolType { SELECT, PNEUMATIC, ELECTRIC };
+enum class ToolType { SELECT, TAG, PNEUMATIC, ELECTRIC };
 enum class PortType { ELECTRIC, PNEUMATIC };
 enum class WireEditMode { NONE, MOVING_POINT };
 
@@ -92,6 +92,9 @@ struct Wire {
   bool isElectric;
   Color color;
   float thickness;
+  bool isTagged = false;
+  std::string tagText;
+  int tagColorIndex = 0;
 };
 
 struct SnapSettings {

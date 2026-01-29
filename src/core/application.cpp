@@ -87,7 +87,10 @@
 #include <fstream>
 
 #include <iostream>
+#include <map>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 
 
@@ -142,6 +145,9 @@ Application::Application(bool enable_debug_mode)
       next_wire_id_(0),
 
       selected_wire_id_(-1),
+      show_tag_popup_(false),
+      tag_edit_wire_id_(-1),
+      tag_color_index_(0),
 
       is_connecting_(false),
 
@@ -177,6 +183,7 @@ Application::Application(bool enable_debug_mode)
   wire_start_pos_ = {0, 0};
 
   wire_current_pos_ = {0, 0};
+  std::memset(tag_text_buffer_, 0, sizeof(tag_text_buffer_));
 
   camera_offset_ = {0.0f, 0.0f};
   last_pointer_world_pos_ = {0.0f, 0.0f};
@@ -1190,13 +1197,13 @@ void Application::RenderToolbar() {
           TR("ui.toolbar.tool_select", "Select"),
           TR("ui.toolbar.tool_pneumatic", "Pneumatic"),
           TR("ui.toolbar.tool_electric", "Electric"),
+          TR("ui.toolbar.tool_tag", "Tag"),
       };
 
     const ToolType toolTypes[] = {ToolType::SELECT, ToolType::PNEUMATIC,
+                                  ToolType::ELECTRIC, ToolType::TAG};
 
-                                  ToolType::ELECTRIC};
-
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
 
       if (i > 0) {
 
@@ -1220,11 +1227,15 @@ void Application::RenderToolbar() {
 
                                         : ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
 
-      if (ImGui::Button(toolNames[i],
-                        ImVec2(180 * layout_scale, 30 * layout_scale))) {
-
-        current_tool_ = toolTypes[i];
-
+      ImVec2 button_size(180 * layout_scale, 30 * layout_scale);
+      if (toolTypes[i] == ToolType::TAG) {
+        if (ImGui::Button(toolNames[i], button_size)) {
+          current_tool_ = toolTypes[i];
+        }
+      } else {
+        if (ImGui::Button(toolNames[i], button_size)) {
+          current_tool_ = toolTypes[i];
+        }
       }
 
       ImGui::PopStyleColor(2);
@@ -1386,6 +1397,12 @@ void Application::RenderMainArea() {
       case ToolType::SELECT:
 
         tool_name = "Select";
+
+        break;
+
+      case ToolType::TAG:
+
+        tool_name = "Tag";
 
         break;
 

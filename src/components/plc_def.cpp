@@ -3,6 +3,7 @@
 #include "imgui.h"
 
 #include "plc_emulator/lang/lang_manager.h"
+#include "plc_emulator/components/state_keys.h"
 
 namespace plc {
 
@@ -14,8 +15,6 @@ ImU32 ToImU32(const Color& color) {
                   static_cast<int>(color.b * 255.0f),
                   static_cast<int>(color.a * 255.0f));
 }
-
-const char kRunningKey[] = "is_running";
 
 const ComponentPortDef kPorts[] = {
     {0, {30.0f, 25.0f}, PortType::ELECTRIC, true,
@@ -126,18 +125,32 @@ void RenderPlc(ImDrawList* draw_list,
   draw_list->AddRect(power_block_start, power_block_end,
                      IM_COL32(100, 100, 100, 255), 3.0f * zoom, 0, 1.0f);
 
-  const char* labels[] = {"24V", "0V", "COM0", "COM1"};
-  ImU32 colors[] = {IM_COL32(255, 0, 0, 255), IM_COL32(0, 0, 0, 255),
-                    IM_COL32(128, 128, 128, 255), IM_COL32(128, 128, 128, 255)};
+  const char* labels[] = {
+      TR("component.plc.indicator_power", "POWER"),
+      TR("component.plc.indicator_run", "RUN"),
+      TR("component.plc.indicator_batt", "BATT"),
+      TR("component.plc.indicator_error", "ERROR")};
+  bool run_on = comp.internalStates.count(state_keys::kPlcRunning) &&
+                comp.internalStates.at(state_keys::kPlcRunning) > 0.5f;
+  bool error_on = comp.internalStates.count(state_keys::kPlcError) &&
+                  comp.internalStates.at(state_keys::kPlcError) > 0.5f;
+  ImU32 on_green = IM_COL32(0, 200, 0, 255);
+  ImU32 on_red = IM_COL32(220, 40, 40, 255);
+  ImU32 off_gray = IM_COL32(100, 100, 100, 255);
+  ImU32 colors[] = {on_green, run_on ? on_green : off_gray, on_green,
+                    error_on ? on_red : off_gray};
+  float text_scale = zoom / 1.4f;
+  float font_size = ImGui::GetFontSize() * text_scale;
   for (int i = 0; i < 4; ++i) {
-    ImVec2 port_pos = {screen_pos.x + 265 * zoom,
+    ImVec2 port_pos = {screen_pos.x + 265 * zoom - 2.0f,
                        screen_pos.y + (40.0f + static_cast<float>(i) * 25.0f) *
                                            zoom};
     draw_list->AddCircleFilled(port_pos, 6 * zoom, colors[i]);
     draw_list->AddCircle(port_pos, 6 * zoom, IM_COL32(50, 50, 50, 255), 0,
                          2.0f);
     if (zoom > 0.4f) {
-      draw_list->AddText(ImVec2(port_pos.x + 10 * zoom, port_pos.y - 8 * zoom),
+      draw_list->AddText(ImGui::GetFont(), font_size,
+                         ImVec2(port_pos.x + 10 * zoom, port_pos.y - 8 * zoom),
                          IM_COL32(50, 50, 50, 255), labels[i]);
     }
   }
@@ -149,8 +162,7 @@ void RenderPlc(ImDrawList* draw_list,
   draw_list->AddRectFilled(status_led_area_start, status_led_area_end,
                            IM_COL32(44, 62, 80, 255), 3.0f * zoom);
 
-  bool is_running = comp.internalStates.count(kRunningKey) &&
-                    comp.internalStates.at(kRunningKey) > 0.5f;
+  bool is_running = run_on;
   ImVec2 led_pos = {screen_pos.x + 275 * zoom, screen_pos.y + 155 * zoom};
   draw_list->AddCircleFilled(
       led_pos, 5 * zoom,
@@ -158,6 +170,7 @@ void RenderPlc(ImDrawList* draw_list,
 
   if (zoom > 0.5f) {
     draw_list->AddText(
+        ImGui::GetFont(), font_size,
         ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 5 * zoom),
         IM_COL32(50, 50, 50, 255),
         TR("component.plc.label", "FX3U-32M"));
@@ -168,7 +181,8 @@ void InitPlcDefaults(PlacedComponent* comp) {
   if (!comp) {
     return;
   }
-  comp->internalStates[kRunningKey] = 0.0f;
+  comp->internalStates[state_keys::kPlcRunning] = 0.0f;
+  comp->internalStates[state_keys::kPlcError] = 0.0f;
 }
 
 const ComponentDefinition kDefinition = {

@@ -83,6 +83,29 @@ bool AabbOverlaps(const Aabb& a, const Aabb& b) {
          a.max_y > b.min_y;
 }
 
+Aabb ExpandAabb(const Aabb& box, float pad_x, float pad_y) {
+  Aabb expanded = box;
+  expanded.min_x -= pad_x;
+  expanded.max_x += pad_x;
+  expanded.min_y -= pad_y;
+  expanded.max_y += pad_y;
+  return expanded;
+}
+
+Aabb GetWorkpieceDetectionAabb(const PlacedComponent& workpiece) {
+  Aabb box = GetAabb(workpiece);
+  float width = box.max_x - box.min_x;
+  float height = box.max_y - box.min_y;
+  float min_dim = (width < height) ? width : height;
+  float pad = min_dim * 1.5f;
+  if (pad < 20.0f) {
+    pad = 20.0f;
+  } else if (pad > 60.0f) {
+    pad = 60.0f;
+  }
+  return ExpandAabb(box, pad, pad);
+}
+
 float GetCenterX(const Aabb& box) {
   return (box.min_x + box.max_x) * 0.5f;
 }
@@ -830,7 +853,8 @@ void Application::SimulateElectrical() {
           unite(com_index, target_index);
         }
       }
-    } else if (comp.type == ComponentType::SENSOR) {
+    } else if (comp.type == ComponentType::SENSOR ||
+               comp.type == ComponentType::INDUCTIVE_SENSOR) {
       bool is_detected = comp.internalStates.count("is_detected") &&
                          comp.internalStates.at("is_detected") > 0.5f;
       if (is_detected) {
@@ -1249,7 +1273,8 @@ void Application::UpdateActuators() {
         if (!IsWorkpiece(workpiece.type)) {
           continue;
         }
-        if (AabbOverlaps(sensor_box, GetAabb(workpiece))) {
+        Aabb workpiece_box = GetWorkpieceDetectionAabb(workpiece);
+        if (AabbOverlaps(sensor_box, workpiece_box)) {
           isActivatedByWorkpiece = true;
           break;
         }
@@ -1359,6 +1384,44 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
   }
   float step_dt = delta_time / static_cast<float>(substeps);
 
+  auto apply_sensor_detection = [&](PlacedComponent& workpiece,
+                                    bool allow_snap) {
+    Aabb workpiece_detection = GetWorkpieceDetectionAabb(workpiece);
+    for (auto& sensor : placed_components_) {
+      if (sensor.type != ComponentType::RING_SENSOR &&
+          sensor.type != ComponentType::INDUCTIVE_SENSOR) {
+        continue;
+      }
+      Aabb sensor_box = GetAabb(sensor);
+      if (!AabbOverlaps(workpiece_detection, sensor_box)) {
+        continue;
+      }
+      if (sensor.type == ComponentType::INDUCTIVE_SENSOR) {
+        bool is_metal =
+            workpiece.type == ComponentType::WORKPIECE_METAL ||
+            (workpiece.internalStates.count(state_keys::kIsMetal) &&
+             workpiece.internalStates.at(state_keys::kIsMetal) > 0.5f);
+        if (!is_metal) {
+          continue;
+        }
+      }
+      sensor.internalStates[state_keys::kIsDetected] = 1.0f;
+      if (allow_snap && sensor.type == ComponentType::RING_SENSOR) {
+        float center_x = sensor.position.x + sensor.size.width * 0.5f;
+        float center_y = sensor.position.y + 28.0f;
+        float delta_x =
+            (workpiece.position.x + workpiece.size.width * 0.5f) - center_x;
+        float delta_y =
+            (workpiece.position.y + workpiece.size.height * 0.5f) - center_y;
+        if (std::abs(delta_x) <= kSnapDistance &&
+            std::abs(delta_y) <= kSnapDistance) {
+          workpiece.position.x = center_x - workpiece.size.width * 0.5f;
+          workpiece.position.y = center_y - workpiece.size.height * 0.5f;
+        }
+      }
+    }
+  };
+
   for (int step = 0; step < substeps; ++step) {
     for (auto& workpiece : placed_components_) {
       if (!IsWorkpiece(workpiece.type)) {
@@ -1369,6 +1432,7 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
           workpiece.internalStates.count(state_keys::kIsManualDrag) &&
           workpiece.internalStates.at(state_keys::kIsManualDrag) > 0.5f;
       if (manual_drag) {
+        apply_sensor_detection(workpiece, false);
         continue;
       }
 
@@ -1574,39 +1638,7 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
       workpiece.internalStates[state_keys::kVelY] = vel_y;
 
       workpiece_box = GetAabb(workpiece);
-      for (auto& sensor : placed_components_) {
-        if (sensor.type != ComponentType::RING_SENSOR &&
-            sensor.type != ComponentType::INDUCTIVE_SENSOR) {
-          continue;
-        }
-        Aabb sensor_box = GetAabb(sensor);
-        if (!AabbOverlaps(workpiece_box, sensor_box)) {
-          continue;
-        }
-        if (sensor.type == ComponentType::INDUCTIVE_SENSOR) {
-          bool is_metal =
-              workpiece.type == ComponentType::WORKPIECE_METAL ||
-              (workpiece.internalStates.count(state_keys::kIsMetal) &&
-               workpiece.internalStates.at(state_keys::kIsMetal) > 0.5f);
-          if (!is_metal) {
-            continue;
-          }
-        }
-        sensor.internalStates[state_keys::kIsDetected] = 1.0f;
-        if (sensor.type == ComponentType::RING_SENSOR) {
-          float center_x = sensor.position.x + sensor.size.width * 0.5f;
-          float center_y = sensor.position.y + 28.0f;
-          float delta_x =
-              (workpiece.position.x + workpiece.size.width * 0.5f) - center_x;
-          float delta_y =
-              (workpiece.position.y + workpiece.size.height * 0.5f) - center_y;
-          if (std::abs(delta_x) <= kSnapDistance &&
-              std::abs(delta_y) <= kSnapDistance) {
-            workpiece.position.x = center_x - workpiece.size.width * 0.5f;
-            workpiece.position.y = center_y - workpiece.size.height * 0.5f;
-          }
-        }
-      }
+      apply_sensor_detection(workpiece, true);
     }
   }
 }
@@ -1708,9 +1740,22 @@ void Application::UpdateBasicPhysics() {
     if (sensor.type == ComponentType::LIMIT_SWITCH ||
         sensor.type == ComponentType::SENSOR) {
       bool isActivatedByPhysics = false;
+      bool isActivatedByWorkpiece = false;
       float minDistance = 999999.0f;
       int closestCylinderId = -1;
       (void)closestCylinderId;  // 미사용 변수 경고 제거
+
+      Aabb sensor_box = GetAabb(sensor);
+      for (const auto& workpiece : placed_components_) {
+        if (!IsWorkpiece(workpiece.type)) {
+          continue;
+        }
+        Aabb workpiece_box = GetWorkpieceDetectionAabb(workpiece);
+        if (AabbOverlaps(sensor_box, workpiece_box)) {
+          isActivatedByWorkpiece = true;
+          break;
+        }
+      }
 
       for (const auto& cylinder : placed_components_) {
         if (cylinder.type == ComponentType::CYLINDER) {
@@ -1755,10 +1800,13 @@ void Application::UpdateBasicPhysics() {
             sensor.internalStates.count("is_pressed_manual") &&
             sensor.internalStates.at("is_pressed_manual") > 0.5f;
         sensor.internalStates["is_pressed"] =
-            (isActivatedByPhysics || isPressedManually) ? 1.0f : 0.0f;
+            (isActivatedByPhysics || isActivatedByWorkpiece ||
+             isPressedManually)
+                ? 1.0f
+                : 0.0f;
       } else {
         sensor.internalStates["is_detected"] =
-            isActivatedByPhysics ? 1.0f : 0.0f;
+            (isActivatedByPhysics || isActivatedByWorkpiece) ? 1.0f : 0.0f;
       }
     }
   }
@@ -2045,12 +2093,29 @@ void Application::SyncPhysicsEngineToApplication() {
           const SensorPhysicsState& sensorState = physState.state.sensor;
 
           // 감지 상태 동기화
-          comp.internalStates["is_detected"] =
-              sensorState.detectionState ? 1.0f : 0.0f;
+          bool prefer_basic_sensor =
+              (comp.type == ComponentType::SENSOR ||
+               comp.type == ComponentType::INDUCTIVE_SENSOR ||
+               comp.type == ComponentType::RING_SENSOR);
+          if (!prefer_basic_sensor) {
+            comp.internalStates[state_keys::kIsDetected] =
+                sensorState.detectionState ? 1.0f : 0.0f;
+            comp.internalStates[state_keys::kIsPowered] =
+                (sensorState.powerConsumption > 0.1f) ? 1.0f : 0.0f;
+          } else {
+            bool is_detected =
+                comp.internalStates.count(state_keys::kIsDetected) &&
+                comp.internalStates.at(state_keys::kIsDetected) > 0.5f;
+            bool is_powered =
+                comp.internalStates.count(state_keys::kIsPowered) &&
+                comp.internalStates.at(state_keys::kIsPowered) > 0.5f;
+            comp.internalStates["output_voltage"] =
+                (is_detected && is_powered) ? 24.0f : 0.0f;
+          }
           comp.internalStates["target_distance"] = sensorState.targetDistance;
-          comp.internalStates["output_voltage"] = sensorState.outputVoltage;
-          comp.internalStates["is_powered"] =
-              (sensorState.powerConsumption > 0.1f) ? 1.0f : 0.0f;
+          if (!prefer_basic_sensor) {
+            comp.internalStates["output_voltage"] = sensorState.outputVoltage;
+          }
 
           // 성능 특성 동기화
           comp.internalStates["sensitivity"] = sensorState.sensitivity;
@@ -2134,7 +2199,18 @@ void Application::SyncPhysicsEngineToApplication() {
   }
 
   // 4. PLC X 입력 상태를 물리엔진 결과로 업데이트
-  for (const auto& comp : placed_components_) {
+  bool plc_error = false;
+  if (programming_mode_) {
+    if (!programming_mode_->GetLastCompileError().empty() ||
+        !programming_mode_->GetLastScanError().empty()) {
+      plc_error = true;
+    }
+    if (is_plc_running_ && !programming_mode_->GetLastScanSuccess()) {
+      plc_error = true;
+    }
+  }
+
+  for (auto& comp : placed_components_) {
     if (comp.type == ComponentType::PLC) {
       std::map<std::string, bool>
           xInputs;  // 신규: ProgrammingMode로 보낼 X 입력 버퍼
@@ -2155,6 +2231,9 @@ void Application::SyncPhysicsEngineToApplication() {
       if (programming_mode_ && !xInputs.empty()) {
         programming_mode_->UpdateInputsFromSystem(xInputs);
       }
+      comp.internalStates[state_keys::kPlcRunning] =
+          is_plc_running_ ? 1.0f : 0.0f;
+      comp.internalStates[state_keys::kPlcError] = plc_error ? 1.0f : 0.0f;
       break;
     }
   }

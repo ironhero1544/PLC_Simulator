@@ -93,6 +93,8 @@ void RenderCylinder(ImDrawList* draw_list,
   ImU32 port_b_color = (pressure_b > 1.0f) ? IM_COL32(0, 180, 255, 255)
                                            : IM_COL32(33, 150, 243, 128);
 
+  float text_scale = zoom / 1.3f;
+  float font_size = ImGui::GetFontSize() * text_scale;
   for (const auto& port : kPorts) {
     ImVec2 port_pos = {screen_pos.x + port.rel_pos.x * zoom,
                        screen_pos.y + port.rel_pos.y * zoom};
@@ -103,7 +105,8 @@ void RenderCylinder(ImDrawList* draw_list,
 
     if (zoom > 0.5f) {
       const char* label = (port.id == 0) ? "A" : "B";
-      draw_list->AddText(ImVec2(port_pos.x - 5 * zoom, port_pos.y - 20 * zoom),
+      draw_list->AddText(ImGui::GetFont(), font_size,
+                         ImVec2(port_pos.x - 5 * zoom, port_pos.y - 20 * zoom),
                          IM_COL32(50, 50, 50, 255), label);
     }
   }
