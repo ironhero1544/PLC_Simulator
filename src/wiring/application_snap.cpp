@@ -6,6 +6,7 @@
 
 #include "imgui.h"
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/core/component_transform.h"
 
 #include <cmath>
 
@@ -60,8 +61,8 @@ ImVec2 Application::ApplyPortSnap(ImVec2 position) {
   if (port && componentId != -1) {
     for (const auto& comp : placed_components_) {
       if (comp.instanceId == componentId) {
-        return ImVec2(comp.position.x + port->relativePos.x,
-                      comp.position.y + port->relativePos.y);
+        return LocalToWorld(comp,
+                            ImVec2(port->relativePos.x, port->relativePos.y));
       }
     }
   }

@@ -357,11 +357,16 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
 
     // ??????????? ????????
     if (comp.selected) {
-      ImVec2 end_pos = {screen_top_left.x + display.width * camera_zoom_,
-                        screen_top_left.y + display.height * camera_zoom_};
-      draw_list->AddRect(screen_top_left, end_pos,
-                         IM_COL32(0, 123, 255, 255), 0.0f,
+      const int sel_start = draw_list->VtxBuffer.Size;
+      ImVec2 rect_min = render_origin;
+      ImVec2 rect_max = {render_origin.x + comp.size.width * camera_zoom_,
+                         render_origin.y + comp.size.height * camera_zoom_};
+      draw_list->AddRect(rect_min, rect_max, IM_COL32(0, 123, 255, 255), 0.0f,
                          0, 3.0f);
+      const int sel_end = draw_list->VtxBuffer.Size;
+      TransformDrawListVertices(draw_list, sel_start, sel_end, display_center,
+                                comp.rotation_quadrants, comp.flip_x,
+                                comp.flip_y);
     }
   }
 

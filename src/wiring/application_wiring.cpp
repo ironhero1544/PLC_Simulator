@@ -6,6 +6,7 @@
 
 #include "imgui.h"
 #include "plc_emulator/components/component_behavior.h"
+#include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/lang/lang_manager.h"
@@ -665,6 +666,25 @@ void Application::RenderWiringCanvas() {
       } else {
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
           bool interaction_handled = false;
+          if (io.KeyShift) {
+            int top_index =
+                FindTopmostComponentIndexAtPosition(placed_components_,
+                                                    mouse_world_pos);
+            if (top_index != -1) {
+              auto& comp =
+                  placed_components_[static_cast<size_t>(top_index)];
+              if (comp.type == ComponentType::LIMIT_SWITCH) {
+                float current =
+                    comp.internalStates.count(state_keys::kIsPressedManual)
+                        ? comp.internalStates.at(state_keys::kIsPressedManual)
+                        : 0.0f;
+                comp.internalStates[state_keys::kIsPressedManual] =
+                    1.0f - current;
+                HandleComponentSelection(comp.instanceId);
+                interaction_handled = true;
+              }
+            }
+          }
           if (current_tool_ == ToolType::TAG) {
             Wire* tagged_wire = FindTaggedWireAtScreenPos(mouse_screen_pos);
             if (tagged_wire && tagged_wire->isTagged) {

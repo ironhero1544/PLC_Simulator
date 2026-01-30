@@ -70,6 +70,23 @@ bool IsWorkpiece(ComponentType type) {
          type == ComponentType::WORKPIECE_NONMETAL;
 }
 
+ImVec2 GetCylinderRodTipWorld(const PlacedComponent& cylinder) {
+  float piston_position = cylinder.internalStates.count(state_keys::kPosition)
+                              ? cylinder.internalStates.at(state_keys::kPosition)
+                              : 0.0f;
+  return LocalToWorld(cylinder, ImVec2(170.0f - piston_position, 25.0f));
+}
+
+ImVec2 GetLimitSwitchCenterWorld(const PlacedComponent& sensor) {
+  return LocalToWorld(sensor,
+                      ImVec2(sensor.size.width * 0.5f,
+                             sensor.size.height * 0.5f));
+}
+
+ImVec2 GetSensorCenterWorld(const PlacedComponent& sensor) {
+  return LocalToWorld(sensor, ImVec2(sensor.size.width * 0.5f, 7.5f));
+}
+
 Aabb GetAabb(const PlacedComponent& comp) {
   Aabb box;
   box.min_x = comp.position.x;
@@ -1323,24 +1340,14 @@ void Application::UpdateActuators() {
 
       for (const auto& cylinder : placed_components_) {
         if (cylinder.type == ComponentType::CYLINDER) {
-          float cylinderX_body_start = cylinder.position.x + 170.0f;
-          float pistonPosition = cylinder.internalStates.count("position")
-                                     ? cylinder.internalStates.at("position")
-                                     : 0.0f;
-          float pistonX_tip = cylinderX_body_start - pistonPosition;
-          float pistonY = cylinder.position.y + 25.0f;
+          ImVec2 piston_tip = GetCylinderRodTipWorld(cylinder);
+          ImVec2 sensor_center =
+              (sensor.type == ComponentType::LIMIT_SWITCH)
+                  ? GetLimitSwitchCenterWorld(sensor)
+                  : GetSensorCenterWorld(sensor);
 
-          float sensorX_center, sensorY_center;
-          if (sensor.type == ComponentType::LIMIT_SWITCH) {
-            sensorX_center = sensor.position.x + sensor.size.width / 2.0f;
-            sensorY_center = sensor.position.y + sensor.size.height / 2.0f;
-          } else {
-            sensorX_center = sensor.position.x + sensor.size.width / 2.0f;
-            sensorY_center = sensor.position.y + 7.5f;
-          }
-
-          float dx = pistonX_tip - sensorX_center;
-          float dy = pistonY - sensorY_center;
+          float dx = piston_tip.x - sensor_center.x;
+          float dy = piston_tip.y - sensor_center.y;
           float distance = std::sqrt(dx * dx + dy * dy);
 
           if (distance < minDistance) {
@@ -1796,24 +1803,14 @@ void Application::UpdateBasicPhysics() {
 
       for (const auto& cylinder : placed_components_) {
         if (cylinder.type == ComponentType::CYLINDER) {
-          float cylinderX_body_start = cylinder.position.x + 170.0f;
-          float pistonPosition = cylinder.internalStates.count("position")
-                                     ? cylinder.internalStates.at("position")
-                                     : 0.0f;
-          float pistonX_tip = cylinderX_body_start - pistonPosition;
-          float pistonY = cylinder.position.y + 25.0f;
+          ImVec2 piston_tip = GetCylinderRodTipWorld(cylinder);
+          ImVec2 sensor_center =
+              (sensor.type == ComponentType::LIMIT_SWITCH)
+                  ? GetLimitSwitchCenterWorld(sensor)
+                  : GetSensorCenterWorld(sensor);
 
-          float sensorX_center, sensorY_center;
-          if (sensor.type == ComponentType::LIMIT_SWITCH) {
-            sensorX_center = sensor.position.x + sensor.size.width / 2.0f;
-            sensorY_center = sensor.position.y + sensor.size.height / 2.0f;
-          } else {
-            sensorX_center = sensor.position.x + sensor.size.width / 2.0f;
-            sensorY_center = sensor.position.y + 7.5f;
-          }
-
-          float dx = pistonX_tip - sensorX_center;
-          float dy = pistonY - sensorY_center;
+          float dx = piston_tip.x - sensor_center.x;
+          float dy = piston_tip.y - sensor_center.y;
           float distance = std::sqrt(dx * dx + dy * dy);
 
           if (distance < minDistance) {
