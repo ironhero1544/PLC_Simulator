@@ -6,6 +6,10 @@
 namespace plc {
 
 const ComponentDefinition* GetProcessingCylinderDefinition();
+void RenderProcessingCylinderHead(ImDrawList* draw_list,
+                                  const PlacedComponent& comp,
+                                  ImVec2 pos,
+                                  float zoom);
 
 }  // namespace plc
 

@@ -38,15 +38,11 @@ const ComponentPortDef kPorts[] = {
      "PNEUMATIC_IN_B"},
 };
 
-void RenderProcessingCylinder(ImDrawList* draw_list,
-                              const PlacedComponent& comp,
-                              ImVec2 pos,
-                              float zoom) {
+void RenderProcessingCylinderBody(ImDrawList* draw_list,
+                                  ImVec2 pos,
+                                  float zoom) {
   const float w = 120.0f * zoom;
   const float h = 180.0f * zoom;
-  constexpr float kDrillUpPos = 30.0f;
-  constexpr float kDrillDownPos = 15.0f;
-
   ImVec2 body_min = pos;
   ImVec2 body_max = {pos.x + w, pos.y + h};
 
@@ -57,12 +53,29 @@ void RenderProcessingCylinder(ImDrawList* draw_list,
   ImVec2 header_max = {body_max.x, body_min.y + 26.0f * zoom};
   draw_list->AddRectFilled(header_min, header_max, kHeaderColor);
   draw_list->AddRect(header_min, header_max, kFrameColor, 0, 2.0f * zoom);
-  // 헤더 블록의 검은 표시 제거
 
   ImVec2 base_min = {body_min.x, body_max.y - 22.0f * zoom};
   ImVec2 base_max = body_max;
   draw_list->AddRectFilled(base_min, base_max, kBaseColor);
   draw_list->AddRect(base_min, base_max, kFrameColor, 0, 2.0f * zoom);
+}
+
+void RenderProcessingCylinderPorts(ImDrawList* draw_list,
+                                   ImVec2 pos,
+                                   float zoom) {
+  for (const auto& p : kPorts) {
+    ImVec2 pc = {pos.x + p.rel_pos.x * zoom, pos.y + p.rel_pos.y * zoom};
+    draw_list->AddCircleFilled(pc, 4.2f * zoom, ToImU32(p.color));
+    draw_list->AddCircle(pc, 4.2f * zoom, kFrameColor, 0, 1.4f * zoom);
+  }
+}
+
+void RenderProcessingCylinderHeadInternal(ImDrawList* draw_list,
+                                          const PlacedComponent& comp,
+                                          ImVec2 pos,
+                                          float zoom) {
+  constexpr float kDrillUpPos = 30.0f;
+  constexpr float kDrillDownPos = 15.0f;
 
   float pos_val = comp.internalStates.count(state_keys::kPosition)
                       ? comp.internalStates.at(state_keys::kPosition)
@@ -77,9 +90,9 @@ void RenderProcessingCylinder(ImDrawList* draw_list,
   drill_scale = std::clamp(drill_scale, 0.65f, 1.0f);
   const float inner_most_r = inner_most_base * drill_scale;
   float cur_y = 90.0f;
-  ImVec2 center = {body_min.x + 60.0f * zoom, body_min.y + cur_y * zoom};
+  ImVec2 center = {pos.x + 60.0f * zoom, pos.y + cur_y * zoom};
 
-  float rail_top = body_min.y + 0.0f * zoom;
+  float rail_top = pos.y + 0.0f * zoom;
   float rail_bottom = center.y - outer_r + 6.0f * zoom;
   float rail_offset = 14.0f * zoom;
   float rail_left_x = center.x - rail_offset;
@@ -129,12 +142,15 @@ void RenderProcessingCylinder(ImDrawList* draw_list,
                      {center.x + drill_len * std::cos(final_angle),
                       center.y + drill_len * std::sin(final_angle)},
                      kFrameColor, 2.4f * zoom);
+}
 
-  for (const auto& p : kPorts) {
-    ImVec2 pc = {pos.x + p.rel_pos.x * zoom, pos.y + p.rel_pos.y * zoom};
-    draw_list->AddCircleFilled(pc, 4.2f * zoom, ToImU32(p.color));
-    draw_list->AddCircle(pc, 4.2f * zoom, kFrameColor, 0, 1.4f * zoom);
-  }
+void RenderProcessingCylinder(ImDrawList* draw_list,
+                              const PlacedComponent& comp,
+                              ImVec2 pos,
+                              float zoom) {
+  RenderProcessingCylinderBody(draw_list, pos, zoom);
+  RenderProcessingCylinderHeadInternal(draw_list, comp, pos, zoom);
+  RenderProcessingCylinderPorts(draw_list, pos, zoom);
 }
 
 void InitProcessingCylinderDefaults(PlacedComponent* comp) {
@@ -164,6 +180,13 @@ const ComponentDefinition kDefinition = {
 
 const ComponentDefinition* GetProcessingCylinderDefinition() {
   return &kDefinition;
+}
+
+void RenderProcessingCylinderHead(ImDrawList* draw_list,
+                                  const PlacedComponent& comp,
+                                  ImVec2 pos,
+                                  float zoom) {
+  RenderProcessingCylinderHeadInternal(draw_list, comp, pos, zoom);
 }
 
 }  // namespace plc

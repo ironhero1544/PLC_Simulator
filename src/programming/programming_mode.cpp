@@ -53,6 +53,8 @@ ProgrammingMode::ProgrammingMode(plc::Application* app)
 
       use_compiled_engine_(false),
 
+      has_compile_attempted_(false),
+
       show_address_popup_(false),
 
       show_vertical_dialog_(false),
@@ -695,6 +697,8 @@ void ProgrammingMode::SaveLadderProgramToLD(const std::string& filepath) {
 
 
 void ProgrammingMode::TestCompileLDFile(const std::string& ldFilepath) {
+
+  has_compile_attempted_ = true;
 
   std::cout << "\n[INFO] Testing .ld file compilation..." << std::endl;
 

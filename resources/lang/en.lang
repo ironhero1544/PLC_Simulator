@@ -147,11 +147,21 @@ ui.wiring.tag_color=Color
 
 # Wiring camera help
 ui.wiring.camera_help.title=Canvas Camera
-ui.wiring.camera_help.zoom=Zoom: Mouse wheel (hold button to pan)
-ui.wiring.camera_help.pan_middle=Pan: Tool selection and wiring are available.
+ui.wiring.camera_help.zoom=Zoom: Mouse wheel (no Ctrl)
+ui.wiring.camera_help.pan_middle=Pan: Middle drag / Alt + Right drag
 ui.wiring.camera_help.pan_alt=Trackpad: Pinch to zoom.
-ui.wiring.camera_help.trackpad=Move: Ctrl + two-finger scroll.
-ui.wiring.camera_help.touch=Touch: Pinch to zoom, tap/drag to pan.
+ui.wiring.camera_help.trackpad=Trackpad: Ctrl + Scroll (Pan)
+ui.wiring.camera_help.touch=Touch: Pinch to zoom, drag to pan.
+
+# Wiring context menu
+ui.wiring.context.bring_front=Bring to Front
+ui.wiring.context.send_back=Send to Back
+ui.wiring.context.bring_forward=Bring Forward
+ui.wiring.context.send_backward=Send Backward
+ui.wiring.context.rotate_cw=Rotate 90deg
+ui.wiring.context.rotate_ccw=Rotate -90deg
+ui.wiring.context.flip_horizontal=Flip Horizontal
+ui.wiring.context.flip_vertical=Flip Vertical
 
 # Programming UI
 ui.programming.timers_counters=Timers / Counters

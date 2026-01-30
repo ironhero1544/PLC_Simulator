@@ -10,6 +10,7 @@
 
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/core/win32_input.h"
 
 #include "plc_emulator/components/component_registry.h"
@@ -87,7 +88,9 @@
 #include <fstream>
 
 #include <iostream>
+#include <limits>
 #include <map>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -110,6 +113,113 @@ void PhysicsWarningDialogCallback(const char* message) {
     g_physics_warning_app->QueuePhysicsWarningDialog(message);
   }
 }
+
+std::string GetLayoutSidecarPath(const std::string& project_path) {
+  size_t last_slash = project_path.find_last_of("/\\");
+  size_t last_dot = project_path.find_last_of('.');
+  if (last_dot != std::string::npos &&
+      (last_slash == std::string::npos || last_dot > last_slash)) {
+    return project_path.substr(0, last_dot) + ".layout.json";
+  }
+  return project_path + ".layout.json";
+}
+
+const char* ComponentTypeToString(ComponentType type) {
+  switch (type) {
+    case ComponentType::PLC:
+      return "PLC";
+    case ComponentType::FRL:
+      return "FRL";
+    case ComponentType::MANIFOLD:
+      return "MANIFOLD";
+    case ComponentType::LIMIT_SWITCH:
+      return "LIMIT_SWITCH";
+    case ComponentType::SENSOR:
+      return "SENSOR";
+    case ComponentType::CYLINDER:
+      return "CYLINDER";
+    case ComponentType::VALVE_SINGLE:
+      return "VALVE_SINGLE";
+    case ComponentType::VALVE_DOUBLE:
+      return "VALVE_DOUBLE";
+    case ComponentType::BUTTON_UNIT:
+      return "BUTTON_UNIT";
+    case ComponentType::POWER_SUPPLY:
+      return "POWER_SUPPLY";
+    case ComponentType::WORKPIECE_METAL:
+      return "WORKPIECE_METAL";
+    case ComponentType::WORKPIECE_NONMETAL:
+      return "WORKPIECE_NONMETAL";
+    case ComponentType::RING_SENSOR:
+      return "RING_SENSOR";
+    case ComponentType::METER_VALVE:
+      return "METER_VALVE";
+    case ComponentType::INDUCTIVE_SENSOR:
+      return "INDUCTIVE_SENSOR";
+    case ComponentType::CONVEYOR:
+      return "CONVEYOR";
+    case ComponentType::PROCESSING_CYLINDER:
+      return "PROCESSING_CYLINDER";
+    case ComponentType::BOX:
+      return "BOX";
+    case ComponentType::TOWER_LAMP:
+      return "TOWER_LAMP";
+    case ComponentType::EMERGENCY_STOP:
+      return "EMERGENCY_STOP";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+bool ComponentTypeFromString(const std::string& value, ComponentType* out) {
+  if (!out) {
+    return false;
+  }
+  if (value == "PLC") {
+    *out = ComponentType::PLC;
+  } else if (value == "FRL") {
+    *out = ComponentType::FRL;
+  } else if (value == "MANIFOLD") {
+    *out = ComponentType::MANIFOLD;
+  } else if (value == "LIMIT_SWITCH") {
+    *out = ComponentType::LIMIT_SWITCH;
+  } else if (value == "SENSOR") {
+    *out = ComponentType::SENSOR;
+  } else if (value == "CYLINDER") {
+    *out = ComponentType::CYLINDER;
+  } else if (value == "VALVE_SINGLE") {
+    *out = ComponentType::VALVE_SINGLE;
+  } else if (value == "VALVE_DOUBLE") {
+    *out = ComponentType::VALVE_DOUBLE;
+  } else if (value == "BUTTON_UNIT") {
+    *out = ComponentType::BUTTON_UNIT;
+  } else if (value == "POWER_SUPPLY") {
+    *out = ComponentType::POWER_SUPPLY;
+  } else if (value == "WORKPIECE_METAL") {
+    *out = ComponentType::WORKPIECE_METAL;
+  } else if (value == "WORKPIECE_NONMETAL") {
+    *out = ComponentType::WORKPIECE_NONMETAL;
+  } else if (value == "RING_SENSOR") {
+    *out = ComponentType::RING_SENSOR;
+  } else if (value == "METER_VALVE") {
+    *out = ComponentType::METER_VALVE;
+  } else if (value == "INDUCTIVE_SENSOR") {
+    *out = ComponentType::INDUCTIVE_SENSOR;
+  } else if (value == "CONVEYOR") {
+    *out = ComponentType::CONVEYOR;
+  } else if (value == "PROCESSING_CYLINDER") {
+    *out = ComponentType::PROCESSING_CYLINDER;
+  } else if (value == "BOX") {
+    *out = ComponentType::BOX;
+  } else if (value == "TOWER_LAMP") {
+    *out = ComponentType::TOWER_LAMP;
+  } else if (value == "EMERGENCY_STOP") {
+    *out = ComponentType::EMERGENCY_STOP;
+  } else {
+    return false;
+  }
+  return true;
+}
 }  // namespace
 
 
@@ -131,6 +241,7 @@ Application::Application(bool enable_debug_mode)
       selected_component_id_(-1),
 
       next_instance_id_(0),
+      next_z_order_(0),
 
       is_dragging_(false),
 
@@ -176,7 +287,10 @@ Application::Application(bool enable_debug_mode)
       debug_update_counter_(0),
       show_physics_warning_dialog_(false),
       physics_warning_message_(""),
-      show_restart_popup_(false) {
+      show_restart_popup_(false),
+      show_component_context_menu_(false),
+      context_menu_component_id_(-1),
+      context_menu_pos_(ImVec2(0.0f, 0.0f)) {
 
   drag_start_offset_ = {0, 0};
 
@@ -499,6 +613,14 @@ void Application::ProcessInput() {
     }
 
     deleteKeyPressed = deleteKeyDown;
+
+    if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+      if (io.KeyShift) {
+        RotateSelectedComponent(-1);
+      } else {
+        RotateSelectedComponent(1);
+      }
+    }
 
   }
 
@@ -1460,19 +1582,20 @@ void Application::Cleanup() {
 void Application::UpdatePortPositions() {
   port_positions_.clear();
 
-  for (const auto& comp : placed_components_) {
-    const ComponentDefinition* def = GetComponentDefinition(comp.type);
-    if (!def || !def->ports || def->port_count <= 0) {
-      continue;
-    }
-    for (int i = 0; i < def->port_count; ++i) {
-      const ComponentPortDef& port_def = def->ports[i];
-      Position worldPos = {comp.position.x + port_def.rel_pos.x,
-                           comp.position.y + port_def.rel_pos.y};
-      port_positions_[{comp.instanceId, port_def.id}] = worldPos;
+    for (const auto& comp : placed_components_) {
+      const ComponentDefinition* def = GetComponentDefinition(comp.type);
+      if (!def || !def->ports || def->port_count <= 0) {
+        continue;
+      }
+      for (int i = 0; i < def->port_count; ++i) {
+        const ComponentPortDef& port_def = def->ports[i];
+        ImVec2 world_pos =
+            LocalToWorld(comp, ImVec2(port_def.rel_pos.x, port_def.rel_pos.y));
+        Position worldPos = {world_pos.x, world_pos.y};
+        port_positions_[{comp.instanceId, port_def.id}] = worldPos;
+      }
     }
   }
-}
 ImVec2 Application::WorldToScreen(const ImVec2& world_pos) const {
 
   float x = canvas_top_left_.x + (world_pos.x + camera_offset_.x) * camera_zoom_;
@@ -1485,11 +1608,11 @@ ImVec2 Application::WorldToScreen(const ImVec2& world_pos) const {
 
 
 
-ImVec2 Application::ScreenToWorld(const ImVec2& screen_pos) const {
-
-  float x =
-
-      (screen_pos.x - canvas_top_left_.x) / camera_zoom_ - camera_offset_.x;
+  ImVec2 Application::ScreenToWorld(const ImVec2& screen_pos) const {
+  
+    float x =
+  
+        (screen_pos.x - canvas_top_left_.x) / camera_zoom_ - camera_offset_.x;
 
   float y =
 
@@ -1558,10 +1681,10 @@ void Application::SyncLadderProgramFromProgrammingMode() {
         "program.\n");
 
     return;
-
+  
   }
-
-
+  
+  
 
 
   loaded_ladder_program_ = programming_mode_->GetLadderProgram();
@@ -1598,6 +1721,203 @@ void Application::SyncLadderProgramFromProgrammingMode() {
 
   }
 
+}
+
+
+
+bool Application::SaveLayout(const std::string& file_path) {
+  json root;
+  root["version"] = 1;
+  root["next_instance_id"] = next_instance_id_;
+  root["next_wire_id"] = next_wire_id_;
+  root["next_z_order"] = next_z_order_;
+
+  json components = json::array();
+  for (const auto& comp : placed_components_) {
+    json item;
+    item["instance_id"] = comp.instanceId;
+    item["type"] = ComponentTypeToString(comp.type);
+    item["x"] = comp.position.x;
+    item["y"] = comp.position.y;
+    item["z_order"] = comp.z_order;
+    item["rotation_quadrants"] = comp.rotation_quadrants;
+    item["flip_x"] = comp.flip_x;
+    item["flip_y"] = comp.flip_y;
+    components.push_back(item);
+  }
+  root["components"] = components;
+
+  json wires = json::array();
+  for (const auto& wire : wires_) {
+    json item;
+    item["id"] = wire.id;
+    item["from_component_id"] = wire.fromComponentId;
+    item["from_port_id"] = wire.fromPortId;
+    item["to_component_id"] = wire.toComponentId;
+    item["to_port_id"] = wire.toPortId;
+    item["is_electric"] = wire.isElectric;
+    item["thickness"] = wire.thickness;
+    item["is_tagged"] = wire.isTagged;
+    item["tag_text"] = wire.tagText;
+    item["tag_color_index"] = wire.tagColorIndex;
+
+    json color;
+    color["r"] = wire.color.r;
+    color["g"] = wire.color.g;
+    color["b"] = wire.color.b;
+    color["a"] = wire.color.a;
+    item["color"] = color;
+
+    json waypoints = json::array();
+    for (const auto& wp : wire.wayPoints) {
+      json point;
+      point["x"] = wp.x;
+      point["y"] = wp.y;
+      waypoints.push_back(point);
+    }
+    item["waypoints"] = waypoints;
+    wires.push_back(item);
+  }
+  root["wires"] = wires;
+
+  std::ofstream file(file_path, std::ios::binary);
+  if (!file.is_open()) {
+    return false;
+  }
+  file << root.dump(2);
+  return true;
+}
+
+bool Application::LoadLayout(const std::string& file_path) {
+  std::ifstream file(file_path, std::ios::binary);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  json root = json::parse(buffer.str(), nullptr, false);
+  if (root.is_discarded() || !root.is_object()) {
+    return false;
+  }
+
+  placed_components_.clear();
+  wires_.clear();
+  selected_component_id_ = -1;
+  selected_wire_id_ = -1;
+  wire_edit_mode_ = WireEditMode::NONE;
+  editing_wire_id_ = -1;
+  editing_point_index_ = -1;
+  is_connecting_ = false;
+  current_way_points_.clear();
+  is_dragging_ = false;
+  is_moving_component_ = false;
+
+  int max_instance_id = -1;
+  int max_wire_id = -1;
+  int max_z_order = std::numeric_limits<int>::min();
+
+  auto components_it = root.find("components");
+  if (components_it != root.end() && components_it->is_array()) {
+    for (const auto& item : *components_it) {
+      if (!item.is_object()) {
+        continue;
+      }
+      ComponentType type;
+      std::string type_text = item.value("type", "");
+      if (!ComponentTypeFromString(type_text, &type)) {
+        continue;
+      }
+      const ComponentDefinition* def = GetComponentDefinition(type);
+      if (!def) {
+        continue;
+      }
+
+      PlacedComponent comp;
+      comp.instanceId = item.value("instance_id", 0);
+      comp.type = type;
+      comp.position.x = item.value("x", 0.0f);
+      comp.position.y = item.value("y", 0.0f);
+      comp.size = def->size;
+      comp.z_order = item.value("z_order",
+                                static_cast<int>(placed_components_.size()));
+      comp.rotation_quadrants = item.value("rotation_quadrants", 0);
+      comp.flip_x = item.value("flip_x", false);
+      comp.flip_y = item.value("flip_y", false);
+      if (def->InitDefaultState) {
+        def->InitDefaultState(&comp);
+      }
+      placed_components_.push_back(comp);
+
+      max_instance_id = std::max(max_instance_id, comp.instanceId);
+      max_z_order = std::max(max_z_order, comp.z_order);
+    }
+  }
+
+  auto wires_it = root.find("wires");
+  if (wires_it != root.end() && wires_it->is_array()) {
+    for (const auto& item : *wires_it) {
+      if (!item.is_object()) {
+        continue;
+      }
+      Wire wire;
+      wire.id = item.value("id", 0);
+      wire.fromComponentId = item.value("from_component_id", 0);
+      wire.fromPortId = item.value("from_port_id", 0);
+      wire.toComponentId = item.value("to_component_id", 0);
+      wire.toPortId = item.value("to_port_id", 0);
+      wire.isElectric = item.value("is_electric", true);
+      wire.thickness = item.value("thickness", wire.isElectric ? 2.0f : 3.0f);
+      wire.tagText = item.value("tag_text", std::string());
+      wire.isTagged = item.value("is_tagged", !wire.tagText.empty());
+      wire.tagColorIndex = item.value("tag_color_index", 0);
+
+      if (item.contains("color") && item["color"].is_object()) {
+        const json& color = item["color"];
+        wire.color.r = color.value("r", wire.isElectric ? 1.0f : 0.13f);
+        wire.color.g = color.value("g", wire.isElectric ? 0.27f : 0.59f);
+        wire.color.b = color.value("b", wire.isElectric ? 0.0f : 0.95f);
+        wire.color.a = color.value("a", 1.0f);
+      } else {
+        wire.color = wire.isElectric ? Color{1.0f, 0.27f, 0.0f, 1.0f}
+                                     : Color{0.13f, 0.59f, 0.95f, 1.0f};
+      }
+
+      wire.wayPoints.clear();
+      if (item.contains("waypoints") && item["waypoints"].is_array()) {
+        for (const auto& wp : item["waypoints"]) {
+          if (!wp.is_object()) {
+            continue;
+          }
+          Position pos;
+          pos.x = wp.value("x", 0.0f);
+          pos.y = wp.value("y", 0.0f);
+          wire.wayPoints.push_back(pos);
+        }
+      }
+
+      wires_.push_back(wire);
+      max_wire_id = std::max(max_wire_id, wire.id);
+    }
+  }
+
+  next_instance_id_ = root.value("next_instance_id", max_instance_id + 1);
+  if (next_instance_id_ <= max_instance_id) {
+    next_instance_id_ = max_instance_id + 1;
+  }
+  next_wire_id_ = root.value("next_wire_id", max_wire_id + 1);
+  if (next_wire_id_ <= max_wire_id) {
+    next_wire_id_ = max_wire_id + 1;
+  }
+  if (max_z_order == std::numeric_limits<int>::min()) {
+    max_z_order = -1;
+  }
+  next_z_order_ = root.value("next_z_order", max_z_order + 1);
+  if (next_z_order_ <= max_z_order) {
+    next_z_order_ = max_z_order + 1;
+  }
+
+  return true;
 }
 
 
@@ -2706,6 +3026,12 @@ bool Application::SaveProject(const std::string& filePath,
 
                 << std::endl;
 
+      const std::string layout_path = GetLayoutSidecarPath(filePath);
+      if (!SaveLayout(layout_path)) {
+        std::cerr << "[WARN] Layout save failed: " << layout_path
+                  << std::endl;
+      }
+
       return true;
 
     } else {
@@ -2871,6 +3197,12 @@ bool Application::LoadProject(const std::string& filePath) {
 
                 << " bytes" << std::endl;
 
+    }
+
+    const std::string layout_path = GetLayoutSidecarPath(filePath);
+    if (!LoadLayout(layout_path)) {
+      std::cout << "[INFO] Layout file not loaded: " << layout_path
+                << std::endl;
     }
 
 

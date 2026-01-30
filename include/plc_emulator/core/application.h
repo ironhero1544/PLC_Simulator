@@ -401,6 +401,9 @@ namespace plc {
         void RenderWiringCanvas();
         void RenderTagPopup();
         void OpenTagPopupForWire(int wire_id);
+        void RenderComponentContextMenu();
+        void OpenComponentContextMenu(int component_id, ImVec2 screen_pos);
+        void RotateSelectedComponent(int delta_quadrants);
 
         // RenderWiringCanvas helper functions
 
@@ -577,6 +580,12 @@ namespace plc {
          * ?????????? ?????????????????????????????.
          */
         void RenderSnapGuides(ImDrawList* draw_list, ImVec2 worldSnapPos);
+        PlacedComponent* FindComponentById(int instance_id);
+        void ApplyRotationToComponent(PlacedComponent* comp, int delta_quadrants);
+        void BringComponentToFront(int component_id);
+        void SendComponentToBack(int component_id);
+        void BringComponentForward(int component_id);
+        void SendComponentBackward(int component_id);
 
         // Pointer to the main GLFW window.
         // ?????GLFW ???????? ???????????????.
@@ -612,6 +621,7 @@ namespace plc {
         // Counter to generate unique instance IDs for new components.
         // ???????????????? ????? ???????? ID?????????? ????????????.
         int next_instance_id_;
+        int next_z_order_;
 
         // State variables for component drag-and-drop and movement.
         // ???????? ???????????? ???????????? ???? ?????????????
@@ -712,6 +722,9 @@ namespace plc {
         bool win32_side_click_;
         bool win32_side_down_;
         bool show_restart_popup_;
+        bool show_component_context_menu_;
+        int context_menu_component_id_;
+        ImVec2 context_menu_pos_;
         UiSettings ui_settings_;
 
         /**
@@ -763,6 +776,8 @@ namespace plc {
          * ???????????????????????????????
          */
         void PrintDebugToConsole(const std::string& message);
+        bool SaveLayout(const std::string& file_path);
+        bool LoadLayout(const std::string& file_path);
     };
 
 }  // namespace plc

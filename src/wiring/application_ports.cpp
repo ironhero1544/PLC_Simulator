@@ -7,6 +7,7 @@
 #include "plc_emulator/core/application.h"
 
 #include "plc_emulator/components/component_registry.h"
+#include "plc_emulator/core/component_transform.h"
 
 namespace plc {
 
@@ -24,10 +25,13 @@ Port* Application::FindPortAtPosition(ImVec2 worldPos, int& outComponentId) {
   float best_dist_sq = kPortRadiusSq;
 
   for (const auto& component : placed_components_) {
+    const Size display = GetComponentDisplaySize(component);
     if (worldPos.x < component.position.x - kPortRadius ||
-        worldPos.x > component.position.x + component.size.width + kPortRadius ||
+        worldPos.x >
+            component.position.x + display.width + kPortRadius ||
         worldPos.y < component.position.y - kPortRadius ||
-        worldPos.y > component.position.y + component.size.height + kPortRadius) {
+        worldPos.y >
+            component.position.y + display.height + kPortRadius) {
       continue;
     }
 
@@ -38,8 +42,9 @@ Port* Application::FindPortAtPosition(ImVec2 worldPos, int& outComponentId) {
 
     for (int i = 0; i < def->port_count; ++i) {
       const ComponentPortDef& port_def = def->ports[i];
-      ImVec2 port_world = ImVec2(component.position.x + port_def.rel_pos.x,
-                                 component.position.y + port_def.rel_pos.y);
+      ImVec2 port_world =
+          LocalToWorld(component,
+                       ImVec2(port_def.rel_pos.x, port_def.rel_pos.y));
       float dx = worldPos.x - port_world.x;
       float dy = worldPos.y - port_world.y;
       float dist_sq = dx * dx + dy * dy;

@@ -127,11 +127,21 @@ ui.wiring.tooltip_pressure_hint=마우스 휠로 조절하세요.
 
 # Wiring camera help
 ui.wiring.camera_help.title=켄버스 카매라
-ui.wiring.camera_help.zoom=Zoom: 마우스 휠 (버튼 홀드로 이동 가능)
-ui.wiring.camera_help.pan_middle=팬:도구 선택과 배선이 가능합니다.
+ui.wiring.camera_help.zoom=확대/축소: 마우스 휠 (Ctrl 없이)
+ui.wiring.camera_help.pan_middle=이동: 가운데 버튼 드래그 / Alt+우클릭 드래그
 ui.wiring.camera_help.pan_alt=트랙패드: 핀치하면 줌이 됩니다.
-ui.wiring.camera_help.trackpad=이동은 ctrl+ 두손가락으로 할 수 있습니다.
-ui.wiring.camera_help.touch=터치: 핀치로 줌, 터치로 이동할 수 있습니다.
+ui.wiring.camera_help.trackpad=트랙패드: Ctrl + 스크롤 (이동)
+ui.wiring.camera_help.touch=터치: 핀치 확대/축소, 드래그 이동
+
+# Wiring context menu
+ui.wiring.context.bring_front=맨 앞으로
+ui.wiring.context.send_back=맨 뒤로
+ui.wiring.context.bring_forward=앞으로 한 단계
+ui.wiring.context.send_backward=뒤로 한 단계
+ui.wiring.context.rotate_cw=90도 회전
+ui.wiring.context.rotate_ccw=-90도 회전
+ui.wiring.context.flip_horizontal=수평 뒤집기
+ui.wiring.context.flip_vertical=수직 뒤집기
 
 # Programming UI
 ui.programming.timers_counters=타이머 / 카운터

@@ -10,10 +10,14 @@
 namespace plc {
 namespace {
 
-bool HandleLimitSwitchDoubleClick(PlacedComponent* comp, ImVec2 world_pos,
-                                  int button) {
+bool HandleLimitSwitchShiftClick(PlacedComponent* comp, ImVec2 world_pos,
+                                 int button) {
   (void)world_pos;
   if (!comp || button != ImGuiMouseButton_Left) {
+    return false;
+  }
+  const ImGuiIO& io = ImGui::GetIO();
+  if (!io.KeyShift || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
     return false;
   }
   float current = comp->internalStates.count(state_keys::kIsPressedManual)
@@ -215,7 +219,7 @@ const ComponentBehavior* GetComponentBehavior(ComponentType type) {
       // MANIFOLD
       {nullptr, nullptr, nullptr, nullptr, nullptr},
       // LIMIT_SWITCH
-      {nullptr, nullptr, HandleLimitSwitchDoubleClick, nullptr,
+      {HandleLimitSwitchShiftClick, nullptr, nullptr, nullptr,
        BuildLimitSwitchTooltip},
       // SENSOR
       {nullptr, nullptr, nullptr, nullptr, nullptr},

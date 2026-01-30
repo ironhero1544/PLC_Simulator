@@ -6,6 +6,7 @@
 
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/physics/component_physics_adapter.h"
 
 #include <algorithm>
@@ -73,8 +74,9 @@ Aabb GetAabb(const PlacedComponent& comp) {
   Aabb box;
   box.min_x = comp.position.x;
   box.min_y = comp.position.y;
-  box.max_x = comp.position.x + comp.size.width;
-  box.max_y = comp.position.y + comp.size.height;
+  const Size display = GetComponentDisplaySize(comp);
+  box.max_x = comp.position.x + display.width;
+  box.max_y = comp.position.y + display.height;
   return box;
 }
 
@@ -397,6 +399,45 @@ void Application::UpdatePhysics() {
   UpdateComponentLogic();
   SimulatePneumatic();
   UpdateActuators();
+
+  bool plc_error = false;
+  if (programming_mode_ && programming_mode_->HasCompileAttempted()) {
+    if (!programming_mode_->GetLastCompileError().empty() ||
+        !programming_mode_->GetLastScanError().empty()) {
+      plc_error = true;
+    }
+    if (is_plc_running_ && !programming_mode_->GetLastScanSuccess() &&
+        !programming_mode_->GetLastScanError().empty()) {
+      plc_error = true;
+    }
+  }
+
+  for (auto& comp : placed_components_) {
+    if (comp.type != ComponentType::PLC) {
+      continue;
+    }
+    for (int i = 0; i < 16; ++i) {
+      std::string x_key = std::string(state_keys::kPlcXPrefix) +
+                          std::to_string(i);
+      std::string y_key = std::string(state_keys::kPlcYPrefix) +
+                          std::to_string(i);
+      bool x_active = false;
+      auto port_key = std::make_pair(comp.instanceId, i);
+      auto voltage_it = port_voltages_.find(port_key);
+      if (voltage_it != port_voltages_.end()) {
+        x_active = voltage_it->second > 12.0f;
+      } else {
+        x_active = GetPlcDeviceState("X" + std::to_string(i));
+      }
+      bool y_active = GetPlcDeviceState("Y" + std::to_string(i));
+      comp.internalStates[x_key] = x_active ? 1.0f : 0.0f;
+      comp.internalStates[y_key] = y_active ? 1.0f : 0.0f;
+    }
+    comp.internalStates[state_keys::kPlcRunning] =
+        is_plc_running_ ? 1.0f : 0.0f;
+    comp.internalStates[state_keys::kPlcError] = plc_error ? 1.0f : 0.0f;
+    break;
+  }
 
   // PLC logic execution (conditional on PLC running state)
   if (!is_plc_running_) {
@@ -982,11 +1023,11 @@ void Application::SimulatePneumatic() {
       PortRef a = std::make_pair(comp.instanceId, 3);
       PortRef b = std::make_pair(comp.instanceId, 4);
       if (sol_a_active) {
-        AddBidirectionalEdge(pneumatic_adjacency, p, a, 1.0f);
-        AddDirectedEdge(pneumatic_adjacency, b, kAtmospherePort, 1.0f, true);
-      } else {
         AddBidirectionalEdge(pneumatic_adjacency, p, b, 1.0f);
         AddDirectedEdge(pneumatic_adjacency, a, kAtmospherePort, 1.0f, true);
+      } else {
+        AddBidirectionalEdge(pneumatic_adjacency, p, a, 1.0f);
+        AddDirectedEdge(pneumatic_adjacency, b, kAtmospherePort, 1.0f, true);
       }
     } else if (comp.type == ComponentType::VALVE_DOUBLE) {
       float last_active =
@@ -1594,12 +1635,8 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         bool overlapping = AabbOverlaps(workpiece_box, head_box);
         if (overlapping && is_up) {
           workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
-          workpiece.position.y = head_box.max_y;
-          float delta_x =
-              (workpiece.position.x + workpiece.size.width * 0.5f) - center_x;
-          if (std::abs(delta_x) <= kSnapDistance) {
-            workpiece.position.x = center_x - workpiece.size.width * 0.5f;
-          }
+          workpiece.position.x = center_x - workpiece.size.width * 0.5f;
+          workpiece.position.y = center_y - workpiece.size.height * 0.5f;
           ready = true;
         } else if (!overlapping) {
           ready = false;
@@ -2200,12 +2237,13 @@ void Application::SyncPhysicsEngineToApplication() {
 
   // 4. PLC X 입력 상태를 물리엔진 결과로 업데이트
   bool plc_error = false;
-  if (programming_mode_) {
+  if (programming_mode_ && programming_mode_->HasCompileAttempted()) {
     if (!programming_mode_->GetLastCompileError().empty() ||
         !programming_mode_->GetLastScanError().empty()) {
       plc_error = true;
     }
-    if (is_plc_running_ && !programming_mode_->GetLastScanSuccess()) {
+    if (is_plc_running_ && !programming_mode_->GetLastScanSuccess() &&
+        !programming_mode_->GetLastScanError().empty()) {
       plc_error = true;
     }
   }
@@ -2218,6 +2256,7 @@ void Application::SyncPhysicsEngineToApplication() {
         std::string xAddress = "X" + std::to_string(x);
         auto portKey = std::make_pair(comp.instanceId, x);
 
+        bool x_active = false;
         if (port_voltages_.count(portKey)) {
           float voltage = port_voltages_.at(portKey);
           bool state = (voltage > 12.0f);  // 12V 임계값
@@ -2225,7 +2264,19 @@ void Application::SyncPhysicsEngineToApplication() {
           SetPlcDeviceState(xAddress, state);
           // 신규 경로: ProgrammingMode에 입력 전달(단일 진입점)
           xInputs[xAddress] = state;
+          x_active = state;
+        } else {
+          x_active = GetPlcDeviceState(xAddress);
         }
+        comp.internalStates[std::string(state_keys::kPlcXPrefix) +
+                            std::to_string(x)] =
+            x_active ? 1.0f : 0.0f;
+      }
+      for (int y = 0; y < 16; ++y) {
+        std::string yAddress = "Y" + std::to_string(y);
+        comp.internalStates[std::string(state_keys::kPlcYPrefix) +
+                            std::to_string(y)] =
+            GetPlcDeviceState(yAddress) ? 1.0f : 0.0f;
       }
       // 실제 동기화 호출
       if (programming_mode_ && !xInputs.empty()) {

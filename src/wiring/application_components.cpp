@@ -7,12 +7,15 @@
 #include "plc_emulator/core/application.h"
 
 #include "plc_emulator/components/component_registry.h"
+#include "plc_emulator/components/processing_cylinder_def.h"
 #include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 #include <algorithm>  // For std::remove_if
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace plc {
 
@@ -112,6 +115,61 @@ void RenderComponentPreview(ImDrawList* draw_list,
   def->Render(draw_list, temp, draw_pos, zoom);
 }
 
+ImVec2 GetComponentRenderOrigin(const PlacedComponent& comp,
+                                ImVec2 screen_top_left,
+                                float zoom) {
+  const Size display = GetComponentDisplaySize(comp);
+  ImVec2 display_center(screen_top_left.x + display.width * zoom * 0.5f,
+                        screen_top_left.y + display.height * zoom * 0.5f);
+  ImVec2 base_center(comp.size.width * zoom * 0.5f,
+                     comp.size.height * zoom * 0.5f);
+  return ImVec2(display_center.x - base_center.x,
+                display_center.y - base_center.y);
+}
+
+void TransformDrawListVertices(ImDrawList* draw_list,
+                               int vtx_start,
+                               int vtx_end,
+                               ImVec2 center,
+                               int rotation_quadrants,
+                               bool flip_x,
+                               bool flip_y) {
+  const int quadrants = NormalizeRotationQuadrants(rotation_quadrants);
+  if (quadrants == 0 && !flip_x && !flip_y) {
+    return;
+  }
+  for (int i = vtx_start; i < vtx_end; ++i) {
+    ImDrawVert& v = draw_list->VtxBuffer[i];
+    ImVec2 offset(v.pos.x - center.x, v.pos.y - center.y);
+    if (flip_x) {
+      offset.x = -offset.x;
+    }
+    if (flip_y) {
+      offset.y = -offset.y;
+    }
+    ImVec2 rotated = RotatePoint(offset, quadrants);
+    v.pos = ImVec2(center.x + rotated.x, center.y + rotated.y);
+  }
+}
+
+void ApplyAlphaToDrawList(ImDrawList* draw_list,
+                          int vtx_start,
+                          int vtx_end,
+                          float alpha) {
+  const float clamped = std::max(0.0f, std::min(1.0f, alpha));
+  if (clamped >= 0.999f) {
+    return;
+  }
+  for (int i = vtx_start; i < vtx_end; ++i) {
+    ImDrawVert& v = draw_list->VtxBuffer[i];
+    ImU32 col = v.col;
+    unsigned int a =
+        (col >> IM_COL32_A_SHIFT) & static_cast<unsigned int>(0xFF);
+    a = static_cast<unsigned int>(static_cast<float>(a) * clamped);
+    v.col = (col & ~IM_COL32_A_MASK) | (a << IM_COL32_A_SHIFT);
+  }
+}
+
 }  // namespace
 
 void Application::HandleComponentDragStart(int componentIndex) {
@@ -157,6 +215,7 @@ void Application::HandleComponentDrop(Position position) {
     newComponent.position = position;
 
     newComponent.size = def->size;
+    newComponent.z_order = next_z_order_++;
     if (def->InitDefaultState) {
       def->InitDefaultState(&newComponent);
     }
@@ -244,27 +303,88 @@ void Application::HandleComponentMoveEnd() {
 
 void Application::RenderPlacedComponents(ImDrawList* draw_list) {
   // [PPT: ??? ???] for??? ?????? ???????? ?????????????????.
-  for (const auto& comp : placed_components_) {
-    ImVec2 screen_pos = WorldToScreen({comp.position.x, comp.position.y});
+  std::vector<size_t> draw_order(placed_components_.size());
+  for (size_t i = 0; i < placed_components_.size(); ++i) {
+    draw_order[i] = i;
+  }
+  std::sort(draw_order.begin(), draw_order.end(),
+            [&](size_t a, size_t b) {
+              const auto& comp_a = placed_components_[a];
+              const auto& comp_b = placed_components_[b];
+              if (comp_a.z_order != comp_b.z_order) {
+                return comp_a.z_order < comp_b.z_order;
+              }
+              return comp_a.instanceId < comp_b.instanceId;
+            });
+
+  const ImGuiIO& io = ImGui::GetIO();
+  const bool ghost_mode = io.KeyShift && selected_component_id_ != -1;
+  const float ghost_alpha = 0.35f;
+
+  for (size_t index : draw_order) {
+    auto& comp = placed_components_[index];
+    if (comp.type == ComponentType::PLC) {
+      comp.internalStates[state_keys::kPlcRunning] =
+          is_plc_running_ ? 1.0f : 0.0f;
+    }
+    const Size display = GetComponentDisplaySize(comp);
+    ImVec2 screen_top_left = WorldToScreen({comp.position.x, comp.position.y});
+    ImVec2 render_origin =
+        GetComponentRenderOrigin(comp, screen_top_left, camera_zoom_);
+    ImVec2 display_center(
+        screen_top_left.x + display.width * camera_zoom_ * 0.5f,
+        screen_top_left.y + display.height * camera_zoom_ * 0.5f);
 
     // [PPT: ??? ???] switch??? ?????? ?????? ?????????? ??????
     // ????????
     const ComponentDefinition* def = GetComponentDefinition(comp.type);
+    const int vtx_start = draw_list->VtxBuffer.Size;
     if (def && def->Render) {
-      def->Render(draw_list, comp, screen_pos, camera_zoom_);
+      def->Render(draw_list, comp, render_origin, camera_zoom_);
     } else {
-      ImVec2 end_pos = {screen_pos.x + comp.size.width * camera_zoom_,
-                        screen_pos.y + comp.size.height * camera_zoom_};
-      draw_list->AddRectFilled(screen_pos, end_pos,
+      ImVec2 end_pos = {render_origin.x + comp.size.width * camera_zoom_,
+                        render_origin.y + comp.size.height * camera_zoom_};
+      draw_list->AddRectFilled(render_origin, end_pos,
                                IM_COL32(128, 128, 128, 255));
+    }
+    const int vtx_end = draw_list->VtxBuffer.Size;
+    TransformDrawListVertices(draw_list, vtx_start, vtx_end, display_center,
+                              comp.rotation_quadrants, comp.flip_x,
+                              comp.flip_y);
+    if (ghost_mode && !comp.selected) {
+      ApplyAlphaToDrawList(draw_list, vtx_start, vtx_end, ghost_alpha);
     }
 
     // ??????????? ????????
     if (comp.selected) {
-      ImVec2 end_pos = {screen_pos.x + comp.size.width * camera_zoom_,
-                        screen_pos.y + comp.size.height * camera_zoom_};
-      draw_list->AddRect(screen_pos, end_pos, IM_COL32(0, 123, 255, 255), 0.0f,
+      ImVec2 end_pos = {screen_top_left.x + display.width * camera_zoom_,
+                        screen_top_left.y + display.height * camera_zoom_};
+      draw_list->AddRect(screen_top_left, end_pos,
+                         IM_COL32(0, 123, 255, 255), 0.0f,
                          0, 3.0f);
+    }
+  }
+
+  for (size_t index : draw_order) {
+    const auto& comp = placed_components_[index];
+    if (comp.type != ComponentType::PROCESSING_CYLINDER) {
+      continue;
+    }
+    const Size display = GetComponentDisplaySize(comp);
+    ImVec2 screen_top_left = WorldToScreen({comp.position.x, comp.position.y});
+    ImVec2 render_origin =
+        GetComponentRenderOrigin(comp, screen_top_left, camera_zoom_);
+    ImVec2 display_center(
+        screen_top_left.x + display.width * camera_zoom_ * 0.5f,
+        screen_top_left.y + display.height * camera_zoom_ * 0.5f);
+    const int vtx_start = draw_list->VtxBuffer.Size;
+    RenderProcessingCylinderHead(draw_list, comp, render_origin, camera_zoom_);
+    const int vtx_end = draw_list->VtxBuffer.Size;
+    TransformDrawListVertices(draw_list, vtx_start, vtx_end, display_center,
+                              comp.rotation_quadrants, comp.flip_x,
+                              comp.flip_y);
+    if (ghost_mode && !comp.selected) {
+      ApplyAlphaToDrawList(draw_list, vtx_start, vtx_end, ghost_alpha);
     }
   }
 }

@@ -37,6 +37,8 @@ constexpr const char* kVelX = "vel_x";
 constexpr const char* kVelY = "vel_y";
 constexpr const char* kPlcRunning = "is_running";
 constexpr const char* kPlcError = "plc_error";
+constexpr const char* kPlcXPrefix = "plc_x_";
+constexpr const char* kPlcYPrefix = "plc_y_";
 }
 }  // namespace plc
 

@@ -127,6 +127,7 @@ void ProgrammingMode::SetDeviceState(const std::string& address, bool state) {
 }
 
 bool ProgrammingMode::CompileLadderToOpenPLC() {
+  has_compile_attempted_ = true;
   use_compiled_engine_ = false;
 
   const LadderProgram& srcProg = gx2_normalization_enabled_

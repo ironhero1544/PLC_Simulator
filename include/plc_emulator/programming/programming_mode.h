@@ -278,6 +278,7 @@ class ProgrammingMode {
     return use_compiled_engine_ ? "Compiled(OpenPLC)" : "Disabled";
   }
   bool IsRecompileNeeded() const;  // ?대? NeedsRecompilation() ?섑띁
+  bool HasCompileAttempted() const { return has_compile_attempted_; }
   const std::string& GetLastCompileError() const { return last_compile_error_; }
   // ?ㅼ틪 寃곌낵 ?붿빟
   bool GetLastScanSuccess() const { return last_scan_success_; }
@@ -401,6 +402,7 @@ class ProgrammingMode {
   std::unique_ptr<LadderToLDConverter> ld_converter_;
   bool use_compiled_engine_;           // OpenPLC ?붿쭊 ?ъ슜 ?щ?
   std::string current_compiled_code_;  // ?꾩옱 而댄뙆?쇰맂 C++ 肄붾뱶
+  bool has_compile_attempted_ = false;
   bool compile_failed_ = false;
   std::vector<int> compile_error_rungs_;
   std::map<int, size_t> compile_error_rung_hashes_;

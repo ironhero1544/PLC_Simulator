@@ -161,12 +161,42 @@ void RenderPlc(ImDrawList* draw_list,
                                 screen_pos.y + 165 * zoom};
   draw_list->AddRectFilled(status_led_area_start, status_led_area_end,
                            IM_COL32(44, 62, 80, 255), 3.0f * zoom);
-
-  bool is_running = run_on;
-  ImVec2 led_pos = {screen_pos.x + 275 * zoom, screen_pos.y + 155 * zoom};
-  draw_list->AddCircleFilled(
-      led_pos, 5 * zoom,
-      is_running ? IM_COL32(0, 255, 0, 255) : IM_COL32(100, 100, 100, 255));
+  float panel_padding = 1.0f * zoom;
+  ImVec2 led_area_start = {status_led_area_start.x + panel_padding,
+                           status_led_area_start.y + panel_padding};
+  ImVec2 led_area_end = {status_led_area_end.x - panel_padding,
+                         status_led_area_end.y - panel_padding};
+  float panel_width = led_area_end.x - led_area_start.x;
+  float panel_height = led_area_end.y - led_area_start.y;
+  float cell_width = panel_width / 16.0f;
+  float cell_height = panel_height / 2.0f;
+  ImU32 x_on = IM_COL32(0, 200, 0, 255);
+  ImU32 y_on = IM_COL32(255, 165, 0, 255);
+  ImU32 off = IM_COL32(60, 60, 60, 255);
+  draw_list->PushClipRect(led_area_start, led_area_end, true);
+  for (int i = 0; i < 16; ++i) {
+    float x0 = led_area_start.x + cell_width * i;
+    float x1 = led_area_start.x + cell_width * (i + 1);
+    float x_row0 = led_area_start.y;
+    float x_row1 = led_area_start.y + cell_height;
+    float y_row0 = led_area_start.y + cell_height;
+    float y_row1 = led_area_start.y + cell_height * 2.0f;
+    std::string x_key = std::string(state_keys::kPlcXPrefix) +
+                        std::to_string(i);
+    std::string y_key = std::string(state_keys::kPlcYPrefix) +
+                        std::to_string(i);
+    bool x_active =
+        comp.internalStates.count(x_key) &&
+        comp.internalStates.at(x_key) > 0.5f;
+    bool y_active =
+        comp.internalStates.count(y_key) &&
+        comp.internalStates.at(y_key) > 0.5f;
+    draw_list->AddRectFilled({x0, x_row0}, {x1, x_row1},
+                             x_active ? x_on : off);
+    draw_list->AddRectFilled({x0, y_row0}, {x1, y_row1},
+                             y_active ? y_on : off);
+  }
+  draw_list->PopClipRect();
 
   if (zoom > 0.5f) {
     draw_list->AddText(

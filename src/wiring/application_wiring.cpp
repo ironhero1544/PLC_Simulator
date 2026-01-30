@@ -7,6 +7,7 @@
 #include "imgui.h"
 #include "plc_emulator/components/component_behavior.h"
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <utility>
 #include <vector>
@@ -27,21 +29,30 @@ namespace {
 
 using PortRef = std::pair<int, int>;
 
-bool IsPointInsideComponent(const PlacedComponent& comp, ImVec2 world_pos) {
-  return world_pos.x >= comp.position.x &&
-         world_pos.x <= comp.position.x + comp.size.width &&
-         world_pos.y >= comp.position.y &&
-         world_pos.y <= comp.position.y + comp.size.height;
-}
-
-int FindFirstComponentIndexAtPosition(
-    const std::vector<PlacedComponent>& components, ImVec2 world_pos) {
+int FindTopmostComponentIndexAtPosition(
+    const std::vector<PlacedComponent>& components,
+    ImVec2 world_pos) {
+  int best_index = -1;
+  int best_z = std::numeric_limits<int>::min();
+  int best_instance = -1;
   for (size_t i = 0; i < components.size(); ++i) {
-    if (IsPointInsideComponent(components[i], world_pos)) {
-      return static_cast<int>(i);
+    const auto& comp = components[i];
+    if (!IsPointInsideComponent(comp, world_pos)) {
+      continue;
+    }
+    if (comp.z_order > best_z ||
+        (comp.z_order == best_z && comp.instanceId > best_instance)) {
+      best_z = comp.z_order;
+      best_instance = comp.instanceId;
+      best_index = static_cast<int>(i);
     }
   }
-  return -1;
+  return best_index;
+}
+
+ImVec2 GetBehaviorWorldPos(const PlacedComponent& comp, ImVec2 world_pos) {
+  ImVec2 local = WorldToLocal(comp, world_pos);
+  return ImVec2(comp.position.x + local.x, comp.position.y + local.y);
 }
 
 constexpr ImU32 kTagColors[] = {
@@ -197,8 +208,9 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
   std::vector<TagLayoutEntry> entries;
   std::map<int, ImVec2> component_centers;
   for (const auto& comp : placed_components) {
-    Position center_world(comp.position.x + comp.size.width * 0.5f,
-                          comp.position.y + comp.size.height * 0.5f);
+    const Size display = GetComponentDisplaySize(comp);
+    Position center_world(comp.position.x + display.width * 0.5f,
+                          comp.position.y + display.height * 0.5f);
     component_centers[comp.instanceId] = world_to_screen(center_world);
   }
 
@@ -667,16 +679,14 @@ void Application::RenderWiringCanvas() {
             }
           }
           if (!interaction_handled) {
-            for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
-              const auto& comp = placed_components_[static_cast<size_t>(i)];
-              if (mouse_world_pos.x >= comp.position.x &&
-                  mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                  mouse_world_pos.y >= comp.position.y &&
-                  mouse_world_pos.y <= comp.position.y + comp.size.height) {
-                HandleComponentSelection(comp.instanceId);
-                interaction_handled = true;
-                break;
-              }
+            int top_index =
+                FindTopmostComponentIndexAtPosition(placed_components_,
+                                                    mouse_world_pos);
+            if (top_index != -1) {
+              HandleComponentSelection(
+                  placed_components_[static_cast<size_t>(top_index)]
+                      .instanceId);
+              interaction_handled = true;
             }
           }
           if (!interaction_handled) {
@@ -703,18 +713,24 @@ void Application::RenderWiringCanvas() {
             }
           }
           if (!handled) {
-            for (auto& comp : placed_components_) {
-              if (mouse_world_pos.x >= comp.position.x &&
-                  mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                  mouse_world_pos.y >= comp.position.y &&
-                  mouse_world_pos.y <= comp.position.y + comp.size.height) {
-                const ComponentBehavior* behavior =
-                    GetComponentBehavior(comp.type);
-                if (behavior && behavior->OnDoubleClick &&
-                    behavior->OnDoubleClick(&comp, mouse_world_pos,
-                                            ImGuiMouseButton_Left)) {
-                  break;
-                }
+            int top_index =
+                FindTopmostComponentIndexAtPosition(placed_components_,
+                                                    mouse_world_pos);
+            if (top_index != -1) {
+              auto& comp =
+                  placed_components_[static_cast<size_t>(top_index)];
+              const ComponentBehavior* behavior =
+                  GetComponentBehavior(comp.type);
+              bool handled_by_behavior = false;
+              if (behavior && behavior->OnDoubleClick) {
+                ImVec2 adjusted_pos =
+                    GetBehaviorWorldPos(comp, mouse_world_pos);
+                handled_by_behavior = behavior->OnDoubleClick(
+                    &comp, adjusted_pos, ImGuiMouseButton_Left);
+              }
+              if (!handled_by_behavior) {
+                HandleComponentSelection(comp.instanceId);
+                OpenComponentContextMenu(comp.instanceId, mouse_screen_pos);
               }
             }
           }
@@ -722,17 +738,19 @@ void Application::RenderWiringCanvas() {
 
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && is_canvas_hovered &&
             !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-          for (auto& comp : placed_components_) {
-            if (mouse_world_pos.x >= comp.position.x &&
-                mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                mouse_world_pos.y >= comp.position.y &&
-                mouse_world_pos.y <= comp.position.y + comp.size.height) {
-              const ComponentBehavior* behavior =
-                  GetComponentBehavior(comp.type);
-              if (behavior && behavior->OnMouseDown) {
-                behavior->OnMouseDown(&comp, mouse_world_pos,
-                                      ImGuiMouseButton_Left);
-              }
+          int top_index =
+              FindTopmostComponentIndexAtPosition(placed_components_,
+                                                  mouse_world_pos);
+          if (top_index != -1) {
+            auto& comp =
+                placed_components_[static_cast<size_t>(top_index)];
+            const ComponentBehavior* behavior =
+                GetComponentBehavior(comp.type);
+            if (behavior && behavior->OnMouseDown) {
+              ImVec2 adjusted_pos =
+                  GetBehaviorWorldPos(comp, mouse_world_pos);
+              behavior->OnMouseDown(&comp, adjusted_pos,
+                                    ImGuiMouseButton_Left);
             }
           }
         } else {
@@ -740,7 +758,9 @@ void Application::RenderWiringCanvas() {
             const ComponentBehavior* behavior =
                 GetComponentBehavior(comp.type);
             if (behavior && behavior->OnMouseUp) {
-              behavior->OnMouseUp(&comp, mouse_world_pos,
+              ImVec2 adjusted_pos =
+                  GetBehaviorWorldPos(comp, mouse_world_pos);
+              behavior->OnMouseUp(&comp, adjusted_pos,
                                   ImGuiMouseButton_Left);
             }
           }
@@ -751,10 +771,7 @@ void Application::RenderWiringCanvas() {
             selected_component_id_ != -1 && !is_moving_component_) {
           for (const auto& comp : placed_components_) {
             if (comp.instanceId == selected_component_id_) {
-              if (mouse_world_pos.x >= comp.position.x &&
-                  mouse_world_pos.x <= comp.position.x + comp.size.width &&
-                  mouse_world_pos.y >= comp.position.y &&
-                  mouse_world_pos.y <= comp.position.y + comp.size.height) {
+              if (IsPointInsideComponent(comp, mouse_world_pos)) {
                 HandleComponentMoveStart(selected_component_id_,
                                          mouse_world_pos);
               }
@@ -860,7 +877,7 @@ void Application::RenderWiringCanvas() {
 
       if (!tooltip_shown) {
         int hover_index = is_canvas_hovered
-                              ? FindFirstComponentIndexAtPosition(
+                              ? FindTopmostComponentIndexAtPosition(
                                     placed_components_, mouse_world_pos)
                               : -1;
         if (hover_index != -1) {
@@ -868,7 +885,8 @@ void Application::RenderWiringCanvas() {
           const ComponentBehavior* behavior =
               GetComponentBehavior(comp.type);
           if (behavior && behavior->BuildTooltip &&
-              behavior->BuildTooltip(comp, mouse_world_pos)) {
+              behavior->BuildTooltip(
+                  comp, GetBehaviorWorldPos(comp, mouse_world_pos))) {
             tooltip_shown = true;
           }
         }
@@ -882,7 +900,8 @@ void Application::RenderWiringCanvas() {
               const ComponentBehavior* behavior =
                   GetComponentBehavior(comp.type);
               if (behavior && behavior->BuildTooltip &&
-                  behavior->BuildTooltip(comp, mouse_world_pos)) {
+                  behavior->BuildTooltip(
+                      comp, GetBehaviorWorldPos(comp, mouse_world_pos))) {
                 tooltip_shown = true;
                 break;
               }
@@ -926,6 +945,7 @@ void Application::RenderWiringCanvas() {
     }
 
     RenderTagPopup();
+    RenderComponentContextMenu();
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
@@ -1184,14 +1204,12 @@ bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
     return false;
 
   for (auto& comp : placed_components_) {
-    if (mouse_world_pos.x >= comp.position.x &&
-        mouse_world_pos.x <= comp.position.x + comp.size.width &&
-        mouse_world_pos.y >= comp.position.y &&
-        mouse_world_pos.y <= comp.position.y + comp.size.height) {
+    if (IsPointInsideComponent(comp, mouse_world_pos)) {
       const ComponentBehavior* behavior =
           GetComponentBehavior(comp.type);
       if (behavior && behavior->OnMouseWheel &&
-          behavior->OnMouseWheel(&comp, mouse_world_pos, io)) {
+          behavior->OnMouseWheel(
+              &comp, GetBehaviorWorldPos(comp, mouse_world_pos), io)) {
         return true;
       }
     }
@@ -1320,6 +1338,8 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
 
   bool right_click = win32_right_click_ ||
                      ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+  bool right_double_click =
+      ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Right);
   bool right_down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) ==
                     GLFW_PRESS;
   if (!right_click && right_down && !prev_right_button_down_) {
@@ -1344,7 +1364,19 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
     return;
   }
 
-  // Right click: cancel wire if connecting, otherwise delete under cursor.
+  if (right_click && is_canvas_hovered && io.KeyCtrl) {
+    int top_index =
+        FindTopmostComponentIndexAtPosition(placed_components_,
+                                            mouse_world_pos);
+    if (top_index != -1) {
+      const auto& comp = placed_components_[static_cast<size_t>(top_index)];
+      HandleComponentSelection(comp.instanceId);
+      OpenComponentContextMenu(comp.instanceId, io.MousePos);
+    }
+    return;
+  }
+
+  // Right click: cancel wire if connecting. Right double click: delete under cursor.
   if (right_click && !is_canvas_hovered) {
     if (IsDebugEnabled()) {
       DebugLog("[INPUT] Right click: canvas not hovered");
@@ -1359,33 +1391,33 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
       }
     } else {
       bool deleted = false;
-      for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
-        const auto& comp = placed_components_[static_cast<size_t>(i)];
-        if (mouse_world_pos.x >= comp.position.x &&
-            mouse_world_pos.x <= comp.position.x + comp.size.width &&
-            mouse_world_pos.y >= comp.position.y &&
-            mouse_world_pos.y <= comp.position.y + comp.size.height) {
+      if (right_double_click) {
+        int top_index =
+            FindTopmostComponentIndexAtPosition(placed_components_,
+                                                mouse_world_pos);
+        if (top_index != -1) {
+          const auto& comp =
+              placed_components_[static_cast<size_t>(top_index)];
           HandleComponentSelection(comp.instanceId);
           DeleteSelectedComponent();
           deleted = true;
           if (IsDebugEnabled()) {
-            DebugLog("[INPUT] Right click: delete component " +
+            DebugLog("[INPUT] Right double click: delete component " +
                      std::to_string(comp.instanceId));
           }
-          break;
         }
       }
       if (!deleted) {
-      Wire* wire_to_delete = FindWireAtPosition(mouse_world_pos);
-      if (wire_to_delete) {
-        int wire_id = wire_to_delete->id;
-        DeleteWire(wire_id);
-        deleted = true;
-        if (IsDebugEnabled()) {
-          DebugLog("[INPUT] Right click: delete wire " +
-                   std::to_string(wire_id));
+        Wire* wire_to_delete = FindWireAtPosition(mouse_world_pos);
+        if (wire_to_delete) {
+          int wire_id = wire_to_delete->id;
+          DeleteWire(wire_id);
+          deleted = true;
+          if (IsDebugEnabled()) {
+            DebugLog("[INPUT] Right click: delete wire " +
+                     std::to_string(wire_id));
+          }
         }
-      }
       }
       if (!deleted && IsDebugEnabled()) {
         DebugLog("[INPUT] Right click: nothing to delete at (" +
@@ -1422,20 +1454,17 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
     }
     bool deleted = false;
     if (side_click) {
-      for (int i = static_cast<int>(placed_components_.size()) - 1; i >= 0; --i) {
-        const auto& comp = placed_components_[static_cast<size_t>(i)];
-        if (mouse_world_pos.x >= comp.position.x &&
-            mouse_world_pos.x <= comp.position.x + comp.size.width &&
-            mouse_world_pos.y >= comp.position.y &&
-            mouse_world_pos.y <= comp.position.y + comp.size.height) {
-          HandleComponentSelection(comp.instanceId);
-          DeleteSelectedComponent();
-          deleted = true;
-          if (IsDebugEnabled()) {
-            DebugLog("[INPUT] Side click: delete component " +
-                     std::to_string(comp.instanceId));
-          }
-          break;
+      int top_index =
+          FindTopmostComponentIndexAtPosition(placed_components_,
+                                              mouse_world_pos);
+      if (top_index != -1) {
+        const auto& comp = placed_components_[static_cast<size_t>(top_index)];
+        HandleComponentSelection(comp.instanceId);
+        DeleteSelectedComponent();
+        deleted = true;
+        if (IsDebugEnabled()) {
+          DebugLog("[INPUT] Side click: delete component " +
+                   std::to_string(comp.instanceId));
         }
       }
     }
@@ -1469,6 +1498,184 @@ bool Application::IsPointInCanvas(ImVec2 screen_pos) const {
          screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
          screen_pos.y >= canvas_top_left_.y &&
          screen_pos.y <= canvas_top_left_.y + canvas_size_.y;
+}
+
+PlacedComponent* Application::FindComponentById(int instance_id) {
+  for (auto& comp : placed_components_) {
+    if (comp.instanceId == instance_id) {
+      return &comp;
+    }
+  }
+  return nullptr;
+}
+
+void Application::ApplyRotationToComponent(PlacedComponent* comp,
+                                           int delta_quadrants) {
+  if (!comp) {
+    return;
+  }
+  const Size old_display = GetComponentDisplaySize(*comp);
+  ImVec2 center(comp->position.x + old_display.width * 0.5f,
+                comp->position.y + old_display.height * 0.5f);
+
+  comp->rotation_quadrants =
+      NormalizeRotationQuadrants(comp->rotation_quadrants + delta_quadrants);
+  const Size new_display = GetComponentDisplaySize(*comp);
+  comp->position.x = center.x - new_display.width * 0.5f;
+  comp->position.y = center.y - new_display.height * 0.5f;
+}
+
+void Application::RotateSelectedComponent(int delta_quadrants) {
+  if (selected_component_id_ == -1) {
+    return;
+  }
+  PlacedComponent* comp = FindComponentById(selected_component_id_);
+  ApplyRotationToComponent(comp, delta_quadrants);
+}
+
+void Application::BringComponentToFront(int component_id) {
+  PlacedComponent* comp = FindComponentById(component_id);
+  if (!comp) {
+    return;
+  }
+  int max_z = std::numeric_limits<int>::min();
+  for (const auto& entry : placed_components_) {
+    max_z = std::max(max_z, entry.z_order);
+  }
+  comp->z_order = max_z + 1;
+}
+
+void Application::SendComponentToBack(int component_id) {
+  PlacedComponent* comp = FindComponentById(component_id);
+  if (!comp) {
+    return;
+  }
+  int min_z = std::numeric_limits<int>::max();
+  for (const auto& entry : placed_components_) {
+    min_z = std::min(min_z, entry.z_order);
+  }
+  comp->z_order = min_z - 1;
+}
+
+void Application::BringComponentForward(int component_id) {
+  std::vector<size_t> order(placed_components_.size());
+  for (size_t i = 0; i < placed_components_.size(); ++i) {
+    order[i] = i;
+  }
+  std::sort(order.begin(), order.end(),
+            [&](size_t a, size_t b) {
+              const auto& comp_a = placed_components_[a];
+              const auto& comp_b = placed_components_[b];
+              if (comp_a.z_order != comp_b.z_order) {
+                return comp_a.z_order < comp_b.z_order;
+              }
+              return comp_a.instanceId < comp_b.instanceId;
+            });
+
+  for (size_t i = 0; i < order.size(); ++i) {
+    const auto& comp = placed_components_[order[i]];
+    if (comp.instanceId == component_id) {
+      if (i + 1 < order.size()) {
+        auto& current = placed_components_[order[i]];
+        auto& next = placed_components_[order[i + 1]];
+        std::swap(current.z_order, next.z_order);
+      }
+      break;
+    }
+  }
+}
+
+void Application::SendComponentBackward(int component_id) {
+  std::vector<size_t> order(placed_components_.size());
+  for (size_t i = 0; i < placed_components_.size(); ++i) {
+    order[i] = i;
+  }
+  std::sort(order.begin(), order.end(),
+            [&](size_t a, size_t b) {
+              const auto& comp_a = placed_components_[a];
+              const auto& comp_b = placed_components_[b];
+              if (comp_a.z_order != comp_b.z_order) {
+                return comp_a.z_order < comp_b.z_order;
+              }
+              return comp_a.instanceId < comp_b.instanceId;
+            });
+
+  for (size_t i = 0; i < order.size(); ++i) {
+    const auto& comp = placed_components_[order[i]];
+    if (comp.instanceId == component_id) {
+      if (i > 0) {
+        auto& current = placed_components_[order[i]];
+        auto& prev = placed_components_[order[i - 1]];
+        std::swap(current.z_order, prev.z_order);
+      }
+      break;
+    }
+  }
+}
+
+void Application::OpenComponentContextMenu(int component_id,
+                                           ImVec2 screen_pos) {
+  context_menu_component_id_ = component_id;
+  context_menu_pos_ = screen_pos;
+  show_component_context_menu_ = true;
+}
+
+void Application::RenderComponentContextMenu() {
+  if (show_component_context_menu_) {
+    ImGui::SetNextWindowPos(context_menu_pos_);
+    ImGui::OpenPopup("Component Context");
+    show_component_context_menu_ = false;
+  }
+
+  if (ImGui::BeginPopup("Component Context")) {
+    int component_id = context_menu_component_id_;
+    if (component_id != -1) {
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.bring_front", "Bring to Front"))) {
+        BringComponentToFront(component_id);
+      }
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.send_back", "Send to Back"))) {
+        SendComponentToBack(component_id);
+      }
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.bring_forward", "Bring Forward"))) {
+        BringComponentForward(component_id);
+      }
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.send_backward", "Send Backward"))) {
+        SendComponentBackward(component_id);
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.rotate_cw", "Rotate 90deg"))) {
+        PlacedComponent* comp = FindComponentById(component_id);
+        ApplyRotationToComponent(comp, 1);
+      }
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.rotate_ccw", "Rotate -90deg"))) {
+        PlacedComponent* comp = FindComponentById(component_id);
+        ApplyRotationToComponent(comp, -1);
+      }
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.flip_horizontal", "Flip Horizontal"))) {
+        PlacedComponent* comp = FindComponentById(component_id);
+        if (comp) {
+          comp->flip_x = !comp->flip_x;
+        }
+      }
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.flip_vertical", "Flip Vertical"))) {
+        PlacedComponent* comp = FindComponentById(component_id);
+        if (comp) {
+          comp->flip_y = !comp->flip_y;
+        }
+      }
+    }
+    ImGui::EndPopup();
+  } else if (!show_component_context_menu_) {
+    context_menu_component_id_ = -1;
+  }
 }
 
 }  // namespace plc

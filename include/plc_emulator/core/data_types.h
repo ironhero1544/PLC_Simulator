@@ -70,6 +70,10 @@ struct PlacedComponent {
   Size size;
   bool selected = false;
   float rotation = 0.0f;
+  int z_order = 0;
+  int rotation_quadrants = 0;
+  bool flip_x = false;
+  bool flip_y = false;
   std::map<std::string, float> internalStates;
 };
 
