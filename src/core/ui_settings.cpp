@@ -110,6 +110,8 @@ void SetDefaultUiSettings(UiSettings* settings) {
   settings->ui_scale = 1.0f;
   settings->font_scale = 1.0f;
   settings->layout_scale = 1.0f;
+  settings->vsync_enabled = false;
+  settings->frame_limit_enabled = true;
   settings->restart_required = false;
 }
 
@@ -138,6 +140,14 @@ bool LoadUiSettings(UiSettings* settings) {
       std::sscanf(line + 11, "%f", &settings->font_scale);
     } else if (std::strncmp(line, "layout_scale=", 13) == 0) {
       std::sscanf(line + 13, "%f", &settings->layout_scale);
+    } else if (std::strncmp(line, "vsync=", 6) == 0) {
+      int value = 0;
+      std::sscanf(line + 6, "%d", &value);
+      settings->vsync_enabled = (value != 0);
+    } else if (std::strncmp(line, "frame_limit=", 12) == 0) {
+      int value = 0;
+      std::sscanf(line + 12, "%d", &value);
+      settings->frame_limit_enabled = (value != 0);
     }
   }
   std::fclose(file);
@@ -170,6 +180,9 @@ bool SaveUiSettings(const UiSettings& settings) {
   std::fprintf(file, "ui_scale=%.2f\n", settings.ui_scale);
   std::fprintf(file, "font_scale=%.2f\n", settings.font_scale);
   std::fprintf(file, "layout_scale=%.2f\n", settings.layout_scale);
+  std::fprintf(file, "vsync=%d\n", settings.vsync_enabled ? 1 : 0);
+  std::fprintf(file, "frame_limit=%d\n",
+               settings.frame_limit_enabled ? 1 : 0);
   std::fclose(file);
   return true;
 }

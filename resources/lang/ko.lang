@@ -175,6 +175,9 @@ ui.programming.end_rung_fmt=끝 룽: %04d
 
 # UI settings
 menu.ui_settings=UI
+ui.settings.vsync=VSync
+ui.settings.frame_limit=프레임 제한(모니터)
+ui.settings.refresh_rate_fmt=모니터 주사율: %d Hz
 ui.settings.ui_scale=UI 스케일
 ui.settings.font_scale=폰트 스케일
 ui.settings.layout_scale=레이아웃 크기

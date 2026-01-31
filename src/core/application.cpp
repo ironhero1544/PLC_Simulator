@@ -39,6 +39,7 @@
 #include <windows.h>
 
 #include <commdlg.h>
+#include <mmsystem.h>
 #include <windowsx.h>
 
 #endif
@@ -92,6 +93,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -114,6 +116,24 @@ void PhysicsWarningDialogCallback(const char* message) {
   }
 }
 
+void SetHighPrecisionTimer(bool enable, bool* active) {
+#ifdef _WIN32
+  if (!active) {
+    return;
+  }
+  if (enable && !(*active)) {
+    timeBeginPeriod(1);
+    *active = true;
+  } else if (!enable && *active) {
+    timeEndPeriod(1);
+    *active = false;
+  }
+#else
+  (void)enable;
+  (void)active;
+#endif
+}
+
 std::string GetLayoutSidecarPath(const std::string& project_path) {
   size_t last_slash = project_path.find_last_of("/\\");
   size_t last_dot = project_path.find_last_of('.');
@@ -122,6 +142,68 @@ std::string GetLayoutSidecarPath(const std::string& project_path) {
     return project_path.substr(0, last_dot) + ".layout.json";
   }
   return project_path + ".layout.json";
+}
+
+double GetMonitorRefreshRateForWindow(GLFWwindow* window) {
+  if (!window) {
+    return 0.0;
+  }
+  int monitor_count = 0;
+  GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
+  if (!monitors || monitor_count <= 0) {
+    return 0.0;
+  }
+
+  int win_x = 0;
+  int win_y = 0;
+  int win_w = 0;
+  int win_h = 0;
+  glfwGetWindowPos(window, &win_x, &win_y);
+  glfwGetWindowSize(window, &win_w, &win_h);
+  int center_x = win_x + win_w / 2;
+  int center_y = win_y + win_h / 2;
+
+  GLFWmonitor* best_monitor = monitors[0];
+  int best_overlap = -1;
+
+  for (int i = 0; i < monitor_count; ++i) {
+    GLFWmonitor* monitor = monitors[i];
+    if (!monitor) {
+      continue;
+    }
+    int mx = 0;
+    int my = 0;
+    glfwGetMonitorPos(monitor, &mx, &my);
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+    if (!mode) {
+      continue;
+    }
+    int mw = mode->width;
+    int mh = mode->height;
+
+    bool contains_center = center_x >= mx && center_x < (mx + mw) &&
+                           center_y >= my && center_y < (my + mh);
+    if (contains_center) {
+      best_monitor = monitor;
+      break;
+    }
+
+    int overlap_w = std::max(0, std::min(win_x + win_w, mx + mw) -
+                                    std::max(win_x, mx));
+    int overlap_h = std::max(0, std::min(win_y + win_h, my + mh) -
+                                    std::max(win_y, my));
+    int overlap = overlap_w * overlap_h;
+    if (overlap > best_overlap) {
+      best_overlap = overlap;
+      best_monitor = monitor;
+    }
+  }
+
+  const GLFWvidmode* mode = glfwGetVideoMode(best_monitor);
+  if (mode && mode->refreshRate > 0) {
+    return static_cast<double>(mode->refreshRate);
+  }
+  return 0.0;
 }
 
 const char* ComponentTypeToString(ComponentType type) {
@@ -281,6 +363,12 @@ Application::Application(bool enable_debug_mode)
       physics_engine_(nullptr),
 
       project_file_manager_(std::make_unique<ProjectFileManager>()),
+      physics_accumulator_(0.0),
+      plc_accumulator_(0.0),
+      physics_time_initialized_(false),
+      render_time_initialized_(false),
+      high_precision_timer_active_(false),
+      monitor_refresh_rate_(0.0),
       debug_mode_requested_(enable_debug_mode),
       debug_mode_(false),
       enable_debug_logging_(false),
@@ -389,6 +477,7 @@ bool Application::Initialize() {
   compiled_plc_executor_->SetDebugMode(false);
 
   compiled_plc_executor_->ResetMemory();
+  compiled_plc_executor_->SetContinuousExecution(true, 10);
 
 
 
@@ -656,6 +745,48 @@ void Application::Render() {
 
   glfwSwapBuffers(window_);
 
+  if (!ui_settings_.vsync_enabled && ui_settings_.frame_limit_enabled) {
+    using clock = std::chrono::steady_clock;
+    double refresh = GetMonitorRefreshRateForWindow(window_);
+    if (refresh > 1.0) {
+      monitor_refresh_rate_ = refresh;
+    }
+    double target_hz =
+        (monitor_refresh_rate_ > 1.0) ? monitor_refresh_rate_ : 60.0;
+    auto target_dt = std::chrono::duration_cast<clock::duration>(
+        std::chrono::duration<double>(1.0 / target_hz));
+    auto now = clock::now();
+    if (!render_time_initialized_) {
+      last_render_time_ = now;
+      next_frame_time_ = now + target_dt;
+      render_time_initialized_ = true;
+    } else {
+      if (now < next_frame_time_) {
+        auto remaining = next_frame_time_ - now;
+        const auto spin_margin = std::chrono::duration_cast<clock::duration>(
+            std::chrono::duration<double>(0.001));
+        if (remaining > spin_margin) {
+          std::this_thread::sleep_for(remaining - spin_margin);
+        }
+        while (clock::now() < next_frame_time_) {
+          std::this_thread::yield();
+        }
+        now = clock::now();
+      } else {
+        const auto reset_threshold =
+            std::chrono::duration_cast<clock::duration>(
+                std::chrono::duration<double>(0.25));
+        if (now - next_frame_time_ > reset_threshold) {
+          next_frame_time_ = now + target_dt;
+        }
+      }
+      last_render_time_ = now;
+      next_frame_time_ += target_dt;
+    }
+  } else {
+    render_time_initialized_ = false;
+  }
+
 }
 
 
@@ -690,7 +821,12 @@ bool Application::InitializeWindow() {
 
   glfwMakeContextCurrent(window_);
 
-  glfwSwapInterval(1);
+  glfwSwapInterval(ui_settings_.vsync_enabled ? 1 : 0);
+
+  monitor_refresh_rate_ = GetMonitorRefreshRateForWindow(window_);
+  SetHighPrecisionTimer(ui_settings_.frame_limit_enabled &&
+                            !ui_settings_.vsync_enabled,
+                        &high_precision_timer_active_);
 
   if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
 
@@ -1016,22 +1152,55 @@ void Application::RenderUiSettingsMenu() {
   float ui_scale = ui_settings_.ui_scale;
   float font_scale = ui_settings_.font_scale;
   float layout_scale = ui_settings_.layout_scale;
+  bool vsync_enabled = ui_settings_.vsync_enabled;
+  bool frame_limit_enabled = ui_settings_.frame_limit_enabled;
   bool changed = false;
+  bool restart_required = false;
 
   if (ImGui::SliderFloat(TR("ui.settings.ui_scale", "UI Scale"), &ui_scale,
                          0.75f, 1.5f, "%.2f")) {
     ui_settings_.ui_scale = ui_scale;
     changed = true;
+    restart_required = true;
   }
   if (ImGui::SliderFloat(TR("ui.settings.font_scale", "Font Scale"), &font_scale,
                          0.75f, 1.5f, "%.2f")) {
     ui_settings_.font_scale = font_scale;
     changed = true;
+    restart_required = true;
   }
   if (ImGui::SliderFloat(TR("ui.settings.layout_scale", "Layout Scale"),
                          &layout_scale, 0.75f, 1.5f, "%.2f")) {
     ui_settings_.layout_scale = layout_scale;
     changed = true;
+    restart_required = true;
+  }
+  if (ImGui::Checkbox(TR("ui.settings.vsync", "VSync"), &vsync_enabled)) {
+    ui_settings_.vsync_enabled = vsync_enabled;
+    glfwSwapInterval(vsync_enabled ? 1 : 0);
+    render_time_initialized_ = false;
+    SetHighPrecisionTimer(ui_settings_.frame_limit_enabled &&
+                              !ui_settings_.vsync_enabled,
+                          &high_precision_timer_active_);
+    changed = true;
+  }
+  if (ImGui::Checkbox(TR("ui.settings.frame_limit",
+                         "Frame Limit (Monitor)"),
+                      &frame_limit_enabled)) {
+    ui_settings_.frame_limit_enabled = frame_limit_enabled;
+    render_time_initialized_ = false;
+    SetHighPrecisionTimer(ui_settings_.frame_limit_enabled &&
+                              !ui_settings_.vsync_enabled,
+                          &high_precision_timer_active_);
+    changed = true;
+  }
+  if (monitor_refresh_rate_ > 1.0) {
+    char refresh_buf[64] = {0};
+    FormatString(refresh_buf, sizeof(refresh_buf),
+                 "ui.settings.refresh_rate_fmt",
+                 "Monitor Refresh: %d Hz",
+                 static_cast<int>(monitor_refresh_rate_ + 0.5));
+    ImGui::TextDisabled("%s", refresh_buf);
   }
 
   if (ImGui::Button(TR("ui.settings.reset_defaults", "Reset Defaults"))) {
@@ -1039,11 +1208,18 @@ void Application::RenderUiSettingsMenu() {
     SaveUiSettings(ui_settings_);
     ui_settings_.restart_required = true;
     changed = false;
+    glfwSwapInterval(ui_settings_.vsync_enabled ? 1 : 0);
+    render_time_initialized_ = false;
+    SetHighPrecisionTimer(ui_settings_.frame_limit_enabled &&
+                              !ui_settings_.vsync_enabled,
+                          &high_precision_timer_active_);
   }
 
   if (changed) {
     SaveUiSettings(ui_settings_);
-    MarkUiSettingsRestartRequired(&ui_settings_);
+    if (restart_required) {
+      MarkUiSettingsRestartRequired(&ui_settings_);
+    }
   }
 
   if (ui_settings_.restart_required) {
@@ -1558,6 +1734,7 @@ void Application::RenderMainArea() {
 
 
 void Application::Cleanup() {
+  SetHighPrecisionTimer(false, &high_precision_timer_active_);
 
   ImGui_ImplOpenGL3_Shutdown();
 

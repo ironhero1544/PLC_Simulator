@@ -88,9 +88,9 @@ class CompiledPLCExecutor {
   /**
    * @brief ?곗냽 ?ㅽ뻾 紐⑤뱶 (蹂꾨룄 ?ㅻ젅?쒖뿉???ㅽ뻾)
    * @param enable ?곗냽 ?ㅽ뻾 ?쒖꽦???щ?
-   * @param cycleTime_ms ?ㅼ틪 ?ъ씠???쒓컙 (湲곕낯媛? 65ms, FX3U ?쒖?)
+   * @param cycleTime_ms ?ㅼ틪 ?ъ씠???쒓컙 (湲곕낯媛? 10ms)
    */
-  void SetContinuousExecution(bool enable, int cycleTime_ms = 65);
+  void SetContinuousExecution(bool enable, int cycleTime_ms = 10);
 
   /**
    * @brief ?낅젰 ?곹깭 ?ㅼ젙 (臾쇰━?붿쭊?먯꽌 ?몄텧)
@@ -176,7 +176,7 @@ class CompiledPLCExecutor {
   bool debug_mode_ = false;
   bool is_running_ = false;
   bool continuous_mode_ = false;
-  int cycle_time_ms_ = 65;
+  int cycle_time_ms_ = 10;
   int current_elapsed_ms_ = 0;
   std::array<bool, 256> timer_enabled_ = {};
   std::array<bool, 256> counter_last_power_ = {};

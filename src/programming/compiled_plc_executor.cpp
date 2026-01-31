@@ -24,7 +24,7 @@ namespace plc {
  * zeros all arrays to provide deterministic initial state.
  *
  * TIMING CHARACTERISTICS:
- * - Default 65ms scan cycle matches Mitsubishi FX3U standard
+ * - Default 10ms scan cycle
  * - High-resolution timestamp for accurate cycle time measurement
  * - Thread-safe execution state management
  */
@@ -34,7 +34,7 @@ CompiledPLCExecutor::CompiledPLCExecutor() {
   debug_mode_ = false;
   is_running_ = false;
   continuous_mode_ = false;
-  cycle_time_ms_ = 65;  // FX3U standard scan time
+  cycle_time_ms_ = 10;  // Default scan time
 }
 
 CompiledPLCExecutor::~CompiledPLCExecutor() {
@@ -133,7 +133,11 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
   if (elapsed_ms < 0) {
     elapsed_ms = 0;
   }
-  current_elapsed_ms_ = static_cast<int>(elapsed_ms);
+  if (continuous_mode_) {
+    current_elapsed_ms_ = std::max(0, cycle_time_ms_);
+  } else {
+    current_elapsed_ms_ = static_cast<int>(elapsed_ms);
+  }
 
   if (instructions_.empty()) {
     result.success = false;

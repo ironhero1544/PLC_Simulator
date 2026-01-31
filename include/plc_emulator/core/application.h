@@ -20,6 +20,7 @@
 #include "plc_emulator/programming/programming_mode.h"
 #include "plc_emulator/project/project_file_manager.h"
 
+#include <chrono>
 #include <mutex>
 #include <map>
 #include <memory>
@@ -163,7 +164,7 @@ namespace plc {
          * @brief Simulates basic physics phenomena, independent of the PLC state.
          * PLC ?????? ?????????????????? ??????????????????????????.
          */
-        void UpdateBasicPhysics();
+        void UpdateBasicPhysics(float delta_time);
 
         /**
          * @brief Executes one scan of the loaded ladder logic program.
@@ -243,7 +244,7 @@ namespace plc {
          * @brief Updates the state of actuators (e.g., cylinders) based on simulation.
          * ??????????????????? ???????????? ????????????????????????????
          */
-        void UpdateActuators();
+        void UpdateActuators(float delta_time);
 
         /**
          * @brief Retrieves the port information for a given component.
@@ -697,6 +698,15 @@ namespace plc {
         PhysicsEngine* physics_engine_;
         std::unique_ptr<CompiledPLCExecutor> compiled_plc_executor_;
         std::unique_ptr<ProjectFileManager> project_file_manager_;
+        std::chrono::steady_clock::time_point last_physics_time_;
+        std::chrono::steady_clock::time_point last_render_time_;
+        std::chrono::steady_clock::time_point next_frame_time_;
+        double physics_accumulator_;
+        double plc_accumulator_;
+        bool physics_time_initialized_;
+        bool render_time_initialized_;
+        bool high_precision_timer_active_;
+        double monitor_refresh_rate_;
 
         // State variables for the real-time debugging and logging system.
         // ??????????????????????????? ???? ???? ?????????????

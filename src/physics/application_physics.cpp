@@ -410,12 +410,111 @@ void UpdateCylinderComponent(size_t index, void* context) {
  * optimization)
  */
 void Application::UpdatePhysics() {
-  // Basic physics simulation (always active)
-  // Physical laws operate independently of PLC control state
-  SimulateElectrical();
-  UpdateComponentLogic();
-  SimulatePneumatic();
-  UpdateActuators();
+  using clock = std::chrono::steady_clock;
+  constexpr double kPhysicsStep = 1.0 / 240.0;
+  constexpr double kPlcStep = 0.010;
+  constexpr double kMaxFrameTime = 0.25;
+
+  auto now = clock::now();
+  if (!physics_time_initialized_) {
+    last_physics_time_ = now;
+    physics_time_initialized_ = true;
+  }
+
+  double frame_dt =
+      std::chrono::duration<double>(now - last_physics_time_).count();
+  last_physics_time_ = now;
+  if (frame_dt < 0.0) {
+    frame_dt = 0.0;
+  } else if (frame_dt > kMaxFrameTime) {
+    frame_dt = kMaxFrameTime;
+  }
+
+  physics_accumulator_ += frame_dt;
+  if (physics_accumulator_ > kMaxFrameTime) {
+    physics_accumulator_ = kMaxFrameTime;
+  }
+
+  if (!is_plc_running_) {
+    plc_accumulator_ = 0.0;
+  }
+
+  while (physics_accumulator_ >= kPhysicsStep) {
+    physics_accumulator_ -= kPhysicsStep;
+
+    // Basic physics simulation (always active)
+    // Physical laws operate independently of PLC control state
+    SimulateElectrical();
+    UpdateComponentLogic();
+    SimulatePneumatic();
+    UpdateActuators(static_cast<float>(kPhysicsStep));
+
+    if (is_plc_running_) {
+      plc_accumulator_ += kPhysicsStep;
+      while (plc_accumulator_ >= kPlcStep) {
+        SimulateLoadedLadder();
+        plc_accumulator_ -= kPlcStep;
+      }
+    }
+
+    // Advanced physics engine (optional enhancement)
+    if (is_plc_running_ && physics_engine_ && physics_engine_->isInitialized &&
+        physics_engine_->networking.BuildNetworksFromWiring &&
+        physics_engine_->IsSafeToRunSimulation &&
+        physics_engine_->IsSafeToRunSimulation(physics_engine_)) {
+      // Network reconstruction when topology changes
+      static bool networkBuilt = false;
+      static size_t lastComponentCount = 0;
+      static size_t lastWireCount = 0;
+
+      if (!networkBuilt || placed_components_.size() != lastComponentCount ||
+          wires_.size() != lastWireCount) {
+        int result = physics_engine_->networking.BuildNetworksFromWiring(
+            physics_engine_, wires_.data(), static_cast<int>(wires_.size()),
+            placed_components_.data(),
+            static_cast<int>(placed_components_.size()));
+
+        if (result == PHYSICS_ENGINE_SUCCESS) {
+          physics_engine_->networking.UpdateNetworkTopology(physics_engine_);
+          networkBuilt = true;
+          lastComponentCount = placed_components_.size();
+          lastWireCount = wires_.size();
+        }
+      }
+
+      // Synchronize PLC outputs to physics engine
+      SyncPLCOutputsToPhysicsEngine();
+      physics_engine_->deltaTime = static_cast<float>(kPhysicsStep);
+
+      try {
+        if (physics_engine_->electricalNetwork &&
+            physics_engine_->electricalNetwork->nodeCount > 0) {
+          SolveElectricalNetworkC(physics_engine_->electricalNetwork,
+                                  static_cast<float>(kPhysicsStep));
+        }
+
+        if (physics_engine_->pneumaticNetwork &&
+            physics_engine_->pneumaticNetwork->nodeCount > 0) {
+          SolvePneumaticNetworkC(physics_engine_->pneumaticNetwork,
+                                 static_cast<float>(kPhysicsStep));
+        }
+
+        if (physics_engine_->mechanicalSystem &&
+            physics_engine_->mechanicalSystem->nodeCount > 0) {
+          SolveMechanicalSystemC(physics_engine_->mechanicalSystem,
+                                 static_cast<float>(kPhysicsStep));
+        }
+
+        SyncPhysicsEngineToApplication();
+
+      } catch (const std::exception& e) {
+        if (enable_debug_logging_) {
+          std::cout << "[PHYSICS ERROR] Advanced engine exception: " << e.what()
+                    << std::endl;
+        }
+      }
+    }
+  }
 
   bool plc_error = false;
   if (programming_mode_ && programming_mode_->HasCompileAttempted()) {
@@ -454,73 +553,6 @@ void Application::UpdatePhysics() {
         is_plc_running_ ? 1.0f : 0.0f;
     comp.internalStates[state_keys::kPlcError] = plc_error ? 1.0f : 0.0f;
     break;
-  }
-
-  // PLC logic execution (conditional on PLC running state)
-  if (!is_plc_running_) {
-    return;
-  }
-
-  // Execute ladder logic with error containment
-  SimulateLoadedLadder();
-
-  // Advanced physics engine (optional enhancement)
-  if (physics_engine_ && physics_engine_->isInitialized &&
-      physics_engine_->networking.BuildNetworksFromWiring &&
-      physics_engine_->IsSafeToRunSimulation &&
-      physics_engine_->IsSafeToRunSimulation(physics_engine_)) {
-    // Network reconstruction when topology changes
-    static bool networkBuilt = false;
-    static size_t lastComponentCount = 0;
-    static size_t lastWireCount = 0;
-
-    if (!networkBuilt || placed_components_.size() != lastComponentCount ||
-        wires_.size() != lastWireCount) {
-      int result = physics_engine_->networking.BuildNetworksFromWiring(
-          physics_engine_, wires_.data(), static_cast<int>(wires_.size()),
-          placed_components_.data(),
-          static_cast<int>(placed_components_.size()));
-
-      if (result == PHYSICS_ENGINE_SUCCESS) {
-        physics_engine_->networking.UpdateNetworkTopology(physics_engine_);
-        networkBuilt = true;
-        lastComponentCount = placed_components_.size();
-        lastWireCount = wires_.size();
-      }
-    }
-
-    // Synchronize PLC outputs to physics engine
-    if (is_plc_running_) {
-      SyncPLCOutputsToPhysicsEngine();
-
-      float deltaTime = 1.0f / 60.0f;
-
-      try {
-        if (physics_engine_->electricalNetwork &&
-            physics_engine_->electricalNetwork->nodeCount > 0) {
-          SolveElectricalNetworkC(physics_engine_->electricalNetwork,
-                                  deltaTime);
-        }
-
-        if (physics_engine_->pneumaticNetwork &&
-            physics_engine_->pneumaticNetwork->nodeCount > 0) {
-          SolvePneumaticNetworkC(physics_engine_->pneumaticNetwork, deltaTime);
-        }
-
-        if (physics_engine_->mechanicalSystem &&
-            physics_engine_->mechanicalSystem->nodeCount > 0) {
-          SolveMechanicalSystemC(physics_engine_->mechanicalSystem, deltaTime);
-        }
-
-        SyncPhysicsEngineToApplication();
-
-      } catch (const std::exception& e) {
-        if (enable_debug_logging_) {
-          std::cout << "[PHYSICS ERROR] Advanced engine exception: " << e.what()
-                    << std::endl;
-        }
-      }
-    }
   }
 }
 /**
@@ -654,9 +686,7 @@ void Application::SetPlcDeviceState(const std::string& address, bool state) {
 }
 
 void Application::SimulateElectrical() {
-  if (is_plc_running_) {
-    SimulateLoadedLadder();
-  } else {
+  if (!is_plc_running_) {
     for (int i = 0; i < 16; ++i) {
       SetPlcDeviceState("Y" + std::to_string(i), false);
     }
@@ -1216,8 +1246,8 @@ void Application::SimulatePneumatic() {
  * - Early termination when detection occurs
  * - Cached calculations for repeated operations
  */
-void Application::UpdateActuators() {
-  const float deltaTime = 1.0f / 60.0f;
+void Application::UpdateActuators(float delta_time) {
+  const float deltaTime = delta_time;
   const float pistonMass = 0.5f;
   const float frictionCoeff = 0.02f;
 
@@ -1707,9 +1737,9 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
  * - Independent execution prevents PLC state corruption from affecting physics
  * - Bounds checking and null pointer protection maintained
  */
-void Application::UpdateBasicPhysics() {
+void Application::UpdateBasicPhysics(float delta_time) {
   // Cylinder physics simulation
-  const float deltaTime = 1.0f / 60.0f;
+  const float deltaTime = delta_time;
   const float pistonMass = 0.5f;
   const float frictionCoeff = 0.02f;
   const float ACTIVATION_PRESSURE_THRESHOLD = 2.5f;

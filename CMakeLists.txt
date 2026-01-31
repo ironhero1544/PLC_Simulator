@@ -225,6 +225,7 @@ if(WIN32)
     # Windows API (PowerShell .NET 
     list(APPEND LINK_LIBS 
         comdlg32     #      
+        winmm
     )
 endif()
 

@@ -7,6 +7,8 @@ struct UiSettings {
   float ui_scale;
   float font_scale;
   float layout_scale;
+  bool vsync_enabled;
+  bool frame_limit_enabled;
   bool restart_required;
 };
 

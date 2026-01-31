@@ -16,6 +16,9 @@ ui.settings.layout_scale=Layout Scale
 ui.settings.reset_defaults=Reset Defaults
 ui.settings.restart_required=Restart required to apply UI changes.
 ui.settings.restart_now=Restart now...
+ui.settings.vsync=VSync
+ui.settings.frame_limit=Frame Limit (Monitor)
+ui.settings.refresh_rate_fmt=Monitor Refresh: %d Hz
 
 # Header
 ui.header.title=PLC Simulator
