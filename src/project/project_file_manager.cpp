@@ -475,6 +475,13 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
       case plc::LadderInstructionType::OTE:
       default:
         add_instruction("OUT", outAddress);
+        if (!output.preset.empty() && !outAddress.empty() &&
+            (outAddress[0] == 'T' || outAddress[0] == 'C')) {
+          std::string preset = NormalizePreset(output.preset);
+          if (!preset.empty()) {
+            add_blank("K" + preset);
+          }
+        }
         break;
     }
   };
@@ -593,7 +600,8 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
          ++branchIndex) {
       const auto& branch = branches[branchIndex];
       plc::Rung rung;
-      rung.number = static_cast<int>(program.rungs.size());
+      int rungIndex = static_cast<int>(program.rungs.size());
+      rung.number = rungIndex;
       rung.cells.assign(12, plc::LadderInstruction());
 
       int cellIndex = 0;
@@ -611,15 +619,19 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
 
       if (branchIndex == 0 && outputCol < 12) {
         rung.cells[outputCol] = output;
-        if ((output.type == plc::LadderInstructionType::TON ||
-             output.type == plc::LadderInstructionType::CTU) &&
-            output.preset.empty()) {
-          pendingPresetTargets.push_back(&rung.cells[outputCol]);
-        }
       }
 
       program.rungs.push_back(rung);
       rungIndices.push_back(rung.number);
+
+      if (branchIndex == 0 && outputCol < 12) {
+        auto& storedCell = program.rungs.back().cells[outputCol];
+        if ((storedCell.type == plc::LadderInstructionType::TON ||
+             storedCell.type == plc::LadderInstructionType::CTU) &&
+            storedCell.preset.empty()) {
+          pendingPresetTargets.push_back(&storedCell);
+        }
+      }
     }
 
     if (rungIndices.size() > 1) {
@@ -657,7 +669,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
     if (instr.empty()) {
       if (!device.empty() && (device[0] == 'K' || device[0] == 'k') &&
           !pendingPresetTargets.empty()) {
-        std::string preset = device.substr(1);
+        std::string preset = "K" + device.substr(1);
         for (auto* target : pendingPresetTargets) {
           if (target) {
             target->preset = preset;

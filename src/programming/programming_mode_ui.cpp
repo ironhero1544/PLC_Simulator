@@ -149,6 +149,55 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning || is_monitor_mode_) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+      ImGui::Button(TR("ui.programming.load", "Load"),
+                    ImVec2(100 * layout_scale, 30 * layout_scale));
+      ImGui::PopStyleVar();
+    } else {
+      if (ImGui::Button(TR("ui.programming.load", "Load"),
+                        ImVec2(100 * layout_scale, 30 * layout_scale))) {
+        if (application_) {
+#ifdef _WIN32
+          OPENFILENAMEA ofn;
+          CHAR szFile[260] = {0};
+          ZeroMemory(&ofn, sizeof(ofn));
+          ofn.lStructSize = sizeof(ofn);
+          ofn.hwndOwner = NULL;
+          ofn.lpstrFile = szFile;
+          ofn.nMaxFile = sizeof(szFile);
+          ofn.lpstrFilter =
+              "PLC Ladder CSV (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
+          ofn.nFilterIndex = 1;
+          ofn.lpstrFileTitle = NULL;
+          ofn.nMaxFileTitle = 0;
+          ofn.lpstrInitialDir = NULL;
+          ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+          if (GetOpenFileNameA(&ofn) == TRUE) {
+            bool success = application_->LoadProject(ofn.lpstrFile);
+            if (success) {
+              std::cout << "[INFO] Project loaded: " << ofn.lpstrFile
+                        << std::endl;
+            } else {
+              std::cout << "[ERROR] Project load failed: " << ofn.lpstrFile
+                        << std::endl;
+            }
+          }
+#else
+          bool success = application_->LoadProject("project.csv");
+          if (success) {
+            std::cout << "[INFO] Project loaded: project.csv" << std::endl;
+          } else {
+            std::cout << "[ERROR] Project load failed: project.csv"
+                      << std::endl;
+          }
+#endif
+        }
+      }
+    }
+
+    ImGui::SameLine();
+
+    if (isPlcRunning || is_monitor_mode_) {
+      ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
       ImGui::Button("Compile",
                     ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
@@ -823,6 +872,10 @@ void ProgrammingMode::RenderAddressPopup() {
                          sizeof(temp_address_buffer_),
                          ImGuiInputTextFlags_EnterReturnsTrue)) {
       ConfirmInstruction();
+      ImGui::CloseCurrentPopup();
+      show_address_popup_ = false;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
       ImGui::CloseCurrentPopup();
       show_address_popup_ = false;
     }

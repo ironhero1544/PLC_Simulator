@@ -665,6 +665,10 @@ void Application::ProcessInput() {
 
         programming_mode_->HandleKeyboardInput(ImGuiKey_Insert);
 
+      if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_Enter);
+
       if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
 
         programming_mode_->HandleKeyboardInput(ImGuiKey_LeftArrow);
@@ -1544,86 +1548,94 @@ void Application::RenderToolbar() {
 
     ImGui::SameLine();
 
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 200 * layout_scale);
+    const float wiring_button_width = 140.0f * layout_scale;
+    const float wiring_button_height = 30.0f * layout_scale;
+    const float wiring_button_spacing = 10.0f * layout_scale;
+    const float wiring_total_width =
+        wiring_button_width * 2 + wiring_button_spacing;
+    float wiring_right_start =
+        ImGui::GetWindowWidth() - wiring_total_width - 20.0f * layout_scale;
+    if (wiring_right_start < ImGui::GetCursorPosX()) {
+      wiring_right_start = ImGui::GetCursorPosX();
+    }
+    ImGui::SetCursorPosX(wiring_right_start);
 
-
-
-      if (ImGui::Button(TR("ui.toolbar.load_project", "Load Project"),
-                        ImVec2(180 * layout_scale, 30 * layout_scale))) {
-
-
+    if (ImGui::Button(TR("ui.toolbar.save_layout", "Save"),
+                      ImVec2(wiring_button_width, wiring_button_height))) {
 #ifdef _WIN32
-
       OPENFILENAMEA ofn;
-
-      CHAR szFile[260] = {0};
-
+      CHAR szFile[260] = "layout.json";
       ZeroMemory(&ofn, sizeof(ofn));
-
       ofn.lStructSize = sizeof(ofn);
-
       ofn.hwndOwner = glfwGetWin32Window(window_);
-
       ofn.lpstrFile = szFile;
-
       ofn.nMaxFile = sizeof(szFile);
-
       ofn.lpstrFilter =
-
-          "PLC Ladder CSV (*.csv)\0*.csv\0All Files (*.*)\0*.*\0";
-
+          "PLC Layout JSON (*.json)\0*.json\0All Files (*.*)\0*.*\0";
       ofn.nFilterIndex = 1;
-
       ofn.lpstrFileTitle = NULL;
-
       ofn.nMaxFileTitle = 0;
-
       ofn.lpstrInitialDir = NULL;
-
-      ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-
-      if (GetOpenFileNameA(&ofn) == TRUE) {
-
-        bool success = LoadProject(ofn.lpstrFile);
-
-        if (success) {
-
-          std::cout << "[INFO] Project loaded: " << ofn.lpstrFile << std::endl;
-
-          
-
-        } else {
-
-          std::cout << "[ERROR] Project load failed: " << ofn.lpstrFile
-
-                    << std::endl;
-
+      ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+      if (GetSaveFileNameA(&ofn) == TRUE) {
+        std::string save_path = ofn.lpstrFile;
+        if (save_path.find(".json") == std::string::npos) {
+          save_path += ".json";
         }
-
+        bool success = SaveLayout(save_path);
+        if (success) {
+          std::cout << "[INFO] Layout saved: " << save_path << std::endl;
+        } else {
+          std::cout << "[ERROR] Layout save failed: " << save_path
+                    << std::endl;
+        }
       }
-
 #else
-
-      bool success =
-
-          LoadProject("project.csv");  // Fallback for non-windows
-
+      bool success = SaveLayout("layout.json");
       if (success) {
-
-        std::cout << "[INFO] Project loaded: project.csv" << std::endl;
-
-        
-
-        
-
+        std::cout << "[INFO] Layout saved: layout.json" << std::endl;
       } else {
-
-        std::cout << "[ERROR] Project load failed: project.csv" << std::endl;
-
+        std::cout << "[ERROR] Layout save failed: layout.json" << std::endl;
       }
-
 #endif
+    }
 
+    ImGui::SameLine();
+
+    if (ImGui::Button(TR("ui.toolbar.load_layout", "Load"),
+                      ImVec2(wiring_button_width, wiring_button_height))) {
+#ifdef _WIN32
+      OPENFILENAMEA ofn;
+      CHAR szFile[260] = {0};
+      ZeroMemory(&ofn, sizeof(ofn));
+      ofn.lStructSize = sizeof(ofn);
+      ofn.hwndOwner = glfwGetWin32Window(window_);
+      ofn.lpstrFile = szFile;
+      ofn.nMaxFile = sizeof(szFile);
+      ofn.lpstrFilter =
+          "PLC Layout JSON (*.json)\0*.json\0All Files (*.*)\0*.*\0";
+      ofn.nFilterIndex = 1;
+      ofn.lpstrFileTitle = NULL;
+      ofn.nMaxFileTitle = 0;
+      ofn.lpstrInitialDir = NULL;
+      ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+      if (GetOpenFileNameA(&ofn) == TRUE) {
+        bool success = LoadLayout(ofn.lpstrFile);
+        if (success) {
+          std::cout << "[INFO] Layout loaded: " << ofn.lpstrFile << std::endl;
+        } else {
+          std::cout << "[ERROR] Layout load failed: " << ofn.lpstrFile
+                    << std::endl;
+        }
+      }
+#else
+      bool success = LoadLayout("layout.json");
+      if (success) {
+        std::cout << "[INFO] Layout loaded: layout.json" << std::endl;
+      } else {
+        std::cout << "[ERROR] Layout load failed: layout.json" << std::endl;
+      }
+#endif
     }
 
   }
@@ -3168,10 +3180,117 @@ bool Application::SaveProject(const std::string& filePath,
   try {
 
 
-    const LadderProgram& currentProgram = programming_mode_->GetLadderProgram();
-
-
-
+    LadderProgram currentProgram = programming_mode_->GetLadderProgram();
+    const auto& timer_states = programming_mode_->GetTimerStates();
+    const auto& counter_states = programming_mode_->GetCounterStates();
+    auto try_parse_preset = [](const std::string& address,
+                               char prefix,
+                               int* deviceNum,
+                               int* presetNum) -> bool {
+      if (!deviceNum || !presetNum) {
+        return false;
+      }
+      for (size_t i = 0; i < address.size(); ++i) {
+        if (address[i] != prefix) {
+          continue;
+        }
+        size_t j = i + 1;
+        while (j < address.size() &&
+               !std::isdigit(static_cast<unsigned char>(address[j]))) {
+          ++j;
+        }
+        if (j >= address.size()) {
+          continue;
+        }
+        size_t deviceStart = j;
+        while (j < address.size() &&
+               std::isdigit(static_cast<unsigned char>(address[j]))) {
+          ++j;
+        }
+        std::string deviceDigits = address.substr(deviceStart, j - deviceStart);
+        if (deviceDigits.empty()) {
+          continue;
+        }
+        size_t kPos = address.find_first_of("Kk", j);
+        if (kPos == std::string::npos) {
+          continue;
+        }
+        size_t p = kPos + 1;
+        while (p < address.size() &&
+               !std::isdigit(static_cast<unsigned char>(address[p]))) {
+          ++p;
+        }
+        if (p >= address.size()) {
+          continue;
+        }
+        size_t presetStart = p;
+        while (p < address.size() &&
+               std::isdigit(static_cast<unsigned char>(address[p]))) {
+          ++p;
+        }
+        std::string presetDigits =
+            address.substr(presetStart, p - presetStart);
+        if (presetDigits.empty()) {
+          continue;
+        }
+        try {
+          *deviceNum = std::stoi(deviceDigits);
+          *presetNum = std::stoi(presetDigits);
+          return true;
+        } catch (...) {
+          return false;
+        }
+      }
+      return false;
+    };
+    for (auto& rung : currentProgram.rungs) {
+      if (rung.isEndRung) {
+        continue;
+      }
+      for (auto& cell : rung.cells) {
+        if (!cell.preset.empty()) {
+          continue;
+        }
+        if (cell.address.empty()) {
+          continue;
+        }
+        bool isTimerOutput =
+            (cell.type == LadderInstructionType::TON ||
+             (cell.type == LadderInstructionType::OTE &&
+              cell.address[0] == 'T'));
+        bool isCounterOutput =
+            (cell.type == LadderInstructionType::CTU ||
+             (cell.type == LadderInstructionType::OTE &&
+              cell.address[0] == 'C'));
+        if (isTimerOutput) {
+          auto it = timer_states.find(cell.address);
+          if (it != timer_states.end() && it->second.preset > 0) {
+            cell.preset = "K" + std::to_string(it->second.preset);
+            continue;
+          }
+          int deviceNum = 0;
+          int presetNum = 0;
+          if (try_parse_preset(cell.address, 'T', &deviceNum, &presetNum) &&
+              presetNum > 0) {
+            cell.address = "T" + std::to_string(deviceNum);
+            cell.preset = "K" + std::to_string(presetNum);
+          }
+        } else if (isCounterOutput) {
+          auto it = counter_states.find(cell.address);
+          if (it != counter_states.end() && it->second.preset > 0) {
+            cell.preset = "K" + std::to_string(it->second.preset);
+            continue;
+          }
+          int deviceNum = 0;
+          int presetNum = 0;
+          if (try_parse_preset(cell.address, 'C', &deviceNum, &presetNum) &&
+              presetNum > 0) {
+            cell.address = "C" + std::to_string(deviceNum);
+            cell.preset = "K" + std::to_string(presetNum);
+          }
+        }
+      }
+    }
 
     project_file_manager_->SetDebugMode(enable_debug_logging_);
 
@@ -3202,12 +3321,6 @@ bool Application::SaveProject(const std::string& filePath,
       std::cout << "   - Layout checksum: " << result.info.layoutChecksum
 
                 << std::endl;
-
-      const std::string layout_path = GetLayoutSidecarPath(filePath);
-      if (!SaveLayout(layout_path)) {
-        std::cerr << "[WARN] Layout save failed: " << layout_path
-                  << std::endl;
-      }
 
       return true;
 
@@ -3375,14 +3488,6 @@ bool Application::LoadProject(const std::string& filePath) {
                 << " bytes" << std::endl;
 
     }
-
-    const std::string layout_path = GetLayoutSidecarPath(filePath);
-    if (!LoadLayout(layout_path)) {
-      std::cout << "[INFO] Layout file not loaded: " << layout_path
-                << std::endl;
-    }
-
-
 
     return true;
 

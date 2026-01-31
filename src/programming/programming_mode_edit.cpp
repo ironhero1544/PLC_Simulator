@@ -12,6 +12,81 @@
 
 namespace plc {
 
+namespace {
+bool TryParseDevicePreset(const char* text,
+                          char devicePrefix,
+                          int* deviceNum,
+                          int* presetNum) {
+  if (!text || !deviceNum || !presetNum) {
+    return false;
+  }
+
+  std::string input(text);
+  for (size_t i = 0; i < input.size(); ++i) {
+    if (input[i] != devicePrefix) {
+      continue;
+    }
+
+    size_t j = i + 1;
+    while (j < input.size() &&
+           !std::isdigit(static_cast<unsigned char>(input[j]))) {
+      ++j;
+    }
+
+    if (j >= input.size()) {
+      continue;
+    }
+
+    size_t deviceStart = j;
+    while (j < input.size() &&
+           std::isdigit(static_cast<unsigned char>(input[j]))) {
+      ++j;
+    }
+
+    std::string deviceDigits = input.substr(deviceStart, j - deviceStart);
+    if (deviceDigits.empty()) {
+      continue;
+    }
+
+    size_t kPos = input.find_first_of("Kk", j);
+    if (kPos == std::string::npos) {
+      continue;
+    }
+
+    size_t p = kPos + 1;
+    while (p < input.size() &&
+           !std::isdigit(static_cast<unsigned char>(input[p]))) {
+      ++p;
+    }
+
+    if (p >= input.size()) {
+      continue;
+    }
+
+    size_t presetStart = p;
+    while (p < input.size() &&
+           std::isdigit(static_cast<unsigned char>(input[p]))) {
+      ++p;
+    }
+
+    std::string presetDigits = input.substr(presetStart, p - presetStart);
+    if (presetDigits.empty()) {
+      continue;
+    }
+
+    try {
+      *deviceNum = std::stoi(deviceDigits);
+      *presetNum = std::stoi(presetDigits);
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  return false;
+}
+}  // namespace
+
 void to_upper(char* str) {
   while (*str) {
     *str = static_cast<char>(std::toupper(static_cast<unsigned char>(*str)));
@@ -245,13 +320,14 @@ void ProgrammingMode::ConfirmInstruction() {
   char deviceTypeBuffer[64] = {0};
 
   if (pending_instruction_type_ == LadderInstructionType::OTE) {
-    if (sscanf(temp_address_buffer_, "T%d K%d", &deviceNum, &presetNum) == 2) {
+    if (TryParseDevicePreset(temp_address_buffer_, 'T', &deviceNum,
+                             &presetNum)) {
       newInstruction.type = LadderInstructionType::TON;
       newInstruction.address = "T" + std::to_string(deviceNum);
       newInstruction.preset = "K" + std::to_string(presetNum);
       timer_states_[newInstruction.address].preset = presetNum;
-    } else if (sscanf(temp_address_buffer_, "C%d K%d", &deviceNum, &presetNum) ==
-               2) {
+    } else if (TryParseDevicePreset(temp_address_buffer_, 'C', &deviceNum,
+                                    &presetNum)) {
       newInstruction.type = LadderInstructionType::CTU;
       newInstruction.address = "C" + std::to_string(deviceNum);
       newInstruction.preset = "K" + std::to_string(presetNum);
@@ -328,9 +404,56 @@ void ProgrammingMode::EditCurrentInstruction() {
 }
 
 void ProgrammingMode::AddNewRung() {
-  int pos = ladder_program_.rungs.size() - 1;
-  ladder_program_.rungs.insert(ladder_program_.rungs.begin() + pos, Rung());
-  selected_rung_ = pos;
+  if (ladder_program_.rungs.empty()) {
+    ladder_program_.rungs.push_back(Rung());
+    selected_rung_ = 0;
+    selected_cell_ = 0;
+    MarkDirty();
+    return;
+  }
+
+  int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  int insertIndex = endIndex;
+  if (selected_rung_ < endIndex) {
+    insertIndex = selected_rung_ + 1;
+  }
+
+  std::vector<bool> extendConnections;
+  extendConnections.reserve(ladder_program_.verticalConnections.size());
+  for (const auto& conn : ladder_program_.verticalConnections) {
+    if (conn.rungs.empty()) {
+      extendConnections.push_back(false);
+      continue;
+    }
+    std::vector<int> sorted = conn.rungs;
+    std::sort(sorted.begin(), sorted.end());
+    int minRung = sorted.front();
+    int maxRung = sorted.back();
+    bool shouldExtend = (minRung < insertIndex && maxRung >= insertIndex);
+    extendConnections.push_back(shouldExtend);
+  }
+
+  ladder_program_.rungs.insert(ladder_program_.rungs.begin() + insertIndex,
+                               Rung());
+
+  for (size_t idx = 0; idx < ladder_program_.verticalConnections.size(); ++idx) {
+    auto& conn = ladder_program_.verticalConnections[idx];
+    for (int& r_idx : conn.rungs) {
+      if (r_idx >= insertIndex) {
+        r_idx += 1;
+      }
+    }
+    if (idx < extendConnections.size() && extendConnections[idx]) {
+      conn.rungs.push_back(insertIndex);
+    }
+    if (!conn.rungs.empty()) {
+      std::sort(conn.rungs.begin(), conn.rungs.end());
+      conn.rungs.erase(std::unique(conn.rungs.begin(), conn.rungs.end()),
+                       conn.rungs.end());
+    }
+  }
+
+  selected_rung_ = insertIndex;
   selected_cell_ = 0;
   for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
     ladder_program_.rungs[i].number = i;
@@ -350,43 +473,42 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
   // 1. ?몃줈???곌껐 ?뺣낫 ?낅뜲?댄듃
   std::vector<VerticalConnection> updatedConnections;
   for (const auto& conn : ladder_program_.verticalConnections) {
-    // ?꾩옱 ?곌껐????젣??猷쎌쓣 ?ы븿?섎뒗吏 ?뺤씤
-    auto it =
-        std::find(conn.rungs.begin(), conn.rungs.end(), rungIndexToDelete);
-
-    if (it == conn.rungs.end()) {
-      // ??젣??猷쎌쓣 ?ы븿?섏? ?딆쑝硫? ???곌껐? ?좎?. ?? ?몃뜳??議곗젙???꾩슂.
-      VerticalConnection newConn;
-      newConn.x = conn.x;
-      for (int r_idx : conn.rungs) {
-        if (r_idx > rungIndexToDelete) {
-          newConn.rungs.push_back(r_idx - 1);  // ?몃뜳??1 媛먯냼
-        } else {
-          newConn.rungs.push_back(r_idx);
-        }
+    VerticalConnection newConn;
+    newConn.x = conn.x;
+    for (int r_idx : conn.rungs) {
+      if (r_idx == rungIndexToDelete) {
+        continue;
       }
-      // ?낅뜲?댄듃 ?꾩뿉???ъ쟾??2媛??댁긽??猷쎌쓣 ?곌껐?섎뒗 寃쎌슦?먮쭔 異붽?
-      if (newConn.rungs.size() >= 2) {
-        updatedConnections.push_back(newConn);
+      if (r_idx > rungIndexToDelete) {
+        newConn.rungs.push_back(r_idx - 1);  // ?몃뜳??1 媛먯냼
+      } else {
+        newConn.rungs.push_back(r_idx);
       }
     }
-    // else: ??젣??猷쎌쓣 ?ы븿?섎뒗 ?곌껐? updatedConnections??異붽??섏? ?딆븘
-    // ?먮룞?쇰줈 ??젣??
+    if (!newConn.rungs.empty()) {
+      std::sort(newConn.rungs.begin(), newConn.rungs.end());
+      newConn.rungs.erase(std::unique(newConn.rungs.begin(),
+                                      newConn.rungs.end()),
+                          newConn.rungs.end());
+    }
+    if (newConn.rungs.size() >= 2) {
+      updatedConnections.push_back(newConn);
+    }
   }
   // ?낅뜲?댄듃???곌껐 紐⑸줉?쇰줈 援먯껜
   ladder_program_.verticalConnections = updatedConnections;
 
   // 2. 猷???젣
-  if (ladder_program_.rungs.size() > 2) {  // 理쒖냼 1媛쒖쓽 猷쎄낵 END 猷쎌? ?좎?
-    ladder_program_.rungs.erase(ladder_program_.rungs.begin() +
-                                rungIndexToDelete);
+  ladder_program_.rungs.erase(ladder_program_.rungs.begin() +
+                              rungIndexToDelete);
 
-    // 而ㅼ꽌 ?꾩튂 議곗젙
-    if (selected_rung_ >= rungIndexToDelete && selected_rung_ > 0) {
-      selected_rung_--;
-    }
+  // 而ㅼ꽌 ?꾩튂 議곗젙
+  if (selected_rung_ >= rungIndexToDelete && selected_rung_ > 0) {
+    selected_rung_--;
+  }
 
-    // 3. ?섎㉧吏 猷?踰덊샇 ?ъ젙??
+  // 3. ?섎㉧吏 猷?踰덊샇 ?ъ젙??
+  if (!ladder_program_.rungs.empty()) {
     for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
       ladder_program_.rungs[i].number = i;
     }

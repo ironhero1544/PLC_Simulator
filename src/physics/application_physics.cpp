@@ -87,6 +87,20 @@ ImVec2 GetSensorCenterWorld(const PlacedComponent& sensor) {
   return LocalToWorld(sensor, ImVec2(sensor.size.width * 0.5f, 7.5f));
 }
 
+ImVec2 LocalDirToWorld(const PlacedComponent& comp, ImVec2 local_dir) {
+  if (comp.flip_x) {
+    local_dir.x = -local_dir.x;
+  }
+  if (comp.flip_y) {
+    local_dir.y = -local_dir.y;
+  }
+  return RotatePoint(local_dir, comp.rotation_quadrants);
+}
+
+float Dot(ImVec2 a, ImVec2 b) {
+  return a.x * b.x + a.y * b.y;
+}
+
 Aabb GetAabb(const PlacedComponent& comp) {
   Aabb box;
   box.min_x = comp.position.x;
@@ -1575,56 +1589,64 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
             comp.internalStates.count(state_keys::kVelocity)
                 ? comp.internalStates.at(state_keys::kVelocity)
                 : 0.0f;
-        float rod_tip_x = comp.position.x + 170.0f - pos_val;
-        float rod_tip_y = comp.position.y + 25.0f;
+        ImVec2 rod_tip = GetCylinderRodTipWorld(comp);
+        ImVec2 rod_dir = LocalDirToWorld(comp, ImVec2(-1.0f, 0.0f));
+        ImVec2 rod_vel(rod_dir.x * velocity, rod_dir.y * velocity);
+        ImVec2 sweep(rod_vel.x * step_dt, rod_vel.y * step_dt);
         const float kRodHitLeft = 12.0f;
         const float kRodHitRight = 20.0f;
-        float rod_world_vel_x = -velocity;
-        float sweep = rod_world_vel_x * step_dt;
-        float rod_min_x = rod_tip_x - kRodHitLeft;
-        float rod_max_x = rod_tip_x + kRodHitRight;
-        if (sweep < 0.0f) {
-          rod_min_x += sweep;
-        } else if (sweep > 0.0f) {
-          rod_max_x += sweep;
-        }
-        Aabb rod_swept = {rod_min_x, rod_tip_y - kRodHitLeft, rod_max_x,
-                          rod_tip_y + kRodHitRight};
+        float rod_radius = std::max(kRodHitLeft, kRodHitRight);
+        float rod_min_x =
+            std::min(rod_tip.x, rod_tip.x + sweep.x) - rod_radius;
+        float rod_max_x =
+            std::max(rod_tip.x, rod_tip.x + sweep.x) + rod_radius;
+        float rod_min_y =
+            std::min(rod_tip.y, rod_tip.y + sweep.y) - rod_radius;
+        float rod_max_y =
+            std::max(rod_tip.y, rod_tip.y + sweep.y) + rod_radius;
+        Aabb rod_swept = {rod_min_x, rod_min_y, rod_max_x, rod_max_y};
         if (!AabbOverlaps(workpiece_box, rod_swept)) {
           continue;
         }
         workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
-        float delta_y =
-            (workpiece.position.y + workpiece.size.height * 0.5f) - rod_tip_y;
-        if (std::abs(delta_y) <= kSnapDistance) {
-          workpiece.position.y = rod_tip_y - workpiece.size.height * 0.5f;
+        ImVec2 workpiece_center(
+            workpiece.position.x + workpiece.size.width * 0.5f,
+            workpiece.position.y + workpiece.size.height * 0.5f);
+        ImVec2 to_work(workpiece_center.x - rod_tip.x,
+                       workpiece_center.y - rod_tip.y);
+        ImVec2 rod_perp(-rod_dir.y, rod_dir.x);
+        float lateral = Dot(to_work, rod_perp);
+        if (std::abs(lateral) <= kSnapDistance) {
+          workpiece_center.x -= rod_perp.x * lateral;
+          workpiece_center.y -= rod_perp.y * lateral;
+          workpiece.position.x =
+              workpiece_center.x - workpiece.size.width * 0.5f;
+          workpiece.position.y =
+              workpiece_center.y - workpiece.size.height * 0.5f;
+          to_work.x = workpiece_center.x - rod_tip.x;
+          to_work.y = workpiece_center.y - rod_tip.y;
         }
         const float kContactGap = 1.0f;
-        if (rod_world_vel_x > 1.0f || rod_world_vel_x < -1.0f) {
-          float workpiece_center_x =
-              workpiece.position.x + workpiece.size.width * 0.5f;
-          bool in_front =
-              (rod_world_vel_x < 0.0f)
-                  ? (workpiece_center_x <= rod_tip_x)
-                  : (workpiece_center_x >= rod_tip_x);
+        if (std::abs(velocity) > 1.0f) {
+          float proj = Dot(to_work, rod_dir);
+          float sign = (velocity >= 0.0f) ? 1.0f : -1.0f;
+          float half_extent =
+              0.5f * (std::abs(rod_dir.x) * workpiece.size.width +
+                      std::abs(rod_dir.y) * workpiece.size.height);
+          float desired_offset = sign * (half_extent + kContactGap);
+          bool in_front = (sign > 0.0f) ? (proj >= 0.0f) : (proj <= 0.0f);
           if (in_front) {
-            float desired_center_x =
-                rod_tip_x +
-                (rod_world_vel_x < 0.0f
-                     ? -(workpiece.size.width * 0.5f + kContactGap)
-                     : (workpiece.size.width * 0.5f + kContactGap));
-            if (rod_world_vel_x < 0.0f) {
-              if (workpiece_center_x > desired_center_x) {
-                workpiece_center_x = desired_center_x;
-              }
-            } else {
-              if (workpiece_center_x < desired_center_x) {
-                workpiece_center_x = desired_center_x;
-              }
+            if ((sign > 0.0f && proj < desired_offset) ||
+                (sign < 0.0f && proj > desired_offset)) {
+              workpiece_center.x = rod_tip.x + rod_dir.x * desired_offset;
+              workpiece_center.y = rod_tip.y + rod_dir.y * desired_offset;
+              workpiece.position.x =
+                  workpiece_center.x - workpiece.size.width * 0.5f;
+              workpiece.position.y =
+                  workpiece_center.y - workpiece.size.height * 0.5f;
             }
-            workpiece.position.x =
-                workpiece_center_x - workpiece.size.width * 0.5f;
-            vel_x = rod_world_vel_x;
+            vel_x = rod_vel.x;
+            vel_y = rod_vel.y;
             pushed_by_cylinder = true;
           }
         }

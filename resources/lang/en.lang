@@ -35,6 +35,8 @@ ui.toolbar.tool_pneumatic=Pneumatic
 ui.toolbar.tool_electric=Electric
 ui.toolbar.tool_tag=Tag
 ui.toolbar.load_project=Load Project
+ui.toolbar.save_layout=Save
+ui.toolbar.load_layout=Load
 
 # Status bar
 ui.status.zoom_info=Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %zu
@@ -168,6 +170,7 @@ ui.wiring.context.flip_vertical=Flip Vertical
 
 # Programming UI
 ui.programming.timers_counters=Timers / Counters
+ui.programming.load=Load
 ui.programming.timer_value_fmt=%s  K%d/%d
 ui.programming.counter_value_fmt=%s  K%d/%d
 ui.programming.memory_m=Memory (M)

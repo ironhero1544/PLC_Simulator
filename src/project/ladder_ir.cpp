@@ -338,9 +338,13 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
       // 🔥 **고급 타이머 값 파싱** (예: "T0 K10" -> 10초)
       if (!cell.preset.empty()) {
         // K10, K100 등 파싱
-        if (cell.preset[0] == 'K') {
+        if (cell.preset[0] == 'K' || cell.preset[0] == 'k' ||
+            (cell.preset[0] >= '0' && cell.preset[0] <= '9')) {
           try {
-            int timerValue = std::stoi(cell.preset.substr(1));
+            int timerValue = std::stoi(
+                (cell.preset[0] == 'K' || cell.preset[0] == 'k')
+                    ? cell.preset.substr(1)
+                    : cell.preset);
             timerNode->timeValue =
                 static_cast<float>(timerValue) * 0.1f;  // 100ms 단위
           } catch (...) {
@@ -360,9 +364,13 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
 
       // 🔥 **고급 카운터 값 파싱** (예: "C0 K5" -> 5회)
       if (!cell.preset.empty()) {
-        if (cell.preset[0] == 'K') {
+        if (cell.preset[0] == 'K' || cell.preset[0] == 'k' ||
+            (cell.preset[0] >= '0' && cell.preset[0] <= '9')) {
           try {
-            int countValue = std::stoi(cell.preset.substr(1));
+            int countValue = std::stoi(
+                (cell.preset[0] == 'K' || cell.preset[0] == 'k')
+                    ? cell.preset.substr(1)
+                    : cell.preset);
             counterNode->countValue = countValue;
           } catch (...) {
             std::cout << "[IR] Warning: Invalid counter preset: " << cell.preset

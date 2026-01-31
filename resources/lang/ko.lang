@@ -24,6 +24,9 @@ ui.toolbar.load_project=프로젝트 불러오기
 # Status bar
 ui.status.zoom_info=Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %zu
 ui.status.tool_fmt=Tool: %s
+ui.toolbar.save_layout=저장
+ui.toolbar.load_layout=불러오기
+ui.programming.load=Load
 
 # Common
 ui.common.yes=Yes
