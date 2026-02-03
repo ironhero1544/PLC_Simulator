@@ -236,14 +236,25 @@ void DrawMeterSymbol(ImDrawList* draw_list,
   if (min_dim > 26.0f) {
     const char* top_label = "2";
     const char* bottom_label = "1";
-    ImVec2 top_size = ImGui::CalcTextSize(top_label);
-    ImVec2 bot_size = ImGui::CalcTextSize(bottom_label);
-    draw_list->AddText({cx - w * 0.3f - top_size.x * 0.5f,
-                        box_top_y - h * 0.05f - top_size.y * 0.5f},
-                       stroke, top_label);
-    draw_list->AddText({cx - w * 0.3f - bot_size.x * 0.5f,
-                        box_bot_y + h * 0.05f - bot_size.y * 0.5f},
-                       stroke, bottom_label);
+    float font_size = min_dim * 0.25f;
+    if (font_size < 8.0f) {
+      font_size = 8.0f;
+    }
+    ImVec2 top_size =
+        ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, top_label);
+    ImVec2 bot_size =
+        ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f,
+                                        bottom_label);
+    draw_list->AddText(
+        ImGui::GetFont(), font_size,
+        {cx - w * 0.3f - top_size.x * 0.5f,
+         box_top_y - h * 0.05f - top_size.y * 0.5f},
+        stroke, top_label);
+    draw_list->AddText(
+        ImGui::GetFont(), font_size,
+        {cx - w * 0.3f - bot_size.x * 0.5f,
+         box_bot_y + h * 0.05f - bot_size.y * 0.5f},
+        stroke, bottom_label);
   }
 }
 

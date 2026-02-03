@@ -2,6 +2,8 @@
 
 #include "imgui.h"
 
+#include <cfloat>
+
 namespace plc {
 namespace {
 
@@ -28,10 +30,9 @@ void RenderBox(ImDrawList* draw_list,
 
   const char* text = "BOX";
   float text_scale = zoom / 1.3f;
-  float font_size = ImGui::GetFontSize() * text_scale;
-  ImVec2 txt_size = ImGui::CalcTextSize(text);
-  txt_size.x *= text_scale;
-  txt_size.y *= text_scale;
+  float font_size = 16.0f * text_scale;
+  ImVec2 txt_size =
+      ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, text);
   ImVec2 text_pos = {pos.x + (size.x - txt_size.x) * 0.5f,
                      pos.y + (size.y - txt_size.y) * 0.5f};
   draw_list->AddText(ImGui::GetFont(), font_size, text_pos,

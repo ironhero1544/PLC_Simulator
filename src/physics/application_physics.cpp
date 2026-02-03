@@ -101,6 +101,36 @@ float Dot(ImVec2 a, ImVec2 b) {
   return a.x * b.x + a.y * b.y;
 }
 
+bool IsDirectionalHit(ImVec2 sensor_center,
+                      ImVec2 forward_dir,
+                      ImVec2 target,
+                      float max_distance,
+                      float beam_half_width,
+                      float* out_distance) {
+  float len = std::sqrt(forward_dir.x * forward_dir.x +
+                        forward_dir.y * forward_dir.y);
+  if (len < 1e-4f) {
+    return false;
+  }
+  forward_dir.x /= len;
+  forward_dir.y /= len;
+  ImVec2 to_target = {target.x - sensor_center.x, target.y - sensor_center.y};
+  float proj = Dot(to_target, forward_dir);
+  if (proj < 0.0f || proj > max_distance) {
+    return false;
+  }
+  ImVec2 perp = {-forward_dir.y, forward_dir.x};
+  float lateral = std::abs(Dot(to_target, perp));
+  if (lateral > beam_half_width) {
+    return false;
+  }
+  if (out_distance) {
+    *out_distance =
+        std::sqrt(to_target.x * to_target.x + to_target.y * to_target.y);
+  }
+  return true;
+}
+
 Aabb GetAabb(const PlacedComponent& comp) {
   Aabb box;
   box.min_x = comp.position.x;
@@ -428,6 +458,7 @@ void Application::UpdatePhysics() {
   constexpr double kPhysicsStep = 1.0 / 240.0;
   constexpr double kPlcStep = 0.010;
   constexpr double kMaxFrameTime = 0.25;
+  constexpr double kAdvancedPhysicsBudgetMs = 4.0;
 
   auto now = clock::now();
   if (!physics_time_initialized_) {
@@ -471,11 +502,22 @@ void Application::UpdatePhysics() {
       }
     }
 
+    static bool advanced_physics_disabled = false;
+    static size_t advanced_disable_components = 0;
+    static size_t advanced_disable_wires = 0;
+    if (advanced_physics_disabled &&
+        (placed_components_.size() != advanced_disable_components ||
+         wires_.size() != advanced_disable_wires)) {
+      advanced_physics_disabled = false;
+    }
+
     // Advanced physics engine (optional enhancement)
-    if (is_plc_running_ && physics_engine_ && physics_engine_->isInitialized &&
+    if (!advanced_physics_disabled && is_plc_running_ && physics_engine_ &&
+        physics_engine_->isInitialized &&
         physics_engine_->networking.BuildNetworksFromWiring &&
         physics_engine_->IsSafeToRunSimulation &&
         physics_engine_->IsSafeToRunSimulation(physics_engine_)) {
+      auto advanced_start = clock::now();
       // Network reconstruction when topology changes
       static bool networkBuilt = false;
       static size_t lastComponentCount = 0;
@@ -493,6 +535,11 @@ void Application::UpdatePhysics() {
           networkBuilt = true;
           lastComponentCount = placed_components_.size();
           lastWireCount = wires_.size();
+        } else {
+          advanced_physics_disabled = true;
+          advanced_disable_components = placed_components_.size();
+          advanced_disable_wires = wires_.size();
+          continue;
         }
       }
 
@@ -526,6 +573,16 @@ void Application::UpdatePhysics() {
           std::cout << "[PHYSICS ERROR] Advanced engine exception: " << e.what()
                     << std::endl;
         }
+      }
+
+      auto advanced_elapsed =
+          std::chrono::duration<double, std::milli>(clock::now() -
+                                                    advanced_start)
+              .count();
+      if (advanced_elapsed > kAdvancedPhysicsBudgetMs) {
+        advanced_physics_disabled = true;
+        advanced_disable_components = placed_components_.size();
+        advanced_disable_wires = wires_.size();
       }
     }
   }
@@ -956,12 +1013,14 @@ void Application::SimulateElectrical() {
         }
       }
     } else if (comp.type == ComponentType::SENSOR ||
-               comp.type == ComponentType::INDUCTIVE_SENSOR) {
+               comp.type == ComponentType::INDUCTIVE_SENSOR ||
+               comp.type == ComponentType::RING_SENSOR) {
       bool is_detected = comp.internalStates.count("is_detected") &&
                          comp.internalStates.at("is_detected") > 0.5f;
       if (is_detected) {
         int p24_index = get_index(comp.instanceId, 0);
-        int out_index = get_index(comp.instanceId, 2);
+        int signal_port = (comp.type == ComponentType::RING_SENSOR) ? 1 : 2;
+        int out_index = get_index(comp.instanceId, signal_port);
         if (p24_index >= 0 && out_index >= 0) {
           unite(p24_index, out_index);
         }
@@ -1365,18 +1424,29 @@ void Application::UpdateActuators(float delta_time) {
   for (auto& sensor : placed_components_) {
     if (sensor.type == ComponentType::LIMIT_SWITCH ||
         sensor.type == ComponentType::SENSOR) {
+      float detectionRange =
+          (sensor.type == ComponentType::LIMIT_SWITCH) ? 100.0f : 75.0f;
+      float beamHalfWidth =
+          (sensor.type == ComponentType::LIMIT_SWITCH) ? 10.0f : 15.0f;
+      ImVec2 sensor_center =
+          (sensor.type == ComponentType::LIMIT_SWITCH)
+              ? GetLimitSwitchCenterWorld(sensor)
+              : GetSensorCenterWorld(sensor);
+      ImVec2 sensor_forward = LocalDirToWorld(sensor, ImVec2(0.0f, -1.0f));
       bool isActivatedByPhysics = false;
       bool isActivatedByWorkpiece = false;
       float minDistance = 999999.0f;
       int closestCylinderId = -1;
-      Aabb sensor_box = GetAabb(sensor);
 
       for (const auto& workpiece : placed_components_) {
         if (!IsWorkpiece(workpiece.type)) {
           continue;
         }
-        Aabb workpiece_box = GetWorkpieceDetectionAabb(workpiece);
-        if (AabbOverlaps(sensor_box, workpiece_box)) {
+        ImVec2 workpiece_center = {
+            workpiece.position.x + workpiece.size.width * 0.5f,
+            workpiece.position.y + workpiece.size.height * 0.5f};
+        if (IsDirectionalHit(sensor_center, sensor_forward, workpiece_center,
+                             detectionRange, beamHalfWidth, nullptr)) {
           isActivatedByWorkpiece = true;
           break;
         }
@@ -1385,25 +1455,11 @@ void Application::UpdateActuators(float delta_time) {
       for (const auto& cylinder : placed_components_) {
         if (cylinder.type == ComponentType::CYLINDER) {
           ImVec2 piston_tip = GetCylinderRodTipWorld(cylinder);
-          ImVec2 sensor_center =
-              (sensor.type == ComponentType::LIMIT_SWITCH)
-                  ? GetLimitSwitchCenterWorld(sensor)
-                  : GetSensorCenterWorld(sensor);
-
-          float dx = piston_tip.x - sensor_center.x;
-          float dy = piston_tip.y - sensor_center.y;
-          float distance = std::sqrt(dx * dx + dy * dy);
-
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestCylinderId = cylinder.instanceId;
-          }
-
-          float detectionRange =
-              (sensor.type == ComponentType::LIMIT_SWITCH) ? 100.0f : 75.0f;
-
-          if (distance < detectionRange) {
+          float distance = 0.0f;
+          if (IsDirectionalHit(sensor_center, sensor_forward, piston_tip,
+                               detectionRange, beamHalfWidth, &distance)) {
             isActivatedByPhysics = true;
+            closestCylinderId = cylinder.instanceId;
 
             if (enableDetailedDebug && enable_debug_logging_) {
               std::cout << "[SENSOR] "
@@ -1414,6 +1470,9 @@ void Application::UpdateActuators(float delta_time) {
                         << distance << "mm" << std::endl;
             }
             break;
+          }
+          if (distance < minDistance) {
+            minDistance = distance;
           }
         }
       }
@@ -1479,13 +1538,42 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
   auto apply_sensor_detection = [&](PlacedComponent& workpiece,
                                     bool allow_snap) {
     Aabb workpiece_detection = GetWorkpieceDetectionAabb(workpiece);
+    Aabb workpiece_box = GetAabb(workpiece);
+    constexpr float kRingCenterX = 30.0f;
+    constexpr float kRingCenterY = 28.0f;
+    constexpr float kRingDetectRadius = 18.0f;
     for (auto& sensor : placed_components_) {
       if (sensor.type != ComponentType::RING_SENSOR &&
           sensor.type != ComponentType::INDUCTIVE_SENSOR) {
         continue;
       }
       Aabb sensor_box = GetAabb(sensor);
-      if (!AabbOverlaps(workpiece_detection, sensor_box)) {
+      const bool overlaps_detection =
+          AabbOverlaps(workpiece_detection, sensor_box);
+      const bool overlaps_body = AabbOverlaps(workpiece_box, sensor_box);
+      std::string snap_key;
+      if (sensor.type == ComponentType::RING_SENSOR) {
+        snap_key = std::string("snap_lock_ring_") +
+                   std::to_string(sensor.instanceId);
+        if (!overlaps_body) {
+          workpiece.internalStates[snap_key] = 0.0f;
+        }
+        if (!overlaps_detection) {
+          continue;
+        }
+        ImVec2 ring_center = LocalToWorld(
+            sensor, ImVec2(kRingCenterX, kRingCenterY));
+        ImVec2 work_center = {workpiece.position.x +
+                                  workpiece.size.width * 0.5f,
+                              workpiece.position.y +
+                                  workpiece.size.height * 0.5f};
+        float dx = work_center.x - ring_center.x;
+        float dy = work_center.y - ring_center.y;
+        if (dx * dx + dy * dy >
+            kRingDetectRadius * kRingDetectRadius) {
+          continue;
+        }
+      } else if (!overlaps_detection) {
         continue;
       }
       if (sensor.type == ComponentType::INDUCTIVE_SENSOR) {
@@ -1496,11 +1584,31 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         if (!is_metal) {
           continue;
         }
+        ImVec2 sensor_center = GetSensorCenterWorld(sensor);
+        ImVec2 sensor_forward = LocalDirToWorld(sensor, ImVec2(0.0f, -1.0f));
+        ImVec2 work_center = {workpiece.position.x +
+                                  workpiece.size.width * 0.5f,
+                              workpiece.position.y +
+                                  workpiece.size.height * 0.5f};
+        const float kDetectionRange = 75.0f;
+        const float kBeamHalfWidth = 15.0f;
+        if (!IsDirectionalHit(sensor_center, sensor_forward, work_center,
+                              kDetectionRange, kBeamHalfWidth, nullptr)) {
+          continue;
+        }
       }
       sensor.internalStates[state_keys::kIsDetected] = 1.0f;
       if (allow_snap && sensor.type == ComponentType::RING_SENSOR) {
-        float center_x = sensor.position.x + sensor.size.width * 0.5f;
-        float center_y = sensor.position.y + 28.0f;
+        bool snap_locked =
+            workpiece.internalStates.count(snap_key) &&
+            workpiece.internalStates.at(snap_key) > 0.5f;
+        if (snap_locked) {
+          continue;
+        }
+        ImVec2 ring_center = LocalToWorld(
+            sensor, ImVec2(kRingCenterX, kRingCenterY));
+        float center_x = ring_center.x;
+        float center_y = ring_center.y;
         float delta_x =
             (workpiece.position.x + workpiece.size.width * 0.5f) - center_x;
         float delta_y =
@@ -1509,6 +1617,9 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
             std::abs(delta_y) <= kSnapDistance) {
           workpiece.position.x = center_x - workpiece.size.width * 0.5f;
           workpiece.position.y = center_y - workpiece.size.height * 0.5f;
+          workpiece.internalStates[state_keys::kVelX] = 0.0f;
+          workpiece.internalStates[state_keys::kVelY] = 0.0f;
+          workpiece.internalStates[snap_key] = 1.0f;
         }
       }
     }
@@ -1561,34 +1672,32 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         Aabb conveyor_box = GetAabb(comp);
         if (AabbOverlaps(workpiece_box, conveyor_box)) {
           on_conveyor = true;
-          vel_x = kConveyorSpeed;
-          float target_y = GetCenterY(conveyor_box) -
-                           (workpiece.size.height * 0.5f);
-          float delta_y =
-              (workpiece.position.y + workpiece.size.height * 0.5f) -
-              GetCenterY(conveyor_box);
-          if (std::abs(delta_y) <= kSnapDistance) {
-            workpiece.position.y = target_y;
-          }
+          ImVec2 dir = LocalDirToWorld(comp, ImVec2(1.0f, 0.0f));
+          vel_x = dir.x * kConveyorSpeed;
+          vel_y = dir.y * kConveyorSpeed;
         }
       }
 
       if (!on_conveyor) {
         vel_x = 0.0f;
+        vel_y = 0.0f;
       }
 
       for (const auto& comp : placed_components_) {
         if (comp.type != ComponentType::CYLINDER) {
           continue;
         }
-        float pos_val =
-            comp.internalStates.count(state_keys::kPosition)
-                ? comp.internalStates.at(state_keys::kPosition)
-                : 0.0f;
         float velocity =
             comp.internalStates.count(state_keys::kVelocity)
                 ? comp.internalStates.at(state_keys::kVelocity)
                 : 0.0f;
+        std::string snap_key =
+            std::string("snap_lock_cyl_") + std::to_string(comp.instanceId);
+        const float kSnapReleaseVelocity = 0.5f;
+        if (std::abs(velocity) <= kSnapReleaseVelocity) {
+          workpiece.internalStates[snap_key] = 0.0f;
+          continue;
+        }
         ImVec2 rod_tip = GetCylinderRodTipWorld(comp);
         ImVec2 rod_dir = LocalDirToWorld(comp, ImVec2(-1.0f, 0.0f));
         ImVec2 rod_vel(rod_dir.x * velocity, rod_dir.y * velocity);
@@ -1605,6 +1714,11 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         float rod_max_y =
             std::max(rod_tip.y, rod_tip.y + sweep.y) + rod_radius;
         Aabb rod_swept = {rod_min_x, rod_min_y, rod_max_x, rod_max_y};
+        bool snapped_to_cylinder = false;
+        Aabb cylinder_box = GetAabb(comp);
+        if (!AabbOverlaps(workpiece_box, cylinder_box)) {
+          workpiece.internalStates[snap_key] = 0.0f;
+        }
         if (!AabbOverlaps(workpiece_box, rod_swept)) {
           continue;
         }
@@ -1616,7 +1730,10 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
                        workpiece_center.y - rod_tip.y);
         ImVec2 rod_perp(-rod_dir.y, rod_dir.x);
         float lateral = Dot(to_work, rod_perp);
-        if (std::abs(lateral) <= kSnapDistance) {
+        bool snap_locked =
+            workpiece.internalStates.count(snap_key) &&
+            workpiece.internalStates.at(snap_key) > 0.5f;
+        if (!snap_locked && std::abs(lateral) <= kSnapDistance) {
           workpiece_center.x -= rod_perp.x * lateral;
           workpiece_center.y -= rod_perp.y * lateral;
           workpiece.position.x =
@@ -1625,9 +1742,13 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
               workpiece_center.y - workpiece.size.height * 0.5f;
           to_work.x = workpiece_center.x - rod_tip.x;
           to_work.y = workpiece_center.y - rod_tip.y;
+          vel_x = 0.0f;
+          vel_y = 0.0f;
+          snapped_to_cylinder = true;
+          workpiece.internalStates[snap_key] = 1.0f;
         }
         const float kContactGap = 1.0f;
-        if (std::abs(velocity) > 1.0f) {
+        if (!snapped_to_cylinder && std::abs(velocity) > 1.0f) {
           float proj = Dot(to_work, rod_dir);
           float sign = (velocity >= 0.0f) ? 1.0f : -1.0f;
           float half_extent =
@@ -1681,7 +1802,6 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         head_box.min_y = center_y - head_radius;
         head_box.max_y = center_y + head_radius;
 
-        bool is_up = pos_val >= (kProcDrillUp - kProcEpsilon);
         bool is_down = pos_val <= (kProcDrillDown + kProcEpsilon);
         bool motor_on =
             comp.internalStates.count(state_keys::kMotorOn) &&
@@ -1692,10 +1812,14 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
                      workpiece.internalStates.at(ready_key) > 0.5f;
 
         bool overlapping = AabbOverlaps(workpiece_box, head_box);
-        if (overlapping && is_up) {
+        bool should_snap = overlapping;
+        if (should_snap) {
           workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
           workpiece.position.x = center_x - workpiece.size.width * 0.5f;
           workpiece.position.y = center_y - workpiece.size.height * 0.5f;
+          vel_x = 0.0f;
+          vel_y = 0.0f;
+          workpiece_box = GetAabb(workpiece);
           ready = true;
         } else if (!overlapping) {
           ready = false;
@@ -1741,7 +1865,6 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
 
 /**
  * @brief Basic physics simulation independent of PLC state
-  * B로서ic 물리 시뮬레이션 내dependent 의 PLC st에서e
  *
  * CRITICAL INDEPENDENCE DESIGN:
  * This method ensures that essential physics continues operating even when
@@ -1835,19 +1958,29 @@ void Application::UpdateBasicPhysics(float delta_time) {
   for (auto& sensor : placed_components_) {
     if (sensor.type == ComponentType::LIMIT_SWITCH ||
         sensor.type == ComponentType::SENSOR) {
+      float detectionRange =
+          (sensor.type == ComponentType::LIMIT_SWITCH) ? 100.0f : 75.0f;
+      float beamHalfWidth =
+          (sensor.type == ComponentType::LIMIT_SWITCH) ? 10.0f : 15.0f;
+      ImVec2 sensor_center =
+          (sensor.type == ComponentType::LIMIT_SWITCH)
+              ? GetLimitSwitchCenterWorld(sensor)
+              : GetSensorCenterWorld(sensor);
+      ImVec2 sensor_forward = LocalDirToWorld(sensor, ImVec2(0.0f, -1.0f));
       bool isActivatedByPhysics = false;
       bool isActivatedByWorkpiece = false;
       float minDistance = 999999.0f;
       int closestCylinderId = -1;
       (void)closestCylinderId;  // 미사용 변수 경고 제거
-
-      Aabb sensor_box = GetAabb(sensor);
       for (const auto& workpiece : placed_components_) {
         if (!IsWorkpiece(workpiece.type)) {
           continue;
         }
-        Aabb workpiece_box = GetWorkpieceDetectionAabb(workpiece);
-        if (AabbOverlaps(sensor_box, workpiece_box)) {
+        ImVec2 workpiece_center = {
+            workpiece.position.x + workpiece.size.width * 0.5f,
+            workpiece.position.y + workpiece.size.height * 0.5f};
+        if (IsDirectionalHit(sensor_center, sensor_forward, workpiece_center,
+                             detectionRange, beamHalfWidth, nullptr)) {
           isActivatedByWorkpiece = true;
           break;
         }
@@ -1856,26 +1989,15 @@ void Application::UpdateBasicPhysics(float delta_time) {
       for (const auto& cylinder : placed_components_) {
         if (cylinder.type == ComponentType::CYLINDER) {
           ImVec2 piston_tip = GetCylinderRodTipWorld(cylinder);
-          ImVec2 sensor_center =
-              (sensor.type == ComponentType::LIMIT_SWITCH)
-                  ? GetLimitSwitchCenterWorld(sensor)
-                  : GetSensorCenterWorld(sensor);
-
-          float dx = piston_tip.x - sensor_center.x;
-          float dy = piston_tip.y - sensor_center.y;
-          float distance = std::sqrt(dx * dx + dy * dy);
-
+          float distance = 0.0f;
+          if (IsDirectionalHit(sensor_center, sensor_forward, piston_tip,
+                               detectionRange, beamHalfWidth, &distance)) {
+            isActivatedByPhysics = true;
+            closestCylinderId = cylinder.instanceId;
+            break;
+          }
           if (distance < minDistance) {
             minDistance = distance;
-            closestCylinderId = cylinder.instanceId;
-          }
-
-          float detectionRange =
-              (sensor.type == ComponentType::LIMIT_SWITCH) ? 150.0f : 100.0f;
-
-          if (distance < detectionRange) {
-            isActivatedByPhysics = true;
-            break;
           }
         }
       }
@@ -1908,7 +2030,6 @@ void Application::UpdateBasicPhysics(float delta_time) {
 
 /**
  * @brief Synchronize PLC outputs to physics engine with comprehensive error
-  * Synchr위ize PLC 출력s 물리 엔진 와 함께 comprehensive 오류
  * handling
  *
  * CRITICAL SYNCHRONIZATION PROCESS:
@@ -2156,22 +2277,7 @@ void Application::SyncPhysicsEngineToApplication() {
         }
 
         case PHYSICS_STATE_LIMIT_SWITCH: {
-          const LimitSwitchPhysicsState& switchState =
-              physState.state.limitSwitch;
-
-          // 접촉 상태 동기화
-          comp.internalStates["is_pressed"] =
-              switchState.isPhysicallyPressed ? 1.0f : 0.0f;
-          comp.internalStates["contact_force"] = switchState.contactForce;
-          comp.internalStates["displacement"] = switchState.displacement;
-
-          // Synchronize electrical characteristics
-          comp.internalStates["contact_resistance_no"] =
-              switchState.contactResistanceNO;
-          comp.internalStates["contact_resistance_nc"] =
-              switchState.contactResistanceNC;
-          comp.internalStates["contact_voltage"] = switchState.contactVoltage;
-
+          // Prefer basic directional detection for limit switches.
           break;
         }
 

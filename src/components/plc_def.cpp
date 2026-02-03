@@ -140,7 +140,7 @@ void RenderPlc(ImDrawList* draw_list,
   ImU32 colors[] = {on_green, run_on ? on_green : off_gray, on_green,
                     error_on ? on_red : off_gray};
   float text_scale = zoom / 1.4f;
-  float font_size = ImGui::GetFontSize() * text_scale;
+  float font_size = 16.0f * text_scale;
   for (int i = 0; i < 4; ++i) {
     ImVec2 port_pos = {screen_pos.x + 265 * zoom - 2.0f,
                        screen_pos.y + (40.0f + static_cast<float>(i) * 25.0f) *

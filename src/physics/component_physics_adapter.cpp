@@ -61,7 +61,8 @@ void UpdateSensorElectrical(PlacedComponent* comp,
     return;
   }
   PortRef plus_port = std::make_pair(comp->instanceId, 0);
-  PortRef minus_port = std::make_pair(comp->instanceId, 1);
+  int minus_id = (comp->type == ComponentType::RING_SENSOR) ? 2 : 1;
+  PortRef minus_port = std::make_pair(comp->instanceId, minus_id);
   bool has_24v = voltages.count(plus_port) &&
                  voltages.at(plus_port) > 23.0f;
   bool has_0v = voltages.count(minus_port) &&
@@ -78,13 +79,18 @@ void UpdateConveyorElectrical(PlacedComponent* comp,
   }
   PortRef plus_port = std::make_pair(comp->instanceId, 0);
   PortRef minus_port = std::make_pair(comp->instanceId, 1);
-  bool has_24v = voltages.count(plus_port) &&
-                 voltages.at(plus_port) > 23.0f;
-  bool has_0v = voltages.count(minus_port) &&
-                voltages.at(minus_port) > -0.1f &&
-                voltages.at(minus_port) < 0.1f;
-  comp->internalStates[state_keys::kMotorActive] =
-      (has_24v && has_0v) ? 1.0f : 0.0f;
+  bool p0_24 =
+      voltages.count(plus_port) && voltages.at(plus_port) > 23.0f;
+  bool p1_24 =
+      voltages.count(minus_port) && voltages.at(minus_port) > 23.0f;
+  bool p0_0 = voltages.count(plus_port) &&
+              voltages.at(plus_port) > -0.1f &&
+              voltages.at(plus_port) < 0.1f;
+  bool p1_0 = voltages.count(minus_port) &&
+              voltages.at(minus_port) > -0.1f &&
+              voltages.at(minus_port) < 0.1f;
+  bool motor_on = (p0_24 && p1_0) || (p1_24 && p0_0);
+  comp->internalStates[state_keys::kMotorActive] = motor_on ? 1.0f : 0.0f;
 }
 
 void UpdateProcessingCylinderElectrical(
@@ -303,7 +309,7 @@ const ComponentPhysicsAdapter* GetComponentPhysicsAdapter(ComponentType type) {
       // WORKPIECE_NONMETAL
       {nullptr, nullptr, nullptr},
       // RING_SENSOR
-      {nullptr, nullptr, nullptr},
+      {UpdateSensorElectrical, nullptr, nullptr},
       // METER_VALVE
       {nullptr, nullptr, nullptr},
       // INDUCTIVE_SENSOR

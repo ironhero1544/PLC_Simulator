@@ -40,6 +40,95 @@ bool IsComponentVisibleByFilter(ComponentCategory category, int filter) {
          category == ComponentCategory::ALL;
 }
 
+enum class ListFilter {
+  ALL = 0,
+  AUTOMATION = 1,
+  SEMICONDUCTOR = 2
+};
+
+int FindComponentDefinitionIndex(ComponentType type) {
+  int count = GetComponentDefinitionCount();
+  for (int i = 0; i < count; ++i) {
+    const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
+    if (def && def->type == type) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+struct ComponentListEntry {
+  const ComponentDefinition* def = nullptr;
+  int index = -1;
+};
+
+const std::vector<ComponentType>& GetOrderedComponentTypes(ListFilter filter) {
+  static const std::vector<ComponentType> kAutomation = {
+      ComponentType::PLC,
+      ComponentType::FRL,
+      ComponentType::CYLINDER,
+      ComponentType::LIMIT_SWITCH,
+      ComponentType::PROCESSING_CYLINDER,
+      ComponentType::CONVEYOR,
+      ComponentType::RING_SENSOR,
+      ComponentType::INDUCTIVE_SENSOR,
+      ComponentType::SENSOR,
+      ComponentType::BOX,
+      ComponentType::TOWER_LAMP,
+      ComponentType::VALVE_SINGLE,
+      ComponentType::VALVE_DOUBLE,
+      ComponentType::BUTTON_UNIT,
+      ComponentType::POWER_SUPPLY,
+  };
+  static const std::vector<ComponentType> kSemiconductor = {
+      ComponentType::PLC,
+      ComponentType::METER_VALVE,
+      ComponentType::FRL,
+      ComponentType::LIMIT_SWITCH,
+      ComponentType::SENSOR,
+      ComponentType::CYLINDER,
+      ComponentType::VALVE_SINGLE,
+      ComponentType::VALVE_DOUBLE,
+      ComponentType::BUTTON_UNIT,
+  };
+  if (filter == ListFilter::AUTOMATION) {
+    return kAutomation;
+  }
+  return kSemiconductor;
+}
+
+std::vector<ComponentListEntry> BuildComponentList(ListFilter filter) {
+  std::vector<ComponentListEntry> entries;
+  if (filter == ListFilter::ALL) {
+    int count = GetComponentDefinitionCount();
+    entries.reserve(count);
+    for (int i = 0; i < count; ++i) {
+      const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
+      if (!def || !IsComponentVisibleByFilter(def->category,
+                                              static_cast<int>(filter))) {
+        continue;
+      }
+      entries.push_back({def, i});
+    }
+    return entries;
+  }
+
+  const std::vector<ComponentType>& order = GetOrderedComponentTypes(filter);
+  entries.reserve(order.size());
+  for (ComponentType type : order) {
+    const ComponentDefinition* def = GetComponentDefinition(type);
+    if (!def) {
+      continue;
+    }
+    int index = FindComponentDefinitionIndex(type);
+    if (index < 0) {
+      continue;
+    }
+    entries.push_back({def, index});
+  }
+  return entries;
+}
+
 void DrawGridToggleIcon(ImDrawList* draw_list, ImVec2 pos, float size,
                         bool active) {
   ImU32 stroke = active ? IM_COL32(60, 60, 60, 255) : IM_COL32(90, 90, 90, 255);
@@ -91,13 +180,14 @@ void DrawListToggleIcon(ImDrawList* draw_list, ImVec2 pos, float size,
 void RenderComponentPreview(ImDrawList* draw_list,
                             const ComponentDefinition* def,
                             ImVec2 preview_pos,
-                            ImVec2 preview_size) {
+                            ImVec2 preview_size,
+                            float scale) {
   if (!def || !def->Render) {
     return;
   }
   float zoom_x = preview_size.x / def->size.width;
   float zoom_y = preview_size.y / def->size.height;
-  float zoom = std::min(zoom_x, zoom_y);
+  float zoom = std::min(zoom_x, zoom_y) * scale;
   if (zoom <= 0.01f) {
     return;
   }
@@ -473,7 +563,13 @@ void Application::RenderComponentList() {
 
     ImGui::SetCursorPosX(10 * layout_scale);
 
-    int count = GetComponentDefinitionCount();
+    ListFilter list_filter = ListFilter::ALL;
+    if (component_list_filter_ == ComponentListFilter::AUTOMATION) {
+      list_filter = ListFilter::AUTOMATION;
+    } else if (component_list_filter_ == ComponentListFilter::SEMICONDUCTOR) {
+      list_filter = ListFilter::SEMICONDUCTOR;
+    }
+    std::vector<ComponentListEntry> entries = BuildComponentList(list_filter);
     int visible_count = 0;
     if (component_list_view_mode_ == ComponentListViewMode::ICON) {
       float spacing = 6.0f * layout_scale;
@@ -484,11 +580,10 @@ void Application::RenderComponentList() {
       int columns = 2;
       int col = 0;
 
-      for (int i = 0; i < count; i++) {
-        const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
-        if (!def || !IsComponentVisibleByFilter(
-                        def->category,
-                        static_cast<int>(component_list_filter_))) {
+      for (const auto& entry : entries) {
+        const ComponentDefinition* def = entry.def;
+        const int i = entry.index;
+        if (!def) {
           continue;
         }
         visible_count++;
@@ -500,16 +595,19 @@ void Application::RenderComponentList() {
                               ImGuiWindowFlags_NoScrollbar)) {
           float preview_padding = 10.0f * layout_scale;
           ImVec2 preview_pos = ImGui::GetCursorScreenPos();
-          ImVec2 preview_size = ImVec2(card_size - preview_padding * 2.0f,
+          ImVec2 preview_area = ImVec2(card_size - preview_padding * 2.0f,
                                        card_size - 22 * layout_scale -
                                            preview_padding * 2.0f);
+          float preview_scale = 0.6f;
+          ImVec2 preview_size = preview_area;
           preview_pos.x += preview_padding;
           preview_pos.y += preview_padding;
           draw_list->PushClipRect(preview_pos,
                                   ImVec2(preview_pos.x + preview_size.x,
                                          preview_pos.y + preview_size.y),
                                   true);
-          RenderComponentPreview(draw_list, def, preview_pos, preview_size);
+          RenderComponentPreview(draw_list, def, preview_pos, preview_size,
+                                 preview_scale);
           draw_list->PopClipRect();
 
           ImGui::SetCursorPosY(card_size - 20 * layout_scale);
@@ -560,11 +658,10 @@ void Application::RenderComponentList() {
         }
       }
     } else {
-      for (int i = 0; i < count; i++) {
-        const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
-        if (!def || !IsComponentVisibleByFilter(
-                        def->category,
-                        static_cast<int>(component_list_filter_))) {
+      for (const auto& entry : entries) {
+        const ComponentDefinition* def = entry.def;
+        const int i = entry.index;
+        if (!def) {
           continue;
         }
         visible_count++;

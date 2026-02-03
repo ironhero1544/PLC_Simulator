@@ -41,7 +41,7 @@ void RenderPowerSupply(ImDrawList* draw_list,
 
   if (zoom > 0.5f) {
     float text_scale = zoom / 1.3f;
-    float font_size = ImGui::GetFontSize() * text_scale;
+    float font_size = 16.0f * text_scale;
     draw_list->AddText(
         ImGui::GetFont(), font_size,
         ImVec2(screen_pos.x + 10 * zoom, screen_pos.y + 25 * zoom),
