@@ -104,6 +104,21 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
   bool shiftPressed = io.KeyShift;
   bool ctrlPressed = io.KeyCtrl;
 
+  if (ctrlPressed) {
+    if (key == ImGuiKey_Z) {
+      if (shiftPressed) {
+        RedoProgrammingState();
+      } else {
+        UndoProgrammingState();
+      }
+      return;
+    }
+    if (key == ImGuiKey_Y) {
+      RedoProgrammingState();
+      return;
+    }
+  }
+
   if (!is_monitor_mode_) {
     switch (key) {
       case ImGuiKey_F5:
@@ -172,7 +187,12 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
         selected_rung_++;
       break;
     case ImGuiKey_F2:
-      is_monitor_mode_ = true;
+      if (!is_monitor_mode_) {
+        is_monitor_mode_ = true;
+        scan_time_initialized_ = false;
+        scan_accumulator_ = 0.0;
+        InitializeTimersAndCountersFromProgram();
+      }
       break;
     case ImGuiKey_F3:
       is_monitor_mode_ = false;
@@ -181,6 +201,7 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
 
   if (ctrlPressed && !is_monitor_mode_ &&
       (prev_rung != selected_rung_ || prev_cell != selected_cell_)) {
+    PushProgrammingUndoState();
     if (prev_rung == selected_rung_) {
       int step = (selected_cell_ > prev_cell) ? 1 : -1;
       for (int c = prev_cell; c != selected_cell_; c += step) {
@@ -357,6 +378,7 @@ void ProgrammingMode::ConfirmInstruction() {
   if (targetCell < 0 || targetCell >= 12)
     return;
 
+  PushProgrammingUndoState();
   rung.cells[targetCell] = newInstruction;
   UpdateHorizontalLines(selected_rung_);
   MarkDirty();
@@ -367,6 +389,7 @@ void ProgrammingMode::DeleteCurrentInstruction() {
       selected_cell_ < 0 || selected_cell_ >= 12)
     return;
 
+  PushProgrammingUndoState();
   ladder_program_.rungs[selected_rung_].cells[selected_cell_] =
       LadderInstruction();
   UpdateHorizontalLines(selected_rung_);
@@ -405,6 +428,7 @@ void ProgrammingMode::EditCurrentInstruction() {
 
 void ProgrammingMode::AddNewRung() {
   if (ladder_program_.rungs.empty()) {
+    PushProgrammingUndoState();
     ladder_program_.rungs.push_back(Rung());
     selected_rung_ = 0;
     selected_cell_ = 0;
@@ -418,6 +442,7 @@ void ProgrammingMode::AddNewRung() {
     insertIndex = selected_rung_ + 1;
   }
 
+  PushProgrammingUndoState();
   std::vector<bool> extendConnections;
   extendConnections.reserve(ladder_program_.verticalConnections.size());
   for (const auto& conn : ladder_program_.verticalConnections) {
@@ -470,6 +495,7 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
     return;
   }
 
+  PushProgrammingUndoState();
   // 1. ?몃줈???곌껐 ?뺣낫 ?낅뜲?댄듃
   std::vector<VerticalConnection> updatedConnections;
   for (const auto& conn : ladder_program_.verticalConnections) {
@@ -517,6 +543,7 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
 }
 
 void ProgrammingMode::InsertHorizontalLine() {
+  PushProgrammingUndoState();
   ladder_program_.rungs[selected_rung_].cells[selected_cell_].type =
       LadderInstructionType::HLINE;
   MarkDirty();
@@ -591,6 +618,7 @@ void ProgrammingMode::ConfirmVerticalConnection() {
   if (endRung > maxRung)
     return;
 
+  PushProgrammingUndoState();
   VerticalConnection newConnection(selected_cell_, startRung, endRung);
   ladder_program_.verticalConnections.push_back(newConnection);
 

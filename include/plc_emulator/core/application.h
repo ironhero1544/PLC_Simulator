@@ -113,6 +113,18 @@ namespace plc {
         bool LoadProject(const std::string& filePath);
 
     private:
+        struct WiringUndoState {
+          std::vector<PlacedComponent> components;
+          std::vector<Wire> wires;
+          int selected_component_id = -1;
+          int selected_wire_id = -1;
+          int next_instance_id = 0;
+          int next_wire_id = 0;
+          int next_z_order = 0;
+        };
+
+        static constexpr size_t kWiringUndoLimit = 50;
+
         enum class ComponentListViewMode {
           ICON,
           NAME
@@ -123,6 +135,11 @@ namespace plc {
           AUTOMATION,
           SEMICONDUCTOR
         };
+
+        // PLC scan period used for timer progression (seconds).
+        static constexpr double kPlcScanStepSeconds = 0.010;
+        static constexpr int kPlcScanStepMs =
+            static_cast<int>(kPlcScanStepSeconds * 1000.0 + 0.5);
 
         /**
          * @brief Initializes the GLFW window.
@@ -405,6 +422,11 @@ namespace plc {
         void RenderComponentContextMenu();
         void OpenComponentContextMenu(int component_id, ImVec2 screen_pos);
         void RotateSelectedComponent(int delta_quadrants);
+        WiringUndoState CaptureWiringState() const;
+        void ApplyWiringState(const WiringUndoState& state);
+        void PushWiringUndoState();
+        void UndoWiringState();
+        void RedoWiringState();
 
         // RenderWiringCanvas helper functions
 
@@ -623,6 +645,8 @@ namespace plc {
         // ???????????????? ????? ???????? ID?????????? ????????????.
         int next_instance_id_;
         int next_z_order_;
+        std::vector<WiringUndoState> wiring_undo_stack_;
+        std::vector<WiringUndoState> wiring_redo_stack_;
 
         // State variables for component drag-and-drop and movement.
         // ???????? ???????????? ???????????? ???? ?????????????

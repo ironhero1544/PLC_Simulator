@@ -133,10 +133,14 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
   if (elapsed_ms < 0) {
     elapsed_ms = 0;
   }
+  int elapsed_ms_int = static_cast<int>(elapsed_ms);
+  if (elapsed_ms_int < 0) {
+    elapsed_ms_int = 0;
+  }
   if (continuous_mode_) {
-    current_elapsed_ms_ = std::max(0, cycle_time_ms_);
+    current_elapsed_ms_ = std::max(elapsed_ms_int, cycle_time_ms_);
   } else {
-    current_elapsed_ms_ = static_cast<int>(elapsed_ms);
+    current_elapsed_ms_ = elapsed_ms_int;
   }
 
   if (instructions_.empty()) {

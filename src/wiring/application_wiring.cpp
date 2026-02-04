@@ -349,6 +349,7 @@ void Application::CompleteWireConnection(int componentId, int portId,
       Port* startPort = FindPortAtPosition(wire_start_pos_, startComponentId);
       if (startPort && startComponentId == wire_start_component_id_) {
         if (IsValidWireConnection(*startPort, *targetPort)) {
+          PushWiringUndoState();
           Wire newWire;
           newWire.id = next_wire_id_++;
           newWire.fromComponentId = wire_start_component_id_;
@@ -380,6 +381,11 @@ void Application::RenderWires(ImDrawList* draw_list) {
   const bool reveal_tagged = io.KeyAlt;
   Wire* hovered_tagged_wire =
       reveal_tagged ? FindTaggedWireAtScreenPos(io.MousePos) : nullptr;
+  const float wire_cull_margin = 80.0f * layout_scale;
+  ImVec2 canvas_min = canvas_top_left_;
+  ImVec2 canvas_max =
+      ImVec2(canvas_top_left_.x + canvas_size_.x,
+             canvas_top_left_.y + canvas_size_.y);
 
   auto draw_tag_label = [&](const TagLabelLayout& layout,
                             ImVec2 port_pos,
@@ -429,6 +435,7 @@ void Application::RenderWires(ImDrawList* draw_list) {
                        kTagTextColor, text.c_str());
   };
 
+  std::vector<ImVec2> waypoints_screen;
   for (auto& wire : wires_) {
     auto startIt =
         port_positions_.find({wire.fromComponentId, wire.fromPortId});
@@ -478,9 +485,29 @@ void Application::RenderWires(ImDrawList* draw_list) {
       wire_color = GetTagColor(wire.tagColorIndex);
     }
 
-    ImVec2 current_pos = start_screen_pos;
+    float min_x = std::min(start_screen_pos.x, end_screen_pos.x);
+    float max_x = std::max(start_screen_pos.x, end_screen_pos.x);
+    float min_y = std::min(start_screen_pos.y, end_screen_pos.y);
+    float max_y = std::max(start_screen_pos.y, end_screen_pos.y);
+    waypoints_screen.clear();
+    waypoints_screen.reserve(wire.wayPoints.size());
     for (const auto& wp : wire.wayPoints) {
       ImVec2 next_pos = WorldToScreen(wp);
+      waypoints_screen.push_back(next_pos);
+      min_x = std::min(min_x, next_pos.x);
+      max_x = std::max(max_x, next_pos.x);
+      min_y = std::min(min_y, next_pos.y);
+      max_y = std::max(max_y, next_pos.y);
+    }
+    if (max_x < canvas_min.x - wire_cull_margin ||
+        min_x > canvas_max.x + wire_cull_margin ||
+        max_y < canvas_min.y - wire_cull_margin ||
+        min_y > canvas_max.y + wire_cull_margin) {
+      continue;
+    }
+
+    ImVec2 current_pos = start_screen_pos;
+    for (const auto& next_pos : waypoints_screen) {
       draw_list->AddLine(current_pos, next_pos, wire_color, wire_thickness);
       current_pos = next_pos;
     }
@@ -489,8 +516,7 @@ void Application::RenderWires(ImDrawList* draw_list) {
     if (wire.id == selected_wire_id_) {
       ImU32 highlight_color = IM_COL32(255, 255, 0, 150);
       ImVec2 p1 = start_screen_pos;
-      for (const auto& wp : wire.wayPoints) {
-        ImVec2 p2 = WorldToScreen(wp);
+      for (const auto& p2 : waypoints_screen) {
         draw_list->AddLine(p1, p2, highlight_color, wire_thickness + 3.0f);
         p1 = p2;
       }
@@ -501,8 +527,8 @@ void Application::RenderWires(ImDrawList* draw_list) {
     if (wire.id == selected_wire_id_ ||
         (editing_wire_id_ == wire.id &&
          wire_edit_mode_ == WireEditMode::MOVING_POINT)) {
-      for (size_t i = 0; i < wire.wayPoints.size(); ++i) {
-        ImVec2 wp_pos = WorldToScreen(wire.wayPoints[i]);
+      for (size_t i = 0; i < waypoints_screen.size(); ++i) {
+        ImVec2 wp_pos = waypoints_screen[i];
         float radius = (editing_wire_id_ == wire.id && editing_point_index_ == static_cast<int>(i))
                            ? 8.0f
                            : 5.0f;
@@ -529,7 +555,68 @@ void Application::RenderWires(ImDrawList* draw_list) {
   }
 }
 
+Application::WiringUndoState Application::CaptureWiringState() const {
+  WiringUndoState state;
+  state.components = placed_components_;
+  state.wires = wires_;
+  state.selected_component_id = selected_component_id_;
+  state.selected_wire_id = selected_wire_id_;
+  state.next_instance_id = next_instance_id_;
+  state.next_wire_id = next_wire_id_;
+  state.next_z_order = next_z_order_;
+  return state;
+}
+
+void Application::ApplyWiringState(const WiringUndoState& state) {
+  placed_components_ = state.components;
+  wires_ = state.wires;
+  selected_component_id_ = state.selected_component_id;
+  selected_wire_id_ = state.selected_wire_id;
+  next_instance_id_ = state.next_instance_id;
+  next_wire_id_ = state.next_wire_id;
+  next_z_order_ = state.next_z_order;
+
+  is_dragging_ = false;
+  dragged_component_index_ = -1;
+  is_moving_component_ = false;
+  moving_component_id_ = -1;
+  is_connecting_ = false;
+  current_way_points_.clear();
+  wire_edit_mode_ = WireEditMode::NONE;
+  editing_wire_id_ = -1;
+  editing_point_index_ = -1;
+  show_tag_popup_ = false;
+  tag_edit_wire_id_ = -1;
+}
+
+void Application::PushWiringUndoState() {
+  wiring_undo_stack_.push_back(CaptureWiringState());
+  if (wiring_undo_stack_.size() > kWiringUndoLimit) {
+    wiring_undo_stack_.erase(wiring_undo_stack_.begin());
+  }
+  wiring_redo_stack_.clear();
+}
+
+void Application::UndoWiringState() {
+  if (wiring_undo_stack_.empty()) {
+    return;
+  }
+  wiring_redo_stack_.push_back(CaptureWiringState());
+  ApplyWiringState(wiring_undo_stack_.back());
+  wiring_undo_stack_.pop_back();
+}
+
+void Application::RedoWiringState() {
+  if (wiring_redo_stack_.empty()) {
+    return;
+  }
+  wiring_undo_stack_.push_back(CaptureWiringState());
+  ApplyWiringState(wiring_redo_stack_.back());
+  wiring_redo_stack_.pop_back();
+}
+
 void Application::DeleteWire(int wireId) {
+  PushWiringUndoState();
   wires_.erase(
       std::remove_if(wires_.begin(), wires_.end(),
                      [wireId](const Wire& wire) { return wire.id == wireId; }),
@@ -603,6 +690,7 @@ void Application::RenderWiringCanvas() {
       for (auto& wire : wires_) {
         int idx = FindWayPointAtPosition(wire, world_pos, kWaypointRadius);
         if (idx >= 0) {
+          PushWiringUndoState();
           clear_component_selection();
           selected_wire_id_ = wire.id;
           wire_edit_mode_ = WireEditMode::MOVING_POINT;
@@ -678,6 +766,7 @@ void Application::RenderWiringCanvas() {
                     comp.internalStates.count(state_keys::kIsPressedManual)
                         ? comp.internalStates.at(state_keys::kIsPressedManual)
                         : 0.0f;
+                PushWiringUndoState();
                 comp.internalStates[state_keys::kIsPressedManual] =
                     1.0f - current;
                 HandleComponentSelection(comp.instanceId);
@@ -1058,6 +1147,7 @@ void Application::RenderTagPopup() {
         }
       }
       if (target) {
+        PushWiringUndoState();
         std::string tag_text(tag_text_buffer_);
         if (tag_text.empty()) {
           target->isTagged = false;
@@ -1377,6 +1467,7 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
       }
     }
     if (tagged_wire && tagged_wire->isTagged) {
+      PushWiringUndoState();
       tagged_wire->isTagged = false;
       tagged_wire->tagText.clear();
       tagged_wire->tagColorIndex = 0;
@@ -1549,6 +1640,7 @@ void Application::RotateSelectedComponent(int delta_quadrants) {
   if (selected_component_id_ == -1) {
     return;
   }
+  PushWiringUndoState();
   PlacedComponent* comp = FindComponentById(selected_component_id_);
   ApplyRotationToComponent(comp, delta_quadrants);
 }
@@ -1558,6 +1650,7 @@ void Application::BringComponentToFront(int component_id) {
   if (!comp) {
     return;
   }
+  PushWiringUndoState();
   int max_z = std::numeric_limits<int>::min();
   for (const auto& entry : placed_components_) {
     max_z = std::max(max_z, entry.z_order);
@@ -1570,6 +1663,7 @@ void Application::SendComponentToBack(int component_id) {
   if (!comp) {
     return;
   }
+  PushWiringUndoState();
   int min_z = std::numeric_limits<int>::max();
   for (const auto& entry : placed_components_) {
     min_z = std::min(min_z, entry.z_order);
@@ -1578,6 +1672,7 @@ void Application::SendComponentToBack(int component_id) {
 }
 
 void Application::BringComponentForward(int component_id) {
+  PushWiringUndoState();
   std::vector<size_t> order(placed_components_.size());
   for (size_t i = 0; i < placed_components_.size(); ++i) {
     order[i] = i;
@@ -1606,6 +1701,7 @@ void Application::BringComponentForward(int component_id) {
 }
 
 void Application::SendComponentBackward(int component_id) {
+  PushWiringUndoState();
   std::vector<size_t> order(placed_components_.size());
   for (size_t i = 0; i < placed_components_.size(); ++i) {
     order[i] = i;
@@ -1670,17 +1766,20 @@ void Application::RenderComponentContextMenu() {
       if (ImGui::MenuItem(
               TR("ui.wiring.context.rotate_cw", "Rotate 90deg"))) {
         PlacedComponent* comp = FindComponentById(component_id);
+        PushWiringUndoState();
         ApplyRotationToComponent(comp, 1);
       }
       if (ImGui::MenuItem(
               TR("ui.wiring.context.rotate_ccw", "Rotate -90deg"))) {
         PlacedComponent* comp = FindComponentById(component_id);
+        PushWiringUndoState();
         ApplyRotationToComponent(comp, -1);
       }
       if (ImGui::MenuItem(
               TR("ui.wiring.context.flip_horizontal", "Flip Horizontal"))) {
         PlacedComponent* comp = FindComponentById(component_id);
         if (comp) {
+          PushWiringUndoState();
           comp->flip_x = !comp->flip_x;
         }
       }
@@ -1688,6 +1787,7 @@ void Application::RenderComponentContextMenu() {
               TR("ui.wiring.context.flip_vertical", "Flip Vertical"))) {
         PlacedComponent* comp = FindComponentById(component_id);
         if (comp) {
+          PushWiringUndoState();
           comp->flip_y = !comp->flip_y;
         }
       }

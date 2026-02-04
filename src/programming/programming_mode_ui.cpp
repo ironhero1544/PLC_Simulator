@@ -65,7 +65,12 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
                                           : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
     if (ImGui::Button("Monitor (F2)",
                       ImVec2(100 * layout_scale, 30 * layout_scale))) {
-      is_monitor_mode_ = true;
+      if (!is_monitor_mode_) {
+        is_monitor_mode_ = true;
+        scan_time_initialized_ = false;
+        scan_accumulator_ = 0.0;
+        InitializeTimersAndCountersFromProgram();
+      }
     }
     ImGui::PopStyleColor();
 
@@ -715,6 +720,8 @@ void ProgrammingMode::RenderKeyboardHelp() {
   ImGui::BulletText("Del: Delete");
   ImGui::BulletText("Insert: Add");
   ImGui::BulletText("Ctrl+Arrow: Toggle line path");
+  ImGui::BulletText("Ctrl+Z: Undo");
+  ImGui::BulletText("Ctrl+Y / Ctrl+Shift+Z: Redo");
 }
 
 void ProgrammingMode::RenderCursorInfo() {

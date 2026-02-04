@@ -477,7 +477,7 @@ bool Application::Initialize() {
   compiled_plc_executor_->SetDebugMode(false);
 
   compiled_plc_executor_->ResetMemory();
-  compiled_plc_executor_->SetContinuousExecution(true, 10);
+  compiled_plc_executor_->SetContinuousExecution(true, kPlcScanStepMs);
 
 
 
@@ -669,6 +669,12 @@ void Application::ProcessInput() {
           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_Enter);
 
+      if (ImGui::IsKeyPressed(ImGuiKey_Z, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_Z);
+
+      if (ImGui::IsKeyPressed(ImGuiKey_Y, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_Y);
+
       if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
 
         programming_mode_->HandleKeyboardInput(ImGuiKey_LeftArrow);
@@ -688,6 +694,18 @@ void Application::ProcessInput() {
     }
 
   } else {
+
+    if (io.KeyCtrl) {
+      if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+        if (io.KeyShift) {
+          RedoWiringState();
+        } else {
+          UndoWiringState();
+        }
+      } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+        RedoWiringState();
+      }
+    }
 
     static bool deleteKeyPressed = false;
 

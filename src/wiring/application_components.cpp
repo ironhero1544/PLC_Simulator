@@ -299,6 +299,8 @@ void Application::HandleComponentDrop(Position position) {
     std::cout << "CREATE: type=" << dragged_component_index_ << " at ("
               << position.x << "," << position.y << ")" << std::endl;
 
+    PushWiringUndoState();
+
     PlacedComponent newComponent;
     newComponent.instanceId = next_instance_id_++;
     newComponent.type = def->type;
@@ -341,6 +343,7 @@ void Application::HandleComponentSelection(int instanceId) {
 
 void Application::DeleteSelectedComponent() {
   if (selected_component_id_ >= 0) {
+    PushWiringUndoState();
     // ????????????? ???????? ????? ???
     wires_.erase(
         std::remove_if(wires_.begin(), wires_.end(),
@@ -366,6 +369,7 @@ void Application::HandleComponentMoveStart(int instanceId, ImVec2 mousePos) {
   // [PPT: ??? ???] for??? ?????? ???????????????????.
   for (auto& comp : placed_components_) {
     if (comp.instanceId == instanceId) {
+      PushWiringUndoState();
       is_moving_component_ = true;
       moving_component_id_ = instanceId;
       drag_start_offset_.x = mousePos.x - comp.position.x;
@@ -410,14 +414,31 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
   const ImGuiIO& io = ImGui::GetIO();
   const bool ghost_mode = io.KeyShift && selected_component_id_ != -1;
   const float ghost_alpha = 0.35f;
+  const float cull_margin = 120.0f;
+  ImVec2 view_top_left = ScreenToWorld(canvas_top_left_);
+  ImVec2 view_bottom_right = ScreenToWorld(
+      ImVec2(canvas_top_left_.x + canvas_size_.x,
+             canvas_top_left_.y + canvas_size_.y));
+  float view_min_x = std::min(view_top_left.x, view_bottom_right.x) - cull_margin;
+  float view_max_x = std::max(view_top_left.x, view_bottom_right.x) + cull_margin;
+  float view_min_y = std::min(view_top_left.y, view_bottom_right.y) - cull_margin;
+  float view_max_y = std::max(view_top_left.y, view_bottom_right.y) + cull_margin;
 
   for (size_t index : draw_order) {
     auto& comp = placed_components_[index];
+    const Size display = GetComponentDisplaySize(comp);
+    float comp_min_x = comp.position.x;
+    float comp_min_y = comp.position.y;
+    float comp_max_x = comp.position.x + display.width;
+    float comp_max_y = comp.position.y + display.height;
+    if (comp_max_x < view_min_x || comp_min_x > view_max_x ||
+        comp_max_y < view_min_y || comp_min_y > view_max_y) {
+      continue;
+    }
     if (comp.type == ComponentType::PLC) {
       comp.internalStates[state_keys::kPlcRunning] =
           is_plc_running_ ? 1.0f : 0.0f;
     }
-    const Size display = GetComponentDisplaySize(comp);
     ImVec2 screen_top_left = WorldToScreen({comp.position.x, comp.position.y});
     ImVec2 render_origin =
         GetComponentRenderOrigin(comp, screen_top_left, camera_zoom_);
@@ -466,6 +487,14 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
       continue;
     }
     const Size display = GetComponentDisplaySize(comp);
+    float comp_min_x = comp.position.x;
+    float comp_min_y = comp.position.y;
+    float comp_max_x = comp.position.x + display.width;
+    float comp_max_y = comp.position.y + display.height;
+    if (comp_max_x < view_min_x || comp_min_x > view_max_x ||
+        comp_max_y < view_min_y || comp_min_y > view_max_y) {
+      continue;
+    }
     ImVec2 screen_top_left = WorldToScreen({comp.position.x, comp.position.y});
     ImVec2 render_origin =
         GetComponentRenderOrigin(comp, screen_top_left, camera_zoom_);

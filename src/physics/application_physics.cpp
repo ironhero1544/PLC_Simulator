@@ -456,9 +456,10 @@ void UpdateCylinderComponent(size_t index, void* context) {
 void Application::UpdatePhysics() {
   using clock = std::chrono::steady_clock;
   constexpr double kPhysicsStep = 1.0 / 240.0;
-  constexpr double kPlcStep = 0.010;
+  constexpr double kPlcStep = kPlcScanStepSeconds;
   constexpr double kMaxFrameTime = 0.25;
   constexpr double kAdvancedPhysicsBudgetMs = 4.0;
+  constexpr double kAdvancedPhysicsStep = 1.0 / 120.0;
 
   auto now = clock::now();
   if (!physics_time_initialized_) {
@@ -505,6 +506,16 @@ void Application::UpdatePhysics() {
     static bool advanced_physics_disabled = false;
     static size_t advanced_disable_components = 0;
     static size_t advanced_disable_wires = 0;
+    static double advanced_accumulator = 0.0;
+    if (!is_plc_running_) {
+      advanced_accumulator = 0.0;
+    } else {
+      advanced_accumulator += kPhysicsStep;
+    }
+    bool run_advanced = advanced_accumulator >= kAdvancedPhysicsStep;
+    if (run_advanced) {
+      advanced_accumulator -= kAdvancedPhysicsStep;
+    }
     if (advanced_physics_disabled &&
         (placed_components_.size() != advanced_disable_components ||
          wires_.size() != advanced_disable_wires)) {
@@ -512,7 +523,8 @@ void Application::UpdatePhysics() {
     }
 
     // Advanced physics engine (optional enhancement)
-    if (!advanced_physics_disabled && is_plc_running_ && physics_engine_ &&
+    if (run_advanced && !advanced_physics_disabled && is_plc_running_ &&
+        physics_engine_ &&
         physics_engine_->isInitialized &&
         physics_engine_->networking.BuildNetworksFromWiring &&
         physics_engine_->IsSafeToRunSimulation &&
@@ -586,6 +598,7 @@ void Application::UpdatePhysics() {
       }
     }
   }
+
 
   bool plc_error = false;
   if (programming_mode_ && programming_mode_->HasCompileAttempted()) {
@@ -989,15 +1002,15 @@ void Application::SimulateElectrical() {
                           : kProcDrillUp;
       bool at_down = pos_val <= (kProcDrillDown + kProcEpsilon);
       bool at_up = pos_val >= (kProcDrillUp - kProcEpsilon);
-      int power0_index = get_index(comp.instanceId, 4);
+      int power24_index = get_index(comp.instanceId, 0);
       int sensor_fwd_index = get_index(comp.instanceId, 1);
       int sensor_rev_index = get_index(comp.instanceId, 2);
-      if (power0_index >= 0) {
+      if (power24_index >= 0) {
         if (at_down && sensor_fwd_index >= 0) {
-          unite(power0_index, sensor_fwd_index);
+          unite(power24_index, sensor_fwd_index);
         }
         if (at_up && sensor_rev_index >= 0) {
-          unite(power0_index, sensor_rev_index);
+          unite(power24_index, sensor_rev_index);
         }
       }
     } else if (comp.type == ComponentType::BUTTON_UNIT) {
@@ -1502,67 +1515,253 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
   const float kSnapDistance = 10.0f;
   const float kConveyorSpeed = 60.0f;
   const int kMaxWorkpieceSubsteps = 60;
+  const float kMaxStepDistance = 2.0f;
+  constexpr float kRingCenterX = 30.0f;
+  constexpr float kRingCenterY = 28.0f;
+  constexpr float kRingDetectRadius = 18.0f;
 
-  for (auto& sensor : placed_components_) {
-    if (sensor.type == ComponentType::RING_SENSOR ||
-        sensor.type == ComponentType::INDUCTIVE_SENSOR) {
-      sensor.internalStates[state_keys::kIsDetected] = 0.0f;
-    }
-  }
+  std::vector<int> workpiece_indices;
+  std::vector<int> conveyor_indices;
+  std::vector<int> cylinder_indices;
+  std::vector<int> processing_indices;
+  std::vector<int> box_indices;
+  std::vector<int> sensor_indices;
+  workpiece_indices.reserve(placed_components_.size());
+  conveyor_indices.reserve(placed_components_.size());
+  cylinder_indices.reserve(placed_components_.size());
+  processing_indices.reserve(placed_components_.size());
+  box_indices.reserve(placed_components_.size());
+  sensor_indices.reserve(placed_components_.size());
 
   float max_speed = 0.0f;
-  for (const auto& workpiece : placed_components_) {
-    if (!IsWorkpiece(workpiece.type)) {
+  for (size_t i = 0; i < placed_components_.size(); ++i) {
+    auto& comp = placed_components_[i];
+    if (IsWorkpiece(comp.type)) {
+      workpiece_indices.push_back(static_cast<int>(i));
+      float vel_x = comp.internalStates.count(state_keys::kVelX)
+                        ? comp.internalStates.at(state_keys::kVelX)
+                        : 0.0f;
+      float vel_y = comp.internalStates.count(state_keys::kVelY)
+                        ? comp.internalStates.at(state_keys::kVelY)
+                        : 0.0f;
+      float speed = std::sqrt(vel_x * vel_x + vel_y * vel_y);
+      if (speed > max_speed) {
+        max_speed = speed;
+      }
       continue;
     }
-    float vel_x = workpiece.internalStates.count(state_keys::kVelX)
-                      ? workpiece.internalStates.at(state_keys::kVelX)
-                      : 0.0f;
-    float vel_y = workpiece.internalStates.count(state_keys::kVelY)
-                      ? workpiece.internalStates.at(state_keys::kVelY)
-                      : 0.0f;
-    float speed = std::sqrt(vel_x * vel_x + vel_y * vel_y);
-    if (speed > max_speed) {
-      max_speed = speed;
+
+    switch (comp.type) {
+      case ComponentType::CONVEYOR:
+        conveyor_indices.push_back(static_cast<int>(i));
+        break;
+      case ComponentType::CYLINDER:
+        cylinder_indices.push_back(static_cast<int>(i));
+        break;
+      case ComponentType::PROCESSING_CYLINDER:
+        processing_indices.push_back(static_cast<int>(i));
+        break;
+      case ComponentType::BOX:
+        box_indices.push_back(static_cast<int>(i));
+        break;
+      case ComponentType::RING_SENSOR:
+      case ComponentType::INDUCTIVE_SENSOR:
+        comp.internalStates[state_keys::kIsDetected] = 0.0f;
+        sensor_indices.push_back(static_cast<int>(i));
+        break;
+      default:
+        break;
     }
   }
 
-  int substeps = static_cast<int>(std::ceil(max_speed));
-  if (substeps < 4) {
-    substeps = 4;
+  if (workpiece_indices.empty()) {
+    return;
+  }
+
+  float max_displacement = max_speed * delta_time;
+  int substeps = static_cast<int>(std::ceil(max_displacement / kMaxStepDistance));
+  if (substeps < 1) {
+    substeps = 1;
   } else if (substeps > kMaxWorkpieceSubsteps) {
     substeps = kMaxWorkpieceSubsteps;
   }
   float step_dt = delta_time / static_cast<float>(substeps);
 
+  struct SensorCache {
+    int index = -1;
+    ComponentType type = ComponentType::PLC;
+    Aabb box{};
+    ImVec2 center{};
+    ImVec2 forward{};
+    ImVec2 ring_center{};
+    std::string snap_key;
+  };
+
+  struct ConveyorCache {
+    int index = -1;
+    Aabb box{};
+    ImVec2 dir{};
+  };
+
+  struct CylinderCache {
+    int index = -1;
+    Aabb box{};
+    float velocity = 0.0f;
+    ImVec2 rod_tip{};
+    ImVec2 rod_dir{};
+    ImVec2 rod_vel{};
+    Aabb rod_swept{};
+    std::string snap_key;
+  };
+
+  struct ProcCylinderCache {
+    int index = -1;
+    Aabb head_box{};
+    float center_x = 0.0f;
+    float center_y = 0.0f;
+    bool is_down = false;
+    bool motor_on = false;
+    std::string ready_key;
+    std::string snap_key;
+  };
+
+  struct BoxCache {
+    Aabb box{};
+  };
+
+  std::vector<SensorCache> sensor_caches;
+  sensor_caches.reserve(sensor_indices.size());
+  for (int idx : sensor_indices) {
+    const auto& sensor = placed_components_[idx];
+    SensorCache cache;
+    cache.index = idx;
+    cache.type = sensor.type;
+    cache.box = GetAabb(sensor);
+    if (sensor.type == ComponentType::RING_SENSOR) {
+      cache.ring_center =
+          LocalToWorld(sensor, ImVec2(kRingCenterX, kRingCenterY));
+      cache.snap_key =
+          std::string("snap_lock_ring_") + std::to_string(sensor.instanceId);
+    } else if (sensor.type == ComponentType::INDUCTIVE_SENSOR) {
+      cache.center = GetSensorCenterWorld(sensor);
+      cache.forward = LocalDirToWorld(sensor, ImVec2(0.0f, -1.0f));
+    }
+    sensor_caches.push_back(cache);
+  }
+
+  std::vector<ConveyorCache> conveyor_caches;
+  conveyor_caches.reserve(conveyor_indices.size());
+  for (int idx : conveyor_indices) {
+    const auto& comp = placed_components_[idx];
+    bool active = comp.internalStates.count(state_keys::kMotorActive) &&
+                  comp.internalStates.at(state_keys::kMotorActive) > 0.5f;
+    if (!active) {
+      continue;
+    }
+    ConveyorCache cache;
+    cache.index = idx;
+    cache.box = GetAabb(comp);
+    cache.dir = LocalDirToWorld(comp, ImVec2(1.0f, 0.0f));
+    conveyor_caches.push_back(cache);
+  }
+
+  std::vector<CylinderCache> cylinder_caches;
+  cylinder_caches.reserve(cylinder_indices.size());
+  for (int idx : cylinder_indices) {
+    const auto& comp = placed_components_[idx];
+    CylinderCache cache;
+    cache.index = idx;
+    cache.box = GetAabb(comp);
+    cache.velocity =
+        comp.internalStates.count(state_keys::kVelocity)
+            ? comp.internalStates.at(state_keys::kVelocity)
+            : 0.0f;
+    cache.rod_tip = GetCylinderRodTipWorld(comp);
+    cache.rod_dir = LocalDirToWorld(comp, ImVec2(-1.0f, 0.0f));
+    cache.rod_vel =
+        ImVec2(cache.rod_dir.x * cache.velocity,
+               cache.rod_dir.y * cache.velocity);
+    ImVec2 sweep(cache.rod_vel.x * step_dt, cache.rod_vel.y * step_dt);
+    const float kRodHitLeft = 12.0f;
+    const float kRodHitRight = 20.0f;
+    float rod_radius = std::max(kRodHitLeft, kRodHitRight);
+    float rod_min_x =
+        std::min(cache.rod_tip.x, cache.rod_tip.x + sweep.x) - rod_radius;
+    float rod_max_x =
+        std::max(cache.rod_tip.x, cache.rod_tip.x + sweep.x) + rod_radius;
+    float rod_min_y =
+        std::min(cache.rod_tip.y, cache.rod_tip.y + sweep.y) - rod_radius;
+    float rod_max_y =
+        std::max(cache.rod_tip.y, cache.rod_tip.y + sweep.y) + rod_radius;
+    cache.rod_swept = {rod_min_x, rod_min_y, rod_max_x, rod_max_y};
+    cache.snap_key =
+        std::string("snap_lock_cyl_") + std::to_string(comp.instanceId);
+    cylinder_caches.push_back(cache);
+  }
+
+  std::vector<ProcCylinderCache> proc_cylinder_caches;
+  proc_cylinder_caches.reserve(processing_indices.size());
+  for (int idx : processing_indices) {
+    const auto& comp = placed_components_[idx];
+    constexpr float kProcDrillUp = 30.0f;
+    constexpr float kProcDrillDown = 15.0f;
+    constexpr float kProcEpsilon = 0.1f;
+    ProcCylinderCache cache;
+    cache.index = idx;
+    Aabb cyl_box = GetAabb(comp);
+    float pos_val =
+        comp.internalStates.count(state_keys::kPosition)
+            ? comp.internalStates.at(state_keys::kPosition)
+            : kProcDrillUp;
+    cache.is_down = pos_val <= (kProcDrillDown + kProcEpsilon);
+    cache.motor_on =
+        comp.internalStates.count(state_keys::kMotorOn) &&
+        comp.internalStates.at(state_keys::kMotorOn) > 0.5f;
+    cache.center_x = cyl_box.min_x + 60.0f;
+    cache.center_y = cyl_box.min_y + 90.0f;
+    float head_radius = 30.0f;
+    cache.head_box.min_x = cache.center_x - head_radius;
+    cache.head_box.max_x = cache.center_x + head_radius;
+    cache.head_box.min_y = cache.center_y - head_radius;
+    cache.head_box.max_y = cache.center_y + head_radius;
+    cache.ready_key =
+        std::string("proc_ready_") + std::to_string(comp.instanceId);
+    cache.snap_key =
+        std::string("snap_lock_proc_") + std::to_string(comp.instanceId);
+    proc_cylinder_caches.push_back(cache);
+  }
+
+  std::vector<BoxCache> box_caches;
+  box_caches.reserve(box_indices.size());
+  for (int idx : box_indices) {
+    const auto& comp = placed_components_[idx];
+    BoxCache cache;
+    cache.box = GetAabb(comp);
+    box_caches.push_back(cache);
+  }
+
   auto apply_sensor_detection = [&](PlacedComponent& workpiece,
                                     bool allow_snap) {
     Aabb workpiece_detection = GetWorkpieceDetectionAabb(workpiece);
     Aabb workpiece_box = GetAabb(workpiece);
-    constexpr float kRingCenterX = 30.0f;
-    constexpr float kRingCenterY = 28.0f;
-    constexpr float kRingDetectRadius = 18.0f;
-    for (auto& sensor : placed_components_) {
-      if (sensor.type != ComponentType::RING_SENSOR &&
-          sensor.type != ComponentType::INDUCTIVE_SENSOR) {
-        continue;
-      }
-      Aabb sensor_box = GetAabb(sensor);
+    for (const auto& cache : sensor_caches) {
+      auto& sensor = placed_components_[cache.index];
+      const bool is_ring = cache.type == ComponentType::RING_SENSOR;
+      const bool is_inductive = cache.type == ComponentType::INDUCTIVE_SENSOR;
+      Aabb sensor_box = cache.box;
       const bool overlaps_detection =
           AabbOverlaps(workpiece_detection, sensor_box);
       const bool overlaps_body = AabbOverlaps(workpiece_box, sensor_box);
       std::string snap_key;
-      if (sensor.type == ComponentType::RING_SENSOR) {
-        snap_key = std::string("snap_lock_ring_") +
-                   std::to_string(sensor.instanceId);
+      if (is_ring) {
+        snap_key = cache.snap_key;
         if (!overlaps_body) {
           workpiece.internalStates[snap_key] = 0.0f;
         }
         if (!overlaps_detection) {
           continue;
         }
-        ImVec2 ring_center = LocalToWorld(
-            sensor, ImVec2(kRingCenterX, kRingCenterY));
+        ImVec2 ring_center = cache.ring_center;
         ImVec2 work_center = {workpiece.position.x +
                                   workpiece.size.width * 0.5f,
                               workpiece.position.y +
@@ -1576,7 +1775,7 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
       } else if (!overlaps_detection) {
         continue;
       }
-      if (sensor.type == ComponentType::INDUCTIVE_SENSOR) {
+      if (is_inductive) {
         bool is_metal =
             workpiece.type == ComponentType::WORKPIECE_METAL ||
             (workpiece.internalStates.count(state_keys::kIsMetal) &&
@@ -1584,8 +1783,8 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         if (!is_metal) {
           continue;
         }
-        ImVec2 sensor_center = GetSensorCenterWorld(sensor);
-        ImVec2 sensor_forward = LocalDirToWorld(sensor, ImVec2(0.0f, -1.0f));
+        ImVec2 sensor_center = cache.center;
+        ImVec2 sensor_forward = cache.forward;
         ImVec2 work_center = {workpiece.position.x +
                                   workpiece.size.width * 0.5f,
                               workpiece.position.y +
@@ -1598,15 +1797,14 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         }
       }
       sensor.internalStates[state_keys::kIsDetected] = 1.0f;
-      if (allow_snap && sensor.type == ComponentType::RING_SENSOR) {
+      if (allow_snap && is_ring) {
         bool snap_locked =
             workpiece.internalStates.count(snap_key) &&
             workpiece.internalStates.at(snap_key) > 0.5f;
         if (snap_locked) {
           continue;
         }
-        ImVec2 ring_center = LocalToWorld(
-            sensor, ImVec2(kRingCenterX, kRingCenterY));
+        ImVec2 ring_center = cache.ring_center;
         float center_x = ring_center.x;
         float center_y = ring_center.y;
         float delta_x =
@@ -1626,10 +1824,8 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
   };
 
   for (int step = 0; step < substeps; ++step) {
-    for (auto& workpiece : placed_components_) {
-      if (!IsWorkpiece(workpiece.type)) {
-        continue;
-      }
+    for (int workpiece_index : workpiece_indices) {
+      auto& workpiece = placed_components_[workpiece_index];
 
       bool manual_drag =
           workpiece.internalStates.count(state_keys::kIsManualDrag) &&
@@ -1660,21 +1856,11 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
       bool on_conveyor = false;
       bool pushed_by_cylinder = false;
 
-      for (const auto& comp : placed_components_) {
-        if (comp.type != ComponentType::CONVEYOR) {
-          continue;
-        }
-        bool active = comp.internalStates.count(state_keys::kMotorActive) &&
-                      comp.internalStates.at(state_keys::kMotorActive) > 0.5f;
-        if (!active) {
-          continue;
-        }
-        Aabb conveyor_box = GetAabb(comp);
-        if (AabbOverlaps(workpiece_box, conveyor_box)) {
+      for (const auto& conveyor : conveyor_caches) {
+        if (AabbOverlaps(workpiece_box, conveyor.box)) {
           on_conveyor = true;
-          ImVec2 dir = LocalDirToWorld(comp, ImVec2(1.0f, 0.0f));
-          vel_x = dir.x * kConveyorSpeed;
-          vel_y = dir.y * kConveyorSpeed;
+          vel_x = conveyor.dir.x * kConveyorSpeed;
+          vel_y = conveyor.dir.y * kConveyorSpeed;
         }
       }
 
@@ -1683,39 +1869,20 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         vel_y = 0.0f;
       }
 
-      for (const auto& comp : placed_components_) {
-        if (comp.type != ComponentType::CYLINDER) {
-          continue;
-        }
-        float velocity =
-            comp.internalStates.count(state_keys::kVelocity)
-                ? comp.internalStates.at(state_keys::kVelocity)
-                : 0.0f;
-        std::string snap_key =
-            std::string("snap_lock_cyl_") + std::to_string(comp.instanceId);
+      for (const auto& cylinder : cylinder_caches) {
+        float velocity = cylinder.velocity;
+        const std::string& snap_key = cylinder.snap_key;
         const float kSnapReleaseVelocity = 0.5f;
         if (std::abs(velocity) <= kSnapReleaseVelocity) {
           workpiece.internalStates[snap_key] = 0.0f;
           continue;
         }
-        ImVec2 rod_tip = GetCylinderRodTipWorld(comp);
-        ImVec2 rod_dir = LocalDirToWorld(comp, ImVec2(-1.0f, 0.0f));
-        ImVec2 rod_vel(rod_dir.x * velocity, rod_dir.y * velocity);
-        ImVec2 sweep(rod_vel.x * step_dt, rod_vel.y * step_dt);
-        const float kRodHitLeft = 12.0f;
-        const float kRodHitRight = 20.0f;
-        float rod_radius = std::max(kRodHitLeft, kRodHitRight);
-        float rod_min_x =
-            std::min(rod_tip.x, rod_tip.x + sweep.x) - rod_radius;
-        float rod_max_x =
-            std::max(rod_tip.x, rod_tip.x + sweep.x) + rod_radius;
-        float rod_min_y =
-            std::min(rod_tip.y, rod_tip.y + sweep.y) - rod_radius;
-        float rod_max_y =
-            std::max(rod_tip.y, rod_tip.y + sweep.y) + rod_radius;
-        Aabb rod_swept = {rod_min_x, rod_min_y, rod_max_x, rod_max_y};
+        ImVec2 rod_tip = cylinder.rod_tip;
+        ImVec2 rod_dir = cylinder.rod_dir;
+        ImVec2 rod_vel = cylinder.rod_vel;
+        Aabb rod_swept = cylinder.rod_swept;
         bool snapped_to_cylinder = false;
-        Aabb cylinder_box = GetAabb(comp);
+        Aabb cylinder_box = cylinder.box;
         if (!AabbOverlaps(workpiece_box, cylinder_box)) {
           workpiece.internalStates[snap_key] = 0.0f;
         }
@@ -1777,49 +1944,31 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         on_conveyor = false;
       }
 
-      for (const auto& comp : placed_components_) {
-        if (comp.type != ComponentType::PROCESSING_CYLINDER) {
-          continue;
-        }
-        constexpr float kProcDrillUp = 30.0f;
-        constexpr float kProcDrillDown = 15.0f;
-        constexpr float kProcEpsilon = 0.1f;
-
-        Aabb cyl_box = GetAabb(comp);
-        float pos_val =
-            comp.internalStates.count(state_keys::kPosition)
-                ? comp.internalStates.at(state_keys::kPosition)
-                : kProcDrillUp;
-        float pos_norm =
-            (kProcDrillUp - pos_val) / (kProcDrillUp - kProcDrillDown);
-        pos_norm = std::max(0.0f, std::min(1.0f, pos_norm));
-        float center_x = cyl_box.min_x + 60.0f;
-        float center_y = cyl_box.min_y + 90.0f;
-        float head_radius = 30.0f;
-        Aabb head_box;
-        head_box.min_x = center_x - head_radius;
-        head_box.max_x = center_x + head_radius;
-        head_box.min_y = center_y - head_radius;
-        head_box.max_y = center_y + head_radius;
-
-        bool is_down = pos_val <= (kProcDrillDown + kProcEpsilon);
-        bool motor_on =
-            comp.internalStates.count(state_keys::kMotorOn) &&
-            comp.internalStates.at(state_keys::kMotorOn) > 0.5f;
-        std::string ready_key =
-            std::string("proc_ready_") + std::to_string(comp.instanceId);
+      for (const auto& proc : proc_cylinder_caches) {
+        bool is_down = proc.is_down;
+        bool motor_on = proc.motor_on;
+        const std::string& ready_key = proc.ready_key;
+        const std::string& snap_key = proc.snap_key;
         bool ready = workpiece.internalStates.count(ready_key) &&
                      workpiece.internalStates.at(ready_key) > 0.5f;
-
-        bool overlapping = AabbOverlaps(workpiece_box, head_box);
-        bool should_snap = overlapping;
-        if (should_snap) {
+        bool overlapping = AabbOverlaps(workpiece_box, proc.head_box);
+        if (!overlapping) {
+          workpiece.internalStates[snap_key] = 0.0f;
+        }
+        bool snap_locked =
+            workpiece.internalStates.count(snap_key) &&
+            workpiece.internalStates.at(snap_key) > 0.5f;
+        if (overlapping && !snap_locked) {
           workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
-          workpiece.position.x = center_x - workpiece.size.width * 0.5f;
-          workpiece.position.y = center_y - workpiece.size.height * 0.5f;
+          workpiece.position.x = proc.center_x - workpiece.size.width * 0.5f;
+          workpiece.position.y = proc.center_y - workpiece.size.height * 0.5f;
           vel_x = 0.0f;
           vel_y = 0.0f;
           workpiece_box = GetAabb(workpiece);
+          ready = true;
+          workpiece.internalStates[snap_key] = 1.0f;
+        } else if (overlapping) {
+          workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
           ready = true;
         } else if (!overlapping) {
           ready = false;
@@ -1837,15 +1986,13 @@ void Application::UpdateWorkpieceInteractions(float delta_time) {
         workpiece.internalStates[ready_key] = ready ? 1.0f : 0.0f;
       }
 
-      for (const auto& comp : placed_components_) {
-        if (comp.type != ComponentType::BOX) {
-          continue;
-        }
-        Aabb box = GetAabb(comp);
-        if (AabbOverlaps(workpiece_box, box)) {
+      for (const auto& box_cache : box_caches) {
+        if (AabbOverlaps(workpiece_box, box_cache.box)) {
           workpiece.internalStates[state_keys::kIsStuckBox] = 1.0f;
-          workpiece.position.x = GetCenterX(box) - workpiece.size.width * 0.5f;
-          workpiece.position.y = GetCenterY(box) - workpiece.size.height * 0.5f;
+          workpiece.position.x =
+              GetCenterX(box_cache.box) - workpiece.size.width * 0.5f;
+          workpiece.position.y =
+              GetCenterY(box_cache.box) - workpiece.size.height * 0.5f;
           vel_x = 0.0f;
           vel_y = 0.0f;
           break;

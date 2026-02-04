@@ -51,7 +51,27 @@ void ProgrammingMode::SimulateLadderProgram() {
     return;
   }
 
-  ExecuteWithOpenPLCEngine();
+  auto now = std::chrono::steady_clock::now();
+  if (!scan_time_initialized_) {
+    last_scan_time_ = now;
+    scan_time_initialized_ = true;
+    return;
+  }
+
+  double delta_seconds =
+      std::chrono::duration<double>(now - last_scan_time_).count();
+  last_scan_time_ = now;
+  if (delta_seconds < 0.0) {
+    delta_seconds = 0.0;
+  } else if (delta_seconds > kMaxScanCatchupSeconds) {
+    delta_seconds = kMaxScanCatchupSeconds;
+  }
+
+  scan_accumulator_ += delta_seconds;
+  while (scan_accumulator_ >= kDefaultScanStepSeconds) {
+    ExecuteWithOpenPLCEngine();
+    scan_accumulator_ -= kDefaultScanStepSeconds;
+  }
 }
 
 void ProgrammingMode::ExecuteWithOpenPLCEngine() {
@@ -197,6 +217,7 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
   compile_error_rung_hashes_.clear();
   last_failed_hash_ = 0;
   use_compiled_engine_ = true;
+  InitializeTimersAndCountersFromProgram();
 
   std::cout << "[COMPILE] OpenPLC engine loaded successfully ("
             << result.generatedCode.length() << " chars)" << std::endl;

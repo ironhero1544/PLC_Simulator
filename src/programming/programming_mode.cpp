@@ -37,8 +37,6 @@
 
 namespace plc {
 
-
-
 ProgrammingMode::ProgrammingMode(plc::Application* app)
 
     : application_(app),
@@ -76,6 +74,7 @@ ProgrammingMode::ProgrammingMode(plc::Application* app)
 
 
   plc_executor_->SetDebugMode(false);
+  plc_executor_->SetContinuousExecution(true, kDefaultScanStepMs);
 
 
 
@@ -88,6 +87,8 @@ ProgrammingMode::ProgrammingMode(plc::Application* app)
 
 
   last_safe_update_ = std::chrono::steady_clock::now();
+  scan_time_initialized_ = false;
+  scan_accumulator_ = 0.0;
 
 
 
@@ -331,6 +332,9 @@ void ProgrammingMode::UpdateWithPlcState(bool isPlcRunning) {
     if (!is_monitor_mode_) {
 
       std::cout << "[PLC] Activating monitor mode for simulation" << std::endl;
+      scan_time_initialized_ = false;
+      scan_accumulator_ = 0.0;
+      InitializeTimersAndCountersFromProgram();
 
     }
 
@@ -572,6 +576,9 @@ void ProgrammingMode::SetLadderProgram(const LadderProgram& program) {
 
 
   InitializeTimersAndCountersFromProgram();
+
+  programming_undo_stack_.clear();
+  programming_redo_stack_.clear();
 
 
 
@@ -1047,6 +1054,60 @@ void ProgrammingMode::MarkDirty() {
   UpdateCompileErrorRungsOnEdit();
 }
 
+void ProgrammingMode::PushProgrammingUndoState() {
+  ProgrammingUndoState state;
+  state.program = DeepCopyLadderProgram(ladder_program_);
+  state.selected_rung = selected_rung_;
+  state.selected_cell = selected_cell_;
+  programming_undo_stack_.push_back(state);
+  if (programming_undo_stack_.size() > kProgrammingUndoLimit) {
+    programming_undo_stack_.erase(programming_undo_stack_.begin());
+  }
+  programming_redo_stack_.clear();
+}
+
+void ProgrammingMode::UndoProgrammingState() {
+  if (is_monitor_mode_ || programming_undo_stack_.empty()) {
+    return;
+  }
+  ProgrammingUndoState current;
+  current.program = DeepCopyLadderProgram(ladder_program_);
+  current.selected_rung = selected_rung_;
+  current.selected_cell = selected_cell_;
+  programming_redo_stack_.push_back(current);
+
+  ProgrammingUndoState state = programming_undo_stack_.back();
+  programming_undo_stack_.pop_back();
+  ladder_program_ = DeepCopyLadderProgram(state.program);
+  selected_rung_ = std::max(
+      0, std::min(state.selected_rung,
+                  static_cast<int>(ladder_program_.rungs.size()) - 1));
+  selected_cell_ = std::max(0, std::min(state.selected_cell, 11));
+  InitializeTimersAndCountersFromProgram();
+  MarkDirty();
+}
+
+void ProgrammingMode::RedoProgrammingState() {
+  if (is_monitor_mode_ || programming_redo_stack_.empty()) {
+    return;
+  }
+  ProgrammingUndoState current;
+  current.program = DeepCopyLadderProgram(ladder_program_);
+  current.selected_rung = selected_rung_;
+  current.selected_cell = selected_cell_;
+  programming_undo_stack_.push_back(current);
+
+  ProgrammingUndoState state = programming_redo_stack_.back();
+  programming_redo_stack_.pop_back();
+  ladder_program_ = DeepCopyLadderProgram(state.program);
+  selected_rung_ = std::max(
+      0, std::min(state.selected_rung,
+                  static_cast<int>(ladder_program_.rungs.size()) - 1));
+  selected_cell_ = std::max(0, std::min(state.selected_cell, 11));
+  InitializeTimersAndCountersFromProgram();
+  MarkDirty();
+}
+
 size_t ProgrammingMode::ComputeRungHash(const Rung& rung) const {
   auto hash_combine = [](size_t& seed, size_t v) {
     seed ^= v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
@@ -1223,9 +1284,7 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     } else {
 
-      if (preset > 0)
-
-        it->second.preset = preset;
+      it->second.preset = preset;
 
     }
 
@@ -1292,9 +1351,7 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     } else {
 
-      if (preset > 0)
-
-        it->second.preset = preset;
+      it->second.preset = preset;
 
     }
 

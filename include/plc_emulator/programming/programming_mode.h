@@ -417,6 +417,9 @@ class ProgrammingMode {
       false;  // ?湲?占쏙옙???곹깭 ?낅뜲?댄듃媛 ?덈뒗吏 ?щ?
   std::chrono::steady_clock::time_point
       last_safe_update_;  // 留덉?留??덉쟾???낅뜲?댄듃 ?쒓컙
+  std::chrono::steady_clock::time_point last_scan_time_;
+  double scan_accumulator_ = 0.0;
+  bool scan_time_initialized_ = false;
 
   bool show_address_popup_;
   bool show_vertical_dialog_;
@@ -433,6 +436,9 @@ class ProgrammingMode {
   void UpdateCompileErrorRungsOnCompileFailure(
       const std::string& ldCode, const std::string& errorMessage);
   void MarkDirty();  // 더티 표시 헬퍼
+  void PushProgrammingUndoState();
+  void UndoProgrammingState();
+  void RedoProgrammingState();
 
   void InitializeTimersAndCountersFromProgram();
 
@@ -450,6 +456,22 @@ class ProgrammingMode {
   bool gx2_normalization_enabled_ = true;   // 湲곕낯 ON
   int last_normalization_fix_count_ = 0;     // 理쒓렐 ?뺢퇋?붿뿉???곸슜???섏젙 ??
   std::string last_normalization_summary_;  // 理쒓렐 ?뺢퇋???붿빟(寃쎄퀬/蹂댁젙 ?댁뿭)
+
+  struct ProgrammingUndoState {
+    LadderProgram program;
+    int selected_rung = 0;
+    int selected_cell = 0;
+  };
+
+  static constexpr size_t kProgrammingUndoLimit = 50;
+
+  std::vector<ProgrammingUndoState> programming_undo_stack_;
+  std::vector<ProgrammingUndoState> programming_redo_stack_;
+
+  static constexpr double kDefaultScanStepSeconds = 0.010;
+  static constexpr double kMaxScanCatchupSeconds = 0.25;
+  static constexpr int kDefaultScanStepMs =
+      static_cast<int>(kDefaultScanStepSeconds * 1000.0 + 0.5);
 };
 }  // namespace plc
 #endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
