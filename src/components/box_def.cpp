@@ -17,7 +17,7 @@ void RenderBox(ImDrawList* draw_list,
   draw_list->AddRectFilled(pos, {pos.x + size.x, pos.y + size.y},
                            IM_COL32(101, 67, 33, 255));
 
-  draw_list->PushClipRect(pos, {pos.x + size.x, pos.y + size.y});
+  draw_list->PushClipRect(pos, {pos.x + size.x, pos.y + size.y}, true);
   for (float x = -size.y; x < size.x; x += 20.0f * zoom) {
     draw_list->AddLine({pos.x + x, pos.y},
                        {pos.x + x + size.y, pos.y + size.y},

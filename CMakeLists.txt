@@ -54,6 +54,8 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(glfw glad imgui nlohmann_json miniz)
 
+add_subdirectory(third_party/box2d)
+
 add_library(imgui_lib
         ${imgui_SOURCE_DIR}/imgui.cpp
         ${imgui_SOURCE_DIR}/imgui_demo.cpp
@@ -78,6 +80,13 @@ add_executable(${PROJECT_NAME}
         
         # Core
         src/core/application.cpp
+        src/application/app_layout.cpp
+        src/application/app_lod.cpp
+        src/application/app_input.cpp
+        src/application/app_debug.cpp
+        src/application/app_render.cpp
+        src/application/app_project.cpp
+        src/application/app_lifecycle.cpp
         src/core/win32_input.cpp
         src/core/ui_settings.cpp
         src/core/data_types.cpp
@@ -132,6 +141,17 @@ add_executable(${PROJECT_NAME}
         src/physics/component_physics_adapter.cpp
         src/physics/physics_solvers.cpp
         src/physics/application_physics.cpp
+        src/application_physics/physics_task_runner.cpp
+        src/application_physics/physics_update.cpp
+        src/application_physics/physics_box2d.cpp
+        src/application_physics/physics_electrical.cpp
+        src/application_physics/physics_pneumatic.cpp
+        src/application_physics/physics_actuators.cpp
+        src/application_physics/physics_workpiece.cpp
+        src/application_physics/physics_ports.cpp
+        src/application_physics/physics_plc.cpp
+        src/application_physics/physics_sync.cpp
+        src/application_physics/physics_stats.cpp
         
         # I/O
         src/io/io_mapper.cpp
@@ -218,6 +238,7 @@ set(LINK_LIBS
         imgui_lib
         glad
         miniz
+        box2d
         OpenGL::GL
 )
 

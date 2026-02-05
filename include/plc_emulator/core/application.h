@@ -21,6 +21,7 @@
 #include "plc_emulator/project/project_file_manager.h"
 
 #include <chrono>
+#include <cstdint>
 #include <mutex>
 #include <map>
 #include <memory>
@@ -136,6 +137,30 @@ namespace plc {
           SEMICONDUCTOR
         };
 
+        enum class PhysicsLodTier {
+          kHigh,
+          kMedium,
+          kLow
+        };
+
+        enum class WarmupStage {
+          kPending,
+          kRunning,
+          kFinishing,
+          kComplete
+        };
+
+        struct PhysicsLodState {
+          PhysicsLodTier tier = PhysicsLodTier::kHigh;
+          bool has_view = false;
+          float zoom = 1.0f;
+          float view_min_x = 0.0f;
+          float view_max_x = 0.0f;
+          float view_min_y = 0.0f;
+          float view_max_y = 0.0f;
+          float view_radius = 0.0f;
+        };
+
         // PLC scan period used for timer progression (seconds).
         static constexpr double kPlcScanStepSeconds = 0.010;
         static constexpr int kPlcScanStepMs =
@@ -170,18 +195,27 @@ namespace plc {
          * ???????? ???????????? ????????????? ??????????
          */
         void Update();
+        void UpdatePhysicsLod();
+        void RequestCacheWarmup();
+        bool ProcessCacheWarmup();
+        void RunCacheWarmup();
+        void PrewarmAdvancedPhysicsNetworks();
+        void RenderSplashScreen();
 
         /**
          * @brief Updates the physics simulation state.
          * ??????????????????????????????????
          */
         void UpdatePhysics();
+        void UpdatePhysicsImpl();
 
         /**
          * @brief Simulates basic physics phenomena, independent of the PLC state.
          * PLC ?????? ?????????????????? ??????????????????????????.
          */
         void UpdateBasicPhysics(float delta_time);
+        void UpdateBasicPhysicsImpl(float delta_time);
+        bool UpdateSensorsBox2d();
 
         /**
          * @brief Executes one scan of the loaded ladder logic program.
@@ -239,29 +273,39 @@ namespace plc {
          * ?????????????????? ???? ?????????????????????????.
          */
         void SimulateElectrical();
+        void SimulateElectricalImpl();
 
         /**
          * @brief Updates the internal logic of placed components.
          * ???????????????????? ????????????????????
          */
         void UpdateComponentLogic();
+        void UpdateComponentLogicImpl();
 
         /**
          * @brief Updates workpiece interactions (conveyor, sensors, box, cylinder).
          */
         void UpdateWorkpieceInteractions(float delta_time);
+        void UpdateWorkpieceInteractionsImpl(float delta_time);
+        bool UpdateWorkpieceInteractionsBox2d(float delta_time,
+                                              bool warmup_only);
 
         /**
          * @brief Simulates the pneumatic network connecting components.
          * ?????????????????? ??????????????????????????????.
          */
         void SimulatePneumatic();
+        void SimulatePneumaticImpl();
 
         /**
-         * @brief Updates the state of actuators (e.g., cylinders) based on simulation.
+         * @brief Updates the state of actuators (e.g., cylinders) based on
+         * simulation.
          * ??????????????????? ???????????? ????????????????????????????
+         * @param skip_cylinder_update When true, skip cylinder physics updates
+         * (advanced physics handles cylinders).
          */
-        void UpdateActuators(float delta_time);
+        void UpdateActuators(float delta_time, bool skip_cylinder_update);
+        void UpdateActuatorsImpl(float delta_time, bool skip_cylinder_update);
 
         /**
          * @brief Retrieves the port information for a given component.
@@ -694,6 +738,7 @@ namespace plc {
         float camera_zoom_;
         ImVec2 canvas_top_left_;
         ImVec2 canvas_size_;
+        PhysicsLodState physics_lod_state_;
 
         // Configuration for snapping behavior.
         // ???? ????????????????????
@@ -731,6 +776,32 @@ namespace plc {
         bool render_time_initialized_;
         bool high_precision_timer_active_;
         double monitor_refresh_rate_;
+        WarmupStage warmup_stage_;
+        bool advanced_physics_disabled_;
+        size_t advanced_disable_components_;
+        size_t advanced_disable_wires_;
+        double advanced_accumulator_;
+        bool advanced_network_built_;
+        uint64_t advanced_topology_hash_;
+        uint64_t advanced_disable_topology_hash_;
+        size_t advanced_last_component_count_;
+        size_t advanced_last_wire_count_;
+        uint64_t advanced_last_input_hash_;
+        bool advanced_inputs_dirty_;
+        double physics_stage_total_ms_;
+        double physics_stage_electrical_ms_;
+        double physics_stage_component_ms_;
+        double physics_stage_pneumatic_ms_;
+        double physics_stage_actuator_ms_;
+        double physics_stage_plc_ms_;
+        double physics_stage_advanced_build_ms_;
+        double physics_stage_advanced_solve_ms_;
+        double physics_stage_advanced_sync_ms_;
+        double physics_stage_advanced_electrical_ms_;
+        double physics_stage_advanced_pneumatic_ms_;
+        double physics_stage_advanced_mechanical_ms_;
+        int physics_stage_steps_;
+        int physics_stage_advanced_steps_;
 
         // State variables for the real-time debugging and logging system.
         // ??????????????????????????? ???? ???? ?????????????
