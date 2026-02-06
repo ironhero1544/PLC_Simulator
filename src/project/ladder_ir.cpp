@@ -2,7 +2,7 @@
 
 #include "plc_emulator/project/ladder_ir.h"
 
-#include "plc_emulator/programming/programming_mode.h"  // 실제 LadderProgram, LadderRung 등 타입 정의
+#include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
 #include <iostream>
@@ -12,7 +12,6 @@
 namespace plc {
 
 // ============================================================================
-// IRNode 구현
 // ============================================================================
 
 std::string IRNode::GetDisplayName() const {
@@ -69,7 +68,6 @@ bool IRNode::IsLogicNode() const {
 }
 
 // ============================================================================
-// IRRung 구현
 // ============================================================================
 
 void IRRung::AddNode(std::unique_ptr<IRNode> node) {
@@ -82,7 +80,6 @@ void IRRung::AddConnection(size_t fromId, size_t toId, int outPort,
                            int inPort) {
   connections.emplace_back(fromId, toId, outPort, inPort);
 
-  // 노드들의 입출력 연결 정보도 업데이트
   IRNode* fromNode = FindNode(fromId);
   IRNode* toNode = FindNode(toId);
 
@@ -113,26 +110,21 @@ const IRNode* IRRung::FindNode(size_t nodeId) const {
 }
 
 void IRRung::AnalyzeParallelConnections() {
-  // 병렬 연결 분석 알고리즘
-  // 1. 같은 입력과 출력을 가지는 노드 그룹 찾기
-  // 2. OR 블록으로 그룹화
 
   std::map<std::pair<size_t, size_t>, std::vector<size_t>> parallelGroups;
 
   for (const auto& node : nodes) {
     if (node->IsInputNode() && !node->inputs.empty() &&
         !node->outputs.empty()) {
-      size_t inputNode = node->inputs[0];    // 첫 번째 입력
-      size_t outputNode = node->outputs[0];  // 첫 번째 출력
+      size_t inputNode = node->inputs[0];
+      size_t outputNode = node->outputs[0];
 
       parallelGroups[{inputNode, outputNode}].push_back(node->nodeId);
     }
   }
 
-  // 2개 이상의 노드가 같은 입출력을 가지면 OR 블록으로 변환
   for (const auto& [inputOutput, nodeGroup] : parallelGroups) {
     if (nodeGroup.size() >= 2) {
-      // OR 블록 노드 생성 (다음 구현에서...)
       std::cout << "[IR] Found parallel group: " << nodeGroup.size()
                 << " nodes\n";
     }
@@ -140,7 +132,6 @@ void IRRung::AnalyzeParallelConnections() {
 }
 
 // ============================================================================
-// LadderIRProgram 구현
 // ============================================================================
 
 void LadderIRProgram::AddRung(IRRung&& rung) {
@@ -167,11 +158,9 @@ void LadderIRProgram::AnalyzeLogicStructure() {
 }
 
 void LadderIRProgram::OptimizeConnections() {
-  // 연결 최적화: 불필요한 중간 노드 제거, 직렬 연결 간소화 등
   std::cout << "[IR] Optimizing connections...\n";
 
   for (auto& rung : rungs_) {
-    // 빈 노드들 제거
     rung.nodes.erase(std::remove_if(rung.nodes.begin(), rung.nodes.end(),
                                     [](const std::unique_ptr<IRNode>& node) {
                                       return node->nodeType ==
@@ -190,7 +179,6 @@ void LadderIRProgram::PrintIRStructure() const {
     std::cout << "Rung " << i << ": " << rung.nodes.size() << " nodes, "
               << rung.connections.size() << " connections\n";
 
-    // 노드들 출력
     for (const auto& node : rung.nodes) {
       std::cout << "  Node " << node->nodeId << ": " << node->GetDisplayName();
       if (!node->inputs.empty()) {
@@ -218,7 +206,6 @@ void LadderIRProgram::PrintIRStructure() const {
 }
 
 // ============================================================================
-// LadderToIRConverter 구현
 // ============================================================================
 
 LadderIRProgram LadderToIRConverter::ConvertToIR(
@@ -228,7 +215,6 @@ LadderIRProgram LadderToIRConverter::ConvertToIR(
 
   LadderIRProgram irProgram;
 
-  // 각 룽을 IR로 변환
   for (size_t i = 0; i < ladderProgram.rungs.size(); ++i) {
     const auto& rung = ladderProgram.rungs[i];
     std::cout << "[IR] Converting rung " << i << " with " << rung.cells.size()
@@ -236,18 +222,15 @@ LadderIRProgram LadderToIRConverter::ConvertToIR(
 
     IRRung irRung = ConvertRungToIR(rung, irProgram);
 
-    // 세로 연결선 분석
     if (!ladderProgram.verticalConnections.empty()) {
       AnalyzeVerticalConnections(ladderProgram.verticalConnections, irRung);
     }
 
-    // 논리 흐름 분석
     AnalyzeLogicFlow(irRung);
 
     irProgram.AddRung(std::move(irRung));
   }
 
-  // 전체 구조 분석
   irProgram.AnalyzeLogicStructure();
   irProgram.OptimizeConnections();
 
@@ -259,10 +242,8 @@ IRRung LadderToIRConverter::ConvertRungToIR(const Rung& rung,
                                             LadderIRProgram& irProgram) {
   IRRung irRung;
 
-  // 시작 노드 (전원선) 생성
-  irRung.startNodeId = 0;  // 전원선은 항상 ID 0
+  irRung.startNodeId = 0;
 
-  // 각 셀을 IR 노드로 변환
   for (size_t j = 0; j < rung.cells.size(); ++j) {
     const auto& cell = rung.cells[j];
 
@@ -272,7 +253,6 @@ IRRung LadderToIRConverter::ConvertRungToIR(const Rung& rung,
       auto node = ConvertCellToNode(cell, nodeId, static_cast<int>(0),
                                     static_cast<int>(j));
       if (node) {
-        // 디바이스 매핑
         if (!node->deviceAddress.empty()) {
           irProgram.MapDeviceToNode(node->deviceAddress, nodeId);
         }
@@ -282,7 +262,6 @@ IRRung LadderToIRConverter::ConvertRungToIR(const Rung& rung,
     }
   }
 
-  // 기본 직렬 연결 생성 (좌에서 우로)
   if (!irRung.nodes.empty()) {
     size_t prevNodeId = irRung.startNodeId;
 
@@ -335,9 +314,7 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
       auto timerNode =
           std::make_unique<IRTimerNode>(nodeId, cell.address, 1.0f);
 
-      // 🔥 **고급 타이머 값 파싱** (예: "T0 K10" -> 10초)
       if (!cell.preset.empty()) {
-        // K10, K100 등 파싱
         if (cell.preset[0] == 'K' || cell.preset[0] == 'k' ||
             (cell.preset[0] >= '0' && cell.preset[0] <= '9')) {
           try {
@@ -346,7 +323,7 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
                     ? cell.preset.substr(1)
                     : cell.preset);
             timerNode->timeValue =
-                static_cast<float>(timerValue) * 0.1f;  // 100ms 단위
+                static_cast<float>(timerValue) * 0.1f;
           } catch (...) {
             std::cout << "[IR] Warning: Invalid timer preset: " << cell.preset
                       << std::endl;
@@ -362,7 +339,6 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
       auto counterNode =
           std::make_unique<IRCounterNode>(nodeId, cell.address, 1);
 
-      // 🔥 **고급 카운터 값 파싱** (예: "C0 K5" -> 5회)
       if (!cell.preset.empty()) {
         if (cell.preset[0] == 'K' || cell.preset[0] == 'k' ||
             (cell.preset[0] >= '0' && cell.preset[0] <= '9')) {
@@ -385,7 +361,6 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
 
     case LadderInstructionType::EMPTY:
     default:
-      // 빈 셀은 노드를 생성하지 않음
       return nullptr;
   }
 
@@ -403,7 +378,6 @@ void LadderToIRConverter::AnalyzeVerticalConnections(
   std::cout << "[IR] Analyzing " << verticalConnections.size()
             << " vertical connections...\n";
 
-  // 세로 연결선을 OR 블록으로 변환
   for (const auto& vconn : verticalConnections) {
     std::cout << "[IR] Vertical connection at x=" << vconn.x
               << ", connecting rungs: ";
@@ -414,7 +388,6 @@ void LadderToIRConverter::AnalyzeVerticalConnections(
     }
     std::cout << "\n";
 
-    // 병렬 연결된 노드들 찾기 (해당 x 위치의 노드들)
     std::vector<size_t> parallelNodes;
     for (const auto& node : irRung.nodes) {
       if (node->cellIndex == vconn.x) {
@@ -422,7 +395,6 @@ void LadderToIRConverter::AnalyzeVerticalConnections(
       }
     }
 
-    // OR 블록 생성 (향후 구현)
     if (parallelNodes.size() >= 2) {
       std::cout << "[IR] Creating OR block with " << parallelNodes.size()
                 << " nodes\n";
@@ -431,16 +403,12 @@ void LadderToIRConverter::AnalyzeVerticalConnections(
 }
 
 void LadderToIRConverter::AnalyzeLogicFlow(IRRung& irRung) {
-  // 논리 흐름 분석 - 전류 흐름 경로 추적
   std::cout << "[IR] Analyzing logic flow for rung with " << irRung.nodes.size()
             << " nodes\n";
 
-  // 현재는 기본 직렬 연결만 처리
-  // 향후 병렬 연결 및 복잡한 논리 구조 처리 예정
 }
 
 // ============================================================================
-// IRToStackConverter 구현
 // ============================================================================
 
 std::vector<std::string> IRToStackConverter::ConvertToStackInstructions(
@@ -456,13 +424,11 @@ std::vector<std::string> IRToStackConverter::ConvertToStackInstructions(
     allInstructions.insert(allInstructions.end(), rungInstructions.begin(),
                            rungInstructions.end());
 
-    // 룽 구분자 추가
     if (i < irProgram.GetRungCount() - 1) {
-      allInstructions.push_back("");  // 빈 줄
+      allInstructions.push_back("");
     }
   }
 
-  // 스택 명령어 최적화
   OptimizeStackInstructions(allInstructions);
 
   std::cout << "[IR] Generated " << allInstructions.size()
@@ -478,13 +444,11 @@ std::vector<std::string> IRToStackConverter::ConvertRungToStack(
     return instructions;
   }
 
-  // 기본 직렬 연결 처리
   bool isFirstLoad = true;
 
   for (const auto& node : rung.nodes) {
     if (node->IsInputNode()) {
       if (isFirstLoad) {
-        // 첫 번째 접점은 LOAD 명령
         if (node->nodeType == IRNodeType::NORMALLY_OPEN) {
           instructions.push_back("LOAD " + node->deviceAddress);
         } else if (node->nodeType == IRNodeType::NORMALLY_CLOSED) {
@@ -492,7 +456,6 @@ std::vector<std::string> IRToStackConverter::ConvertRungToStack(
         }
         isFirstLoad = false;
       } else {
-        // 이후 접점들은 AND 명령
         if (node->nodeType == IRNodeType::NORMALLY_OPEN) {
           instructions.push_back("AND " + node->deviceAddress);
         } else if (node->nodeType == IRNodeType::NORMALLY_CLOSED) {
@@ -500,7 +463,6 @@ std::vector<std::string> IRToStackConverter::ConvertRungToStack(
         }
       }
     } else if (node->IsOutputNode()) {
-      // 출력 코일
       if (node->nodeType == IRNodeType::OUTPUT_COIL) {
         instructions.push_back("OUT " + node->deviceAddress);
       } else if (node->nodeType == IRNodeType::SET_COIL) {
@@ -509,21 +471,17 @@ std::vector<std::string> IRToStackConverter::ConvertRungToStack(
         instructions.push_back("RESET " + node->deviceAddress);
       }
     } else if (node->nodeType == IRNodeType::TIMER_ON) {
-      // 🔥 **고급 타이머 명령어 생성**
       const IRTimerNode* timerNode =
           dynamic_cast<const IRTimerNode*>(node.get());
       if (timerNode) {
-        // OpenPLC 타이머 형식: TON T0, PT=T#1000ms
         int timeMs = static_cast<int>(timerNode->timeValue * 1000);
         instructions.push_back("TON " + node->deviceAddress + ", PT=T#" +
                                std::to_string(timeMs) + "ms");
       }
     } else if (node->nodeType == IRNodeType::COUNTER_UP) {
-      // 🔥 **고급 카운터 명령어 생성**
       const IRCounterNode* counterNode =
           dynamic_cast<const IRCounterNode*>(node.get());
       if (counterNode) {
-        // OpenPLC 카운터 형식: CTU C0, PV=5
         instructions.push_back("CTU " + node->deviceAddress + ", PV=" +
                                std::to_string(counterNode->countValue));
       }
@@ -537,23 +495,20 @@ std::vector<std::string> IRToStackConverter::ConvertOrBlockToStack(
     const IROrBlockNode& orBlock) {
   std::vector<std::string> instructions;
 
-  // OR 블록 처리 - MPS, ORB, MPP 패턴
-  instructions.push_back("MPS");  // 스택에 현재 값 저장
+  instructions.push_back("MPS");
 
   for (size_t i = 0; i < orBlock.parallelBranches.size(); ++i) {
     if (i > 0) {
-      instructions.push_back("MPP");  // 스택에서 값 복원
+      instructions.push_back("MPP");
     }
 
-    // 각 병렬 분기 처리
     const auto& branch = orBlock.parallelBranches[i];
     for (size_t nodeId : branch) {
-      // 개별 노드들을 AND로 연결 (현재 간소화된 구현)
       instructions.push_back("AND Node" + std::to_string(nodeId));
     }
 
     if (i < orBlock.parallelBranches.size() - 1) {
-      instructions.push_back("ORB");  // OR 연산
+      instructions.push_back("ORB");
     }
   }
 
@@ -579,15 +534,10 @@ std::string IRToStackConverter::ConvertNodeToStack(const IRNode& node) {
 
 void IRToStackConverter::OptimizeStackInstructions(
     std::vector<std::string>& instructions) {
-  // 스택 명령어 최적화
-  // 1. 연속된 LOAD/AND 최적화
-  // 2. 불필요한 MPS/MPP 제거
-  // 3. 중복 명령어 제거
 
   std::cout << "[IR] Optimizing " << instructions.size()
             << " stack instructions...\n";
 
-  // 현재는 기본 최적화만 구현 (빈 줄 제거)
   instructions.erase(std::remove_if(instructions.begin(), instructions.end(),
                                     [](const std::string& instr) {
                                       return instr.empty() ||

@@ -11,6 +11,6 @@ void RenderProcessingCylinderHead(ImDrawList* draw_list,
                                   ImVec2 pos,
                                   float zoom);
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_PROCESSING_CYLINDER_DEF_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_PROCESSING_CYLINDER_DEF_H_ */

@@ -117,7 +117,7 @@ inline TransformCacheEntry& GetTransformCacheEntry(
   return entry;
 }
 
-}  // namespace detail
+}  /* namespace detail */
 
 inline ImVec2 LocalToWorldCached(const PlacedComponent& comp, ImVec2 local) {
   const auto& entry = detail::GetTransformCacheEntry(comp);
@@ -256,6 +256,6 @@ inline float GetCenterY(const Aabb& box) {
   return (box.min_y + box.max_y) * 0.5f;
 }
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_APPLICATION_PHYSICS_PHYSICS_HELPERS_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_APPLICATION_PHYSICS_PHYSICS_HELPERS_H_ */

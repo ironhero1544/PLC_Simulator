@@ -2,10 +2,6 @@
 //
 // Implementation of window manager.
 
-// window_manager.cpp
-// Window management implementation
-// 윈도우 관리 구현
-
 #include "plc_emulator/core/window_manager.h"
 
 #include <glad/glad.h>

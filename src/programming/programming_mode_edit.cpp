@@ -1,4 +1,4 @@
-﻿// programming_mode_edit.cpp
+// programming_mode_edit.cpp
 //
 // Ladder editing functions.
 
@@ -8,7 +8,7 @@
 #include <map>
 #include <set>
 #include <cctype>
-#include <vector>  // [NEW] std::vector ?ъ슜???꾪빐 異붽?
+#include <vector>
 
 namespace plc {
 
@@ -486,17 +486,15 @@ void ProgrammingMode::AddNewRung() {
   MarkDirty();
 }
 
-// [MODIFIED] 猷???젣 ???곌껐???몃줈?좎쓣 ?④퍡 ?쒓굅?섍퀬, ?섎㉧吏 ?몃줈?좎쓽 ?몃뜳?ㅻ?
-// ?낅뜲?댄듃?섎뒗 濡쒖쭅 異붽?
 void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
-  // END 猷쎌씠??議댁옱?섏? ?딅뒗 猷쎌? ??젣?????놁쓬
+  // Keep the end rung intact.
   if (rungIndexToDelete < 0 ||
       rungIndexToDelete >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
     return;
   }
 
   PushProgrammingUndoState();
-  // 1. ?몃줈???곌껐 ?뺣낫 ?낅뜲?댄듃
+  // Rebuild vertical connections with shifted indices.
   std::vector<VerticalConnection> updatedConnections;
   for (const auto& conn : ladder_program_.verticalConnections) {
     VerticalConnection newConn;
@@ -506,7 +504,7 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
         continue;
       }
       if (r_idx > rungIndexToDelete) {
-        newConn.rungs.push_back(r_idx - 1);  // ?몃뜳??1 媛먯냼
+        newConn.rungs.push_back(r_idx - 1);  // Shift index after deletion.
       } else {
         newConn.rungs.push_back(r_idx);
       }
@@ -521,19 +519,19 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
       updatedConnections.push_back(newConn);
     }
   }
-  // ?낅뜲?댄듃???곌껐 紐⑸줉?쇰줈 援먯껜
+  // Apply updated connections.
   ladder_program_.verticalConnections = updatedConnections;
 
-  // 2. 猷???젣
+  // Remove the rung.
   ladder_program_.rungs.erase(ladder_program_.rungs.begin() +
                               rungIndexToDelete);
 
-  // 而ㅼ꽌 ?꾩튂 議곗젙
+  // Adjust selection index.
   if (selected_rung_ >= rungIndexToDelete && selected_rung_ > 0) {
     selected_rung_--;
   }
 
-  // 3. ?섎㉧吏 猷?踰덊샇 ?ъ젙??
+  // Renumber remaining rungs.
   if (!ladder_program_.rungs.empty()) {
     for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
       ladder_program_.rungs[i].number = i;

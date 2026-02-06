@@ -2,9 +2,6 @@
 //
 // Application entry point.
 
-
-
-// C++ 프로그램의 진입점인 main 함수를 구현합니다.
 #include "plc_emulator/core/application.h"
 
 #include <cstdio>
@@ -17,7 +14,7 @@ int main(int argc, char* argv[]) {
   printf("Next: Drag & Drop Implementation\n");
   printf("=====================================\n");
 
-  // try-catch 구문을 사용하여 예외 처리를 수행합니다.
+  // Report unexpected failures and exit cleanly.
   try {
     bool enable_debug = false;
     for (int i = 1; i < argc; ++i) {
@@ -30,7 +27,6 @@ int main(int argc, char* argv[]) {
 
     plc::Application app(enable_debug);
 
-    //  if-else 문을 사용하여 초기화 성공 여부를 확인합니다.
     if (!app.Initialize()) {
       printf("Failed to initialize application!\n");
       return -1;

@@ -1,4 +1,4 @@
-﻿// programming_mode_sim.cpp
+// programming_mode_sim.cpp
 //
 // Ladder simulation functions.
 

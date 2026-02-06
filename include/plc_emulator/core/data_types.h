@@ -1,6 +1,9 @@
-// data_types.h
-//
-// Common data types and structures.
+/*
+ * data_types.h
+ *
+ * 공통 데이터 타입과 구조체 정의.
+ * Common data types and structures.
+ */
 
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_DATA_TYPES_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_DATA_TYPES_H_
@@ -110,5 +113,5 @@ struct SnapSettings {
   float gridSize = 25.0f;
 };
 
-}  // namespace plc
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_DATA_TYPES_H_
+}  /* namespace plc */
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_DATA_TYPES_H_ */

@@ -7,6 +7,6 @@ namespace plc {
 
 const ComponentDefinition* GetPowerSupplyDefinition();
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_POWER_SUPPLY_DEF_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_POWER_SUPPLY_DEF_H_ */

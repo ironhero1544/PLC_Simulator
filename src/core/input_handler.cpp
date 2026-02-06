@@ -2,10 +2,6 @@
 //
 // Implementation of input handler.
 
-// input_handler.cpp
-// Input handling implementation
-// 입력 처리 구현
-
 #include "plc_emulator/core/input_handler.h"
 
 #include <GLFW/glfw3.h>
@@ -21,10 +17,7 @@ void InputHandler::Initialize(GLFWwindow* window) {
 }
 
 void InputHandler::ProcessInput() {
-  // Input processing is mainly handled by ImGui
-  // Additional custom input processing can be added here
-  // 입력 처리는 주로 ImGui가 처리함
-  // 여기에 추가적인 커스텀 입력 처리 추가 가능
+  // ImGui handles most input; add custom handling here if needed.
 }
 
 bool InputHandler::IsKeyPressed(int key) const {

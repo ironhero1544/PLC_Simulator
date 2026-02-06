@@ -7,6 +7,6 @@ namespace plc {
 
 const ComponentDefinition* GetCylinderDefinition();
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_CYLINDER_DEF_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_CYLINDER_DEF_H_ */

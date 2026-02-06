@@ -9,6 +9,6 @@ const ComponentDefinition* GetComponentDefinition(ComponentType type);
 int GetComponentDefinitionCount();
 const ComponentDefinition* GetComponentDefinitionByIndex(int index);
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_REGISTRY_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_REGISTRY_H_ */

@@ -7,6 +7,6 @@ namespace plc {
 
 const ComponentDefinition* GetMeterValveDefinition();
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_METER_VALVE_DEF_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_METER_VALVE_DEF_H_ */

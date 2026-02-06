@@ -1,12 +1,5 @@
 // application.cpp
-
-//
-
 // Implementation of main application class.
-
-
-
-// src/Application.cpp
 
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/components/state_keys.h"
@@ -119,9 +112,6 @@ namespace {
   return project_path + ".layout.json";
 }
 }  // namespace
-
-
-
 
 
 

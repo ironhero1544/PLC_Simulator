@@ -1,3 +1,10 @@
+/*
+ * component_definition.h
+ *
+ * 컴포넌트 정의 및 포트 구조체.
+ * Component definition and port structures.
+ */
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_DEFINITION_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_DEFINITION_H_
 
@@ -41,6 +48,6 @@ struct ComponentDefinition {
   const char* short_name;
 };
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_DEFINITION_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_DEFINITION_H_ */

@@ -1,10 +1,6 @@
 // render_manager.cpp
 // Implementation of render manager.
 
-// render_manager.cpp
-// Rendering management implementation
-// 렌더링 관리 구현
-
 #include "plc_emulator/core/render_manager.h"
 
 #include <glad/glad.h>

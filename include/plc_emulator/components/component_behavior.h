@@ -19,6 +19,6 @@ struct ComponentBehavior {
 
 const ComponentBehavior* GetComponentBehavior(ComponentType type);
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_BEHAVIOR_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_COMPONENT_BEHAVIOR_H_ */

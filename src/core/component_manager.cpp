@@ -1,10 +1,6 @@
 // component_manager.cpp
 //
-// Implementation of component manager.
-
-// component_manager.cpp
-// Component management implementation
-// 컴포넌트 관리 구현
+// Implementation of the component manager.
 
 #include "plc_emulator/core/component_manager.h"
 

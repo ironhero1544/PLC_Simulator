@@ -2,9 +2,6 @@
 //
 // Implementation of data repository.
 
-// src/DataRepository.cpp
-// DataRepository 구현 - C언어 스타일 데이터 저장소
-
 #include "plc_emulator/data/data_repository.h"
 
 #include <algorithm>
@@ -24,7 +21,7 @@ ComponentRepository* CreateComponentRepository(
   ComponentRepository* repo = new ComponentRepository();
   repo->components = components;
 
-  // 함수 포인터들 연결
+  // Wire up function pointers.
   repo->AddComponent = ComponentRepo_AddComponent;
   repo->RemoveComponent = ComponentRepo_RemoveComponent;
   repo->FindComponent = ComponentRepo_FindComponent;
@@ -106,7 +103,7 @@ WiringRepository* CreateWiringRepository(std::vector<Wire>* wires) {
   WiringRepository* repo = new WiringRepository();
   repo->wires = wires;
 
-  // 함수 포인터들 연결
+  // Wire up function pointers.
   repo->AddWire = WiringRepo_AddWire;
   repo->RemoveWire = WiringRepo_RemoveWire;
   repo->FindWire = WiringRepo_FindWire;
@@ -227,7 +224,7 @@ LadderRepository* CreateLadderRepository(
   repo->timerStates = timerStates;
   repo->counterStates = counterStates;
 
-  // 함수 포인터들 연결
+  // Wire up function pointers.
   repo->LoadProgram = LadderRepo_LoadProgram;
   repo->ClearProgram = LadderRepo_ClearProgram;
   repo->GetRung = LadderRepo_GetRung;
@@ -258,7 +255,7 @@ bool LadderRepo_LoadProgram(LadderRepository* repo,
 
 void LadderRepo_ClearProgram(LadderRepository* repo) {
   if (repo && repo->program) {
-    *repo->program = plc::LadderProgram();  // 기본 생성자로 초기화
+    *repo->program = plc::LadderProgram();  // Reset to default state.
   }
 }
 
@@ -332,7 +329,7 @@ IORepository* CreateIORepository(IOMapping* mapping, MappingResult* result) {
   repo->mapping = mapping;
   repo->lastResult = result;
 
-  // 함수 포인터들 연결
+  // Wire up function pointers.
   repo->UpdateMapping = IORepo_UpdateMapping;
   repo->GetMapping = IORepo_GetMapping;
   repo->ClearMapping = IORepo_ClearMapping;

@@ -15,8 +15,8 @@ const char* GetUserLanguageCode();
 bool SetUserLanguageCode(const char* code);
 bool IsLanguageRestartRequired();
 
-}  // namespace plc
+}  /* namespace plc */
 
 #define TR(key, fallback) ::plc::Translate((key), (fallback))
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_LANG_LANG_MANAGER_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_LANG_LANG_MANAGER_H_ */

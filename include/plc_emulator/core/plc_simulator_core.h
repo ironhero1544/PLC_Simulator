@@ -1,17 +1,16 @@
-// plc_simulator_core.h
-//
-// Core simulation logic coordinator.
-
-// include/PLCSimulatorCore.h
-// 중앙 집중식 PLC 시뮬레이터 코어
-// 실배선 모드와 프로그래밍 모드 간의 데이터 동기화 및 통합 관리
+/*
+ * plc_simulator_core.h
+ *
+ * PLC 시뮬레이터의 중앙 데이터 모델 인터페이스.
+ * Interface for the PLC simulator's central data model.
+ */
 
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_PLC_SIMULATOR_CORE_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_PLC_SIMULATOR_CORE_H_
 
 #include "plc_emulator/core/data_types.h"
-#include "plc_emulator/io/io_mapping.h"  // Phase 2: I/O 매핑 데이터 구조
-#include "plc_emulator/programming/programming_mode.h"  // 기존 타입들 사용 (하위 호환성)
+#include "plc_emulator/io/io_mapping.h"
+#include "plc_emulator/programming/programming_mode.h"
 
 #include <map>
 #include <memory>
@@ -20,26 +19,29 @@
 
 namespace plc {
 
-// 전방 선언 (Repository, IOMapper, EventSystem)
+/*
+ * 전방 선언: 저장소, 매퍼, 이벤트 디스패처.
+ * Forward declarations for repositories, mapper, and dispatcher.
+ */
 struct ComponentRepository;
 struct WiringRepository;
 struct LadderRepository;
-struct IORepository;  // Phase 2: I/O 매핑 리포지토리
-struct IOMapper;      // Phase 2: I/O 매핑 엔진
+struct IORepository;
+struct IOMapper;
 struct EventDispatcher;
 
-// PLCSimulatorCore - 중앙 집중식 데이터 모델 및 시뮬레이션 엔진
+/*
+ * 실배선/프로그래밍 모드 데이터를 동기화합니다.
+ * Synchronizes wiring and programming mode data.
+ */
 class PLCSimulatorCore {
  public:
   PLCSimulatorCore();
   ~PLCSimulatorCore();
 
-  // 기본 초기화 및 정리
   bool Initialize();
   void Shutdown();
 
-
-  // 실배선 모드 데이터
   std::vector<PlacedComponent>& GetPlacedComponents() {
     return placed_components_;
   }
@@ -50,7 +52,6 @@ class PLCSimulatorCore {
   std::vector<Wire>& GetWires() { return wires_; }
   const std::vector<Wire>& GetWires() const { return wires_; }
 
-  // 프로그래밍 모드 데이터
   LadderProgram& GetLadderProgram() { return ladder_program_; }
   const LadderProgram& GetLadderProgram() const { return ladder_program_; }
 
@@ -59,34 +60,28 @@ class PLCSimulatorCore {
     return device_states_;
   }
 
-
-  // 프로그래밍 모드 → 실배선 모드 동기화
+  /*
+   * 모드 간 데이터 동기화.
+   * Cross-mode data synchronization.
+   */
   void SyncFromProgrammingMode(const ProgrammingMode* programmingMode);
-
-  // 실배선 모드 → 프로그래밍 모드 동기화 (향후 구현)
   void SyncToProgrammingMode(ProgrammingMode* programmingMode);
 
-
-  // I/O 매핑 업데이트 (배선 변경 시 자동 호출)
+  /*
+   * I/O 매핑 관리.
+   * I/O mapping management.
+   */
   bool UpdateIOMapping();
-
-  // 현재 I/O 매핑 정보 가져오기
   const IOMapping& GetCurrentIOMapping() const;
-
-  // I/O 매핑 결과 가져오기
   const MappingResult& GetLastMappingResult() const;
-
-  // I/O 매핑 동기화 (프로그래밍 모드와 연동)
   void SyncIOMapping();
-
-  // I/O 매핑 유효성 검증
   bool ValidateIOMapping() const;
 
-
-  // 데이터 변경 알림
+  /*
+   * 변경 알림.
+   * Change notifications.
+   */
   void NotifyDataChanged();
-
-  // 모드 전환 알림
   void NotifyModeChanged(Mode newMode);
 
  private:
@@ -101,18 +96,17 @@ class PLCSimulatorCore {
   std::unique_ptr<ComponentRepository> component_repo_;
   std::unique_ptr<WiringRepository> wiring_repo_;
   std::unique_ptr<LadderRepository> ladder_repo_;
-  std::unique_ptr<IORepository> io_repo_;  // Phase 2: I/O 매핑 리포지토리
+  std::unique_ptr<IORepository> io_repo_;
 
-  std::unique_ptr<IOMapper> io_mapper_;  // I/O 매핑 엔진
-  IOMapping current_io_mapping_;          // 현재 I/O 매핑 정보
-  MappingResult last_mapping_result_;     // 마지막 매핑 결과
+  std::unique_ptr<IOMapper> io_mapper_;
+  IOMapping current_io_mapping_;
+  MappingResult last_mapping_result_;
 
   std::unique_ptr<EventDispatcher> event_dispatcher_;
 
-  // 내부 헬퍼 함수들
   void InitializeDefaultData();
   void ClearAllData();
 };
 
-}  // namespace plc
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_PLC_SIMULATOR_CORE_H_
+}  /* namespace plc */
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_PLC_SIMULATOR_CORE_H_ */

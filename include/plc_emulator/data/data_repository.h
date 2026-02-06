@@ -1,17 +1,19 @@
-// data_repository.h
-//
-// Central data storage for simulation state.
-
-// include/DataRepository.h
-// C언어 스타일 데이터 저장소 패턴 구현
-// 구조체 + 함수 포인터 기반으로 데이터 접근 계층 분리
+/*
+ * data_repository.h
+ *
+ * Central repositories for simulation state and wiring.
+ * 시뮬레이션 상태와 배선을 위한 중앙 리포지토리 모음.
+ *
+ * C-style repository interfaces backed by STL containers.
+ * STL 컨테이너를 사용하는 C 스타일 리포지토리 인터페이스.
+ */
 
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_DATA_DATA_REPOSITORY_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_DATA_DATA_REPOSITORY_H_
 
 #include "plc_emulator/core/data_types.h"
-#include "plc_emulator/io/io_mapping.h"  // Phase 2: I/O 매핑 시스템
-#include "plc_emulator/programming/programming_mode.h"  // 기존 타입들 사용 (하위 호환성)
+#include "plc_emulator/io/io_mapping.h"
+#include "plc_emulator/programming/programming_mode.h"
 
 #include <map>
 #include <string>
@@ -19,12 +21,8 @@
 
 namespace plc {
 
-
 typedef struct ComponentRepository {
-  // 데이터 저장소 (STL 컨테이너 사용)
   std::vector<PlacedComponent>* components;
-
-  // 함수 포인터들 - C언어 스타일
   int (*AddComponent)(struct ComponentRepository* repo,
                       const PlacedComponent* component);
   bool (*RemoveComponent)(struct ComponentRepository* repo, int instanceId);
@@ -34,106 +32,97 @@ typedef struct ComponentRepository {
   size_t (*GetComponentCount)(struct ComponentRepository* repo);
 } ComponentRepository;
 
-// ComponentRepository 생성/초기화 함수들
+/*
+ * Component repository lifecycle.
+ * 컴포넌트 리포지토리 생성/해제.
+ */
 ComponentRepository* CreateComponentRepository(
     std::vector<PlacedComponent>* components);
 void DestroyComponentRepository(ComponentRepository* repo);
 
-
 typedef struct WiringRepository {
-  // 데이터 저장소
   std::vector<Wire>* wires;
-
-  // 함수 포인터들
   int (*AddWire)(struct WiringRepository* repo, const Wire* wire);
   bool (*RemoveWire)(struct WiringRepository* repo, int wireId);
   Wire* (*FindWire)(struct WiringRepository* repo, int wireId);
   void (*ClearWires)(struct WiringRepository* repo);
   size_t (*GetWireCount)(struct WiringRepository* repo);
-
-  // 배선 관련 특수 기능들
   std::vector<Wire*> (*FindWiresByComponent)(struct WiringRepository* repo,
                                              int componentId);
   bool (*IsComponentConnected)(struct WiringRepository* repo, int componentId,
                                int portId);
 } WiringRepository;
 
-// WiringRepository 생성/초기화 함수들
+/*
+ * Wiring repository lifecycle.
+ * 배선 리포지토리 생성/해제.
+ */
 WiringRepository* CreateWiringRepository(std::vector<Wire>* wires);
 void DestroyWiringRepository(WiringRepository* repo);
 
-
 typedef struct LadderRepository {
-  // 데이터 저장소들 (plc 네임스페이스 명시)
   plc::LadderProgram* program;
   std::map<std::string, bool>* deviceStates;
   std::map<std::string, plc::TimerState>* timerStates;
   std::map<std::string, plc::CounterState>* counterStates;
-
-  // 래더 프로그램 관리 함수들
   bool (*LoadProgram)(struct LadderRepository* repo,
                       const plc::LadderProgram* newProgram);
   void (*ClearProgram)(struct LadderRepository* repo);
   plc::Rung* (*GetRung)(struct LadderRepository* repo, int rungIndex);
-
-  // 디바이스 상태 관리 함수들
   bool (*SetDeviceState)(struct LadderRepository* repo, const char* address,
                          bool state);
   bool (*GetDeviceState)(struct LadderRepository* repo, const char* address);
   void (*ClearDeviceStates)(struct LadderRepository* repo);
-
-  // 타이머/카운터 관리 함수들
   bool (*SetTimerState)(struct LadderRepository* repo, const char* address,
                         const plc::TimerState* state);
   bool (*SetCounterState)(struct LadderRepository* repo, const char* address,
                           const plc::CounterState* state);
 } LadderRepository;
 
-// LadderRepository 생성/초기화 함수들
+/*
+ * Ladder repository lifecycle.
+ * 래더 리포지토리 생성/해제.
+ */
 LadderRepository* CreateLadderRepository(
     plc::LadderProgram* program, std::map<std::string, bool>* deviceStates,
     std::map<std::string, plc::TimerState>* timerStates,
     std::map<std::string, plc::CounterState>* counterStates);
 void DestroyLadderRepository(LadderRepository* repo);
 
-
 typedef struct IORepository {
-  // 데이터 저장소
-  IOMapping* mapping;         // 현재 I/O 매핑 정보
-  MappingResult* lastResult;  // 마지막 매핑 결과
+  IOMapping* mapping;
+  MappingResult* lastResult;
 
-  // I/O 매핑 관리 함수들
   bool (*UpdateMapping)(struct IORepository* repo, const IOMapping* newMapping);
   const IOMapping* (*GetMapping)(struct IORepository* repo);
   void (*ClearMapping)(struct IORepository* repo);
   bool (*IsValidMapping)(struct IORepository* repo);
-
-  // 매핑 결과 관리 함수들
   bool (*SetMappingResult)(struct IORepository* repo,
                            const MappingResult* result);
   const MappingResult* (*GetMappingResult)(struct IORepository* repo);
   void (*ClearMappingResult)(struct IORepository* repo);
-
-  // 매핑 검색 함수들
   ComponentMapping* (*FindMappingByAddress)(struct IORepository* repo,
                                             const char* address);
   ComponentMapping* (*FindMappingByComponent)(struct IORepository* repo,
                                               int componentId, int portId);
   std::vector<ComponentMapping> (*GetAllMappings)(struct IORepository* repo);
-
-  // 통계 및 정보 함수들
   int (*GetInputCount)(struct IORepository* repo);
   int (*GetOutputCount)(struct IORepository* repo);
   size_t (*GetMappingCount)(struct IORepository* repo);
 
 } IORepository;
 
-// IORepository 생성/초기화 함수들
+/*
+ * I/O repository lifecycle.
+ * I/O 리포지토리 생성/해제.
+ */
 IORepository* CreateIORepository(IOMapping* mapping, MappingResult* result);
 void DestroyIORepository(IORepository* repo);
 
-
-// ComponentRepository 구현 함수들
+/*
+ * Component repository implementation functions.
+ * 컴포넌트 리포지토리 구현 함수.
+ */
 int ComponentRepo_AddComponent(ComponentRepository* repo,
                                const PlacedComponent* component);
 bool ComponentRepo_RemoveComponent(ComponentRepository* repo, int instanceId);
@@ -142,7 +131,10 @@ PlacedComponent* ComponentRepo_FindComponent(ComponentRepository* repo,
 void ComponentRepo_ClearComponents(ComponentRepository* repo);
 size_t ComponentRepo_GetComponentCount(ComponentRepository* repo);
 
-// WiringRepository 구현 함수들
+/*
+ * Wiring repository implementation functions.
+ * 배선 리포지토리 구현 함수.
+ */
 int WiringRepo_AddWire(WiringRepository* repo, const Wire* wire);
 bool WiringRepo_RemoveWire(WiringRepository* repo, int wireId);
 Wire* WiringRepo_FindWire(WiringRepository* repo, int wireId);
@@ -151,9 +143,12 @@ size_t WiringRepo_GetWireCount(WiringRepository* repo);
 std::vector<Wire*> WiringRepo_FindWiresByComponent(WiringRepository* repo,
                                                    int componentId);
 bool WiringRepo_IsComponentConnected(WiringRepository* repo, int componentId,
-                                     int portId);
+                                      int portId);
 
-// LadderRepository 구현 함수들
+/*
+ * Ladder repository implementation functions.
+ * 래더 리포지토리 구현 함수.
+ */
 bool LadderRepo_LoadProgram(LadderRepository* repo,
                             const plc::LadderProgram* newProgram);
 void LadderRepo_ClearProgram(LadderRepository* repo);
@@ -167,7 +162,10 @@ bool LadderRepo_SetTimerState(LadderRepository* repo, const char* address,
 bool LadderRepo_SetCounterState(LadderRepository* repo, const char* address,
                                 const plc::CounterState* state);
 
-// IORepository 구현 함수들 (Phase 2)
+/*
+ * I/O repository implementation functions (Phase 2).
+ * I/O 리포지토리 구현 함수 (Phase 2).
+ */
 bool IORepo_UpdateMapping(IORepository* repo, const IOMapping* newMapping);
 const IOMapping* IORepo_GetMapping(IORepository* repo);
 void IORepo_ClearMapping(IORepository* repo);
@@ -184,5 +182,5 @@ int IORepo_GetInputCount(IORepository* repo);
 int IORepo_GetOutputCount(IORepository* repo);
 size_t IORepo_GetMappingCount(IORepository* repo);
 
-}  // namespace plc
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_DATA_DATA_REPOSITORY_H_
+}  /* namespace plc */
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_DATA_DATA_REPOSITORY_H_ */

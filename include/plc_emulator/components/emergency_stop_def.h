@@ -7,6 +7,6 @@ namespace plc {
 
 const ComponentDefinition* GetEmergencyStopDefinition();
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_EMERGENCY_STOP_DEF_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_EMERGENCY_STOP_DEF_H_ */

@@ -1,12 +1,10 @@
 // physics_engine.cpp
-//
 // Implementation of physics engine.
-
-// src/PhysicsEngine.cpp
-// 물리?�진 ?�심 구현 - ?�제 물리 법칙 기반 ?��??�이??
-// 기존 ?�드코딩??물리 ?��??�이?�을 ?�전???�체하???�합 물리?�진
-// Wire?� PlacedComponent로�????�동?�로 물리 ?�트?�크�?구성?�고 ?�시�?
-// ?��??�이???�행
+//
+// Core physics engine implementation based on real-world physical laws.
+// Unified physics engine replacing hardcoded physics simulation.
+// Automatically constructs physics networks from Wire and PlacedComponent data
+// and performs real-time simulation.
 
 #include "plc_emulator/physics/physics_engine.h"
 
@@ -36,9 +34,9 @@ void NotifyPhysicsWarning(const char* message) {
 
 namespace PhysicsEngineInternal {
 
-//   메모�??�당/?�제 ?�틸리티
-// - ?�전??메모�?관리로 메모�??�수 방�?
-// - ?�렬??메모�??�당?�로 ?�능 최적??
+// Memory allocation/deallocation utilities
+// - Safe memory management to prevent memory leaks
+// - Aligned memory allocation for performance optimization
 template <typename T>
 T* SafeAllocateArray(int count) {
   if (count <= 0)
@@ -58,7 +56,6 @@ void SafeDeallocateArray(T*& ptr) {
   }
 }
 
-// 2차원 배열 ?�당/?�제
 template <typename T>
 T** Allocate2DArray(int rows, int cols) {
   if (rows <= 0 || cols <= 0)
@@ -71,7 +68,6 @@ T** Allocate2DArray(int rows, int cols) {
   for (int i = 0; i < rows; i++) {
     ptr[i] = SafeAllocateArray<T>(cols);
     if (!ptr[i]) {
-      // 부�??�당 ?�패 ???�리
       for (int j = 0; j < i; j++) {
         SafeDeallocateArray(ptr[j]);
       }
@@ -93,16 +89,13 @@ void Deallocate2DArray(T**& ptr, int rows) {
   }
 }
 
-// 컴포?�트 ?�?�별 ?�트 ?�보 가?�오�?
-// - �?컴포?�트 ?�?�의 ?�기/공압/기계 ?�트 개수?� ?�성 ?�의
-// - 기존 Application_Physics.cpp??GetPortsForComponent 로직 ?�용
 struct PortInfo {
-  int electricalPorts;      // ?�기 ?�트 ??
-  int pneumaticPorts;       // 공압 ?�트 ??
-  int mechanicalPorts;      // 기계 ?�트 ??
-  bool isElectricalActive;  // ?�기 ?�트?�크 참여 ?��?
-  bool isPneumaticActive;   // 공압 ?�트?�크 참여 ?��?
-  bool isMechanicalActive;  // 기계 ?�스??참여 ?��?
+  int electricalPorts;
+  int pneumaticPorts;
+  int mechanicalPorts;
+  bool isElectricalActive;
+  bool isPneumaticActive;
+  bool isMechanicalActive;
 };
 
 PortInfo GetComponentPortInfo(ComponentType type) {
@@ -120,51 +113,51 @@ PortInfo GetComponentPortInfo(ComponentType type) {
       break;
 
     case ComponentType::BUTTON_UNIT:
-      info.electricalPorts = 15;  // 3�?버튼 × 5?�트/버튼
+      info.electricalPorts = 15;
       info.isElectricalActive = true;
       break;
 
     case ComponentType::LIMIT_SWITCH:
       info.electricalPorts = 3;  // COM, NO, NC
-      info.mechanicalPorts = 1;  // 물리???�촉??
+      info.mechanicalPorts = 1;
       info.isElectricalActive = true;
       info.isMechanicalActive = true;
       break;
 
     case ComponentType::SENSOR:
       info.electricalPorts = 3;  // 24V, 0V, OUT
-      info.mechanicalPorts = 1;  // 감�???
+      info.mechanicalPorts = 1;
       info.isElectricalActive = true;
       info.isMechanicalActive = true;
       break;
 
     case ComponentType::FRL:
-      info.pneumaticPorts = 1;  // ?�축공기 출구
+      info.pneumaticPorts = 1;
       info.isPneumaticActive = true;
       break;
 
     case ComponentType::MANIFOLD:
-      info.pneumaticPorts = 5;  // ?�구1 + 출구4
+      info.pneumaticPorts = 5;
       info.isPneumaticActive = true;
       break;
 
     case ComponentType::VALVE_SINGLE:
-      info.electricalPorts = 2;  // ?�레?�이??+, -
+      info.electricalPorts = 2;
       info.pneumaticPorts = 3;   // P, A, R
       info.isElectricalActive = true;
       info.isPneumaticActive = true;
       break;
 
     case ComponentType::VALVE_DOUBLE:
-      info.electricalPorts = 4;  // ?�레?�이?�A +,-, ?�레?�이?�B +,-
+      info.electricalPorts = 4;
       info.pneumaticPorts = 3;   // P, A, B
       info.isElectricalActive = true;
       info.isPneumaticActive = true;
       break;
 
     case ComponentType::CYLINDER:
-      info.pneumaticPorts = 2;   // A챔버, B챔버
-      info.mechanicalPorts = 1;  // ?�스??로드
+      info.pneumaticPorts = 2;
+      info.mechanicalPorts = 1;
       info.isPneumaticActive = true;
       info.isMechanicalActive = true;
       break;
@@ -217,7 +210,6 @@ PortInfo GetComponentPortInfo(ComponentType type) {
   return info;
 }
 
-// ?�러 메시지 ?�정 ?�틸리티
 void SetEngineError(PhysicsEngine* engine, PhysicsEngineError errorCode,
                     const char* message) {
   if (!engine)
@@ -237,7 +229,6 @@ void SetEngineError(PhysicsEngine* engine, PhysicsEngineError errorCode,
   }
 }
 
-// ?�능 ?�?�머 ?�틸리티
 class PerformanceTimer {
  private:
   std::chrono::high_resolution_clock::time_point startTime;
@@ -249,16 +240,13 @@ class PerformanceTimer {
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
         endTime - startTime);
-    return duration.count() / 1000.0f;  // ms�?변??
+    return duration.count() / 1000.0f;
   }
 };
 
 }  // namespace PhysicsEngineInternal
 
 
-// 물리?�진 ?�성 ?�수 구현
-// - 메모�??�당 �?기본 초기??
-// - ?�수 ?�인???�정 �??�트?�크 ?�성
 namespace LifecycleFunctions {
 
 int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
@@ -269,13 +257,11 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
 
   using namespace PhysicsEngineInternal;
 
-  //  기본 초기??
   std::memset(engine, 0, sizeof(PhysicsEngine));
   engine->maxComponents = maxComponents;
   engine->activeComponents = 0;
   engine->isInitialized = false;
 
-  // ?�트?�크 ?�스???�성 - ?�패 ???�전 ?�리
   engine->electricalNetwork = new (std::nothrow) ElectricalNetwork;
   if (!engine->electricalNetwork) {
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
@@ -303,7 +289,6 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
   }
 
-  // 컴포?�트 물리 ?�태 배열 ?�성 - ?�패 ???�리
   engine->componentPhysicsStates =
       SafeAllocateArray<TypedPhysicsState>(maxComponents);
   if (!engine->componentPhysicsStates) {
@@ -332,7 +317,6 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
   }
 
-  //  매핑 ?�이�??�성 - ?�패 ???�전 ?�리
   engine->componentPortToElectricalNode =
       Allocate2DArray<int>(maxComponents, 32);
   if (!engine->componentPortToElectricalNode) {
@@ -384,7 +368,6 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
   }
 
-  // 기본 ?�라미터 ?�정
   engine->deltaTime = PhysicsEngineDefaults::DEFAULT_TIME_STEP;
   engine->convergenceTolerance =
       PhysicsEngineDefaults::DEFAULT_CONVERGENCE_TOLERANCE;
@@ -394,7 +377,6 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
   engine->performanceUpdateInterval =
       PhysicsEngineDefaults::DEFAULT_PERFORMANCE_UPDATE_INTERVAL;
 
-  // 컴포?�트 ID 매핑 초기??- null pointer 방�?
   if (engine->componentIdToPhysicsIndex &&
       engine->componentPortToElectricalNode &&
       engine->componentPortToPneumaticNode &&
@@ -735,7 +717,6 @@ int Reset(PhysicsEngine* engine) {
   if (!engine || !engine->isInitialized)
     return PHYSICS_ENGINE_ERROR_NOT_INITIALIZED;
 
-  // ?��??�이???�태 리셋
   engine->isRunning = false;
   engine->isPaused = false;
   engine->currentTime = 0.0f;
@@ -744,7 +725,6 @@ int Reset(PhysicsEngine* engine) {
   engine->hasError = false;
   engine->lastErrorCode = PHYSICS_ENGINE_SUCCESS;
 
-  // ?�트?�크 ?�태 리셋
   engine->electricalNetwork->nodeCount = 0;
   engine->electricalNetwork->edgeCount = 0;
   engine->electricalNetwork->isConverged = false;
@@ -761,10 +741,8 @@ int Reset(PhysicsEngine* engine) {
   engine->mechanicalSystem->currentStep = 0;
   engine->mechanicalSystem->isStable = true;
 
-  // ?�능 ?�계 리셋
   std::memset(&engine->performanceStats, 0, sizeof(PhysicsPerformanceStats));
 
-  // 컴포?�트 매핑 리셋
   for (int i = 0; i < engine->maxComponents; i++) {
     engine->componentIdToPhysicsIndex[i] = -1;
   }
@@ -782,7 +760,6 @@ int Destroy(PhysicsEngine* engine) {
 
   using namespace PhysicsEngineInternal;
 
-  // ?�트?�크 ?�스??메모�??�제
   if (engine->electricalNetwork) {
     ElectricalNetwork* elec = engine->electricalNetwork;
     SafeDeallocateArray(elec->nodes);
@@ -824,7 +801,6 @@ int Destroy(PhysicsEngine* engine) {
     engine->mechanicalSystem = nullptr;
   }
 
-  // 컴포?�트 관??메모�??�제
   SafeDeallocateArray(engine->componentPhysicsStates);
   SafeDeallocateArray(engine->componentIdToPhysicsIndex);
   Deallocate2DArray(engine->componentPortToElectricalNode,
@@ -834,7 +810,6 @@ int Destroy(PhysicsEngine* engine) {
   Deallocate2DArray(engine->componentPortToMechanicalNode,
                     engine->maxComponents);
 
-  // ?�진 ?�태 초기??
   engine->isInitialized = false;
   engine->maxComponents = 0;
   engine->activeComponents = 0;
@@ -843,12 +818,11 @@ int Destroy(PhysicsEngine* engine) {
     std::cout << "[PhysicsEngine] Engine destroyed successfully" << std::endl;
   }
 
-  //  ?�태 ?�래�??�정
   engine->isNetworkBuilt = false;
   engine->isReadyForSimulation = false;
-  engine->isElectricalNetworkReady = true;  // 초기???�료
-  engine->isPneumaticNetworkReady = true;   // 초기???�료
-  engine->isMechanicalSystemReady = true;   // 초기???�료
+  engine->isElectricalNetworkReady = true;
+  engine->isPneumaticNetworkReady = true;
+  engine->isMechanicalSystemReady = true;
 
   return PHYSICS_ENGINE_SUCCESS;
 }
@@ -858,69 +832,54 @@ int Destroy(PhysicsEngine* engine) {
 
 namespace StateValidationFunctions {
 
-// ?�진 준�??�태 검�?
-// - 모든 ?�트?�크 ?�스?�이 준비되?�는지 ?�인
-// - 메모�??�당???�료?�었?��? ?�인
 bool IsEngineReady(PhysicsEngine* engine) {
   if (!engine)
     return false;
 
-  // 기본 초기???�인
   if (!engine->isInitialized)
     return false;
 
-  // ?�트?�크 ?�스??존재 ?�인
   if (!engine->electricalNetwork || !engine->pneumaticNetwork ||
       !engine->mechanicalSystem) {
     return false;
   }
 
-  // 컴포?�트 배열 존재 ?�인
   if (!engine->componentPhysicsStates || !engine->componentIdToPhysicsIndex) {
     return false;
   }
 
-  // 매핑 ?�이�?존재 ?�인
   if (!engine->componentPortToElectricalNode ||
       !engine->componentPortToPneumaticNode ||
       !engine->componentPortToMechanicalNode) {
     return false;
   }
 
-  // 개별 ?�트?�크 준�??�태 ?�인
   return engine->isElectricalNetworkReady && engine->isPneumaticNetworkReady &&
          engine->isMechanicalSystemReady;
 }
 
-//  ?�트?�크 ?�효??검�?
-// - ?�트?�크 구성??물리?�으�??�?�한지 ?�인
-// - ?�드?� ?��????��????�인
 bool IsNetworkValid(PhysicsEngine* engine) {
   if (!engine || !IsEngineReady(engine))
     return false;
 
-  // ?�기 ?�트?�크 ?�효???�인
   ElectricalNetwork* elec = engine->electricalNetwork;
   if (elec->nodeCount < 0 || elec->nodeCount > elec->maxNodes ||
       elec->edgeCount < 0 || elec->edgeCount > elec->maxEdges) {
     return false;
   }
 
-  // 공압 ?�트?�크 ?�효???�인
   PneumaticNetwork* pneu = engine->pneumaticNetwork;
   if (pneu->nodeCount < 0 || pneu->nodeCount > pneu->maxNodes ||
       pneu->edgeCount < 0 || pneu->edgeCount > pneu->maxEdges) {
     return false;
   }
 
-  // 기계 ?�스???�효???�인
   MechanicalSystem* mech = engine->mechanicalSystem;
   if (mech->nodeCount < 0 || mech->nodeCount > mech->maxNodes ||
       mech->edgeCount < 0 || mech->edgeCount > mech->maxEdges) {
     return false;
   }
 
-  // ?�성 컴포?�트 ???�인
   if (engine->activeComponents < 0 ||
       engine->activeComponents > engine->maxComponents) {
     return false;
@@ -929,18 +888,13 @@ bool IsNetworkValid(PhysicsEngine* engine) {
   return engine->isNetworkBuilt;
 }
 
-// ?��??�이???�행 ?�전??검�?
-// - ?�버 ?�출 ??모든 조건??만족?�는지 ?�인
-// - 메모�??�태 �??�치???�정???�인
 bool IsSafeToRunSimulation(PhysicsEngine* engine) {
   if (!engine || !IsNetworkValid(engine))
     return false;
 
-  // ?�러 ?�태 ?�인
   if (engine->hasError)
     return false;
 
-  // ?��??�이???�라미터 ?�효???�인
   if (engine->deltaTime <= 0.0f || engine->deltaTime > 1.0f)
     return false;
   if (engine->maxIterations <= 0 || engine->maxIterations > 10000)
@@ -948,7 +902,6 @@ bool IsSafeToRunSimulation(PhysicsEngine* engine) {
   if (engine->convergenceTolerance <= 0.0f)
     return false;
 
-  // ?�트?�크�??�버 준�??�태 ?�인
   ElectricalNetwork* elec = engine->electricalNetwork;
   if (elec->nodeCount > 0) {
     if (!elec->nodes || !elec->edges || !elec->voltageVector ||
@@ -979,9 +932,6 @@ bool IsSafeToRunSimulation(PhysicsEngine* engine) {
 }  // namespace StateValidationFunctions
 
 
-// 배선 ?�보로�???물리 ?�트?�크 ?�동 구성
-// - ?�심 기능: Wire?� PlacedComponent�?분석?�여 물리 ?�트?�크 ?�성
-// - 기존 ?�드코딩???��??�이?�을 ?�체하??가??중요??기능
 namespace NetworkingFunctions {
 
 int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
@@ -1002,7 +952,6 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
               << " components and " << wireCount << " wires..." << std::endl;
   }
 
-  // 1. 기존 ?�트?�크 초기??
   engine->electricalNetwork->nodeCount = 0;
   engine->electricalNetwork->edgeCount = 0;
   engine->pneumaticNetwork->nodeCount = 0;
@@ -1010,12 +959,10 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
   engine->mechanicalSystem->nodeCount = 0;
   engine->mechanicalSystem->edgeCount = 0;
 
-  // 2. 컴포?�트�??�드 ?�성
   for (int c = 0; c < componentCount; c++) {
     const PlacedComponent& comp = components[c];
     PortInfo portInfo = GetComponentPortInfo(comp.type);
 
-    //  컴포?�트 물리 ?�태 초기??- 배열 경계 검??강화
     if (comp.instanceId >= 0 && comp.instanceId < engine->maxComponents &&
         engine->activeComponents < engine->maxComponents &&
         engine->componentIdToPhysicsIndex != nullptr) {
@@ -1024,33 +971,28 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
 
       TypedPhysicsState& physState =
           engine->componentPhysicsStates[engine->activeComponents];
-      physState.type = PHYSICS_STATE_NONE;  // ?�단 초기?? ?�중???�?�별�??�정
+      physState.type = PHYSICS_STATE_NONE;
 
-      // ?�?�별 물리 ?�태 ?�정
       switch (comp.type) {
         case ComponentType::PLC:
           physState.type = PHYSICS_STATE_PLC;
-          // PLC 물리 ?�태 초기??
           std::memset(&physState.state.plc, 0, sizeof(PLCPhysicsState));
           break;
 
         case ComponentType::CYLINDER: {
           physState.type = PHYSICS_STATE_CYLINDER;
-          // ?�린??물리 ?�태 초기??(기존 internalStates?�서 변??
           CylinderPhysicsState& cylState = physState.state.cylinder;
           std::memset(&cylState, 0, sizeof(CylinderPhysicsState));
 
-          // 기본�??�정
           cylState.maxStroke = 160.0f;
           cylState.pistonMass = 0.5f;
-          cylState.pistonAreaA = 314.16f;  // ? × (10mm)² [cm²]
+          cylState.pistonAreaA = 314.16f;
           cylState.pistonAreaB =
-              235.62f;  // ? × (10mm)² - ? × (5mm)² [cm²] (로드 ?�외)
+              235.62f;
           cylState.staticFriction = 0.3f;
           cylState.kineticFriction = 0.2f;
           cylState.viscousDamping = 0.02f;
 
-          // 기존 internalStates?�서 �?복사 (?�다�?
           auto it = comp.internalStates.find("position");
           if (it != comp.internalStates.end()) {
             cylState.position = it->second;
@@ -1091,7 +1033,6 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
                       sizeof(ButtonUnitPhysicsState));
           break;
 
-        // 물리 ?��??�이?�이 ?�요?��? ?��? 컴포?�트??
         case ComponentType::FRL:
         case ComponentType::MANIFOLD:
         case ComponentType::POWER_SUPPLY:
@@ -1103,7 +1044,6 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
       engine->activeComponents++;
     }
 
-    // ?�기 ?�트?�크 ?�드 ?�성
     if (portInfo.isElectricalActive) {
       ElectricalNetwork* elec = engine->electricalNetwork;
       for (int p = 0; p < portInfo.electricalPorts; p++) {
@@ -1118,36 +1058,33 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         node.base.nodeId = elec->nodeCount;
         node.base.isActive = true;
 
-        // 컴포?�트 ?�?�별 ?�기???�성 ?�정
         switch (comp.type) {
           case ComponentType::POWER_SUPPLY:
-            if (p == 0) {  // 24V ?�트
+            if (p == 0) {
               node.isVoltageSource = true;
               node.sourceVoltage = 24.0f;
-              node.sourceResistance = 0.1f;  // ?��??�??0.1Ω
+              node.sourceResistance = 0.1f;
               engine->electricalNetwork->groundNodeId =
-                  elec->nodeCount;  // ?��????�정
-            } else if (p == 1) {    // 0V ?�트
+                  elec->nodeCount;
+            } else if (p == 1) {
               node.voltage = 0.0f;
             }
             break;
 
           case ComponentType::PLC:
-            // PLC ?�력?�트 (X0-X15): 고임?�던??
             if (p < 16) {
-              node.inputImpedance[0] = 10000.0f;  // 10kΩ ?�력?�피?�스
-            } else {                           // 출력?�트 (Y0-Y15): ?�?�피?�스
-              node.outputImpedance[0] = 1.0f;  // 1Ω 출력?�피?�스
+              node.inputImpedance[0] = 10000.0f;
+            } else {
+              node.outputImpedance[0] = 1.0f;
             }
             break;
 
           default:
-            node.nodeCapacitance = 1e-12f;     // 기본 1pF
-            node.leakageConductance = 1e-12f;  // 기본 1pS ?�설
+            node.nodeCapacitance = 1e-12f;
+            node.leakageConductance = 1e-12f;
             break;
         }
 
-        //  매핑 ?�이�??�데?�트 - 범위 검??
         if (comp.instanceId >= 0 && comp.instanceId < engine->maxComponents &&
             p >= 0 && p < 32 &&
             engine->componentPortToElectricalNode != nullptr) {
@@ -1158,7 +1095,6 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
       }
     }
 
-    // 공압 ?�트?�크 ?�드 ?�성
     if (portInfo.isPneumaticActive) {
       PneumaticNetwork* pneu = engine->pneumaticNetwork;
       for (int p = 0; p < portInfo.pneumaticPorts; p++) {
@@ -1178,32 +1114,30 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         node.base.nodeId = pneu->nodeCount;
         node.base.isActive = true;
 
-        // 컴포?�트 ?�?�별 공압 ?�성 ?�정
         switch (comp.type) {
           case ComponentType::FRL:
             node.isPressureSource = true;
             node.sourcePressure = 6.0f * 100000.0f;  // 6bar ??Pa
-            node.sourceTemperature = 293.15f;        // 20°C
+            node.sourceTemperature = 293.15f;
             break;
 
           case ComponentType::CYLINDER:
-            if (p == 0) {           // A챔버
-              node.volume = 0.05f;  // 50mL 기본 체적
-            } else if (p == 1) {    // B챔버
-              node.volume = 0.03f;  // 30mL (로드 체적 ?�외)
+            if (p == 0) {
+              node.volume = 0.05f;
+            } else if (p == 1) {
+              node.volume = 0.03f;
             }
             node.temperature = 293.15f;
             node.pressure = pneu->atmosphericPressure;
             break;
 
           default:
-            node.volume = 0.001f;  // 기본 1mL
+            node.volume = 0.001f;
             node.temperature = 293.15f;
             node.pressure = pneu->atmosphericPressure;
             break;
         }
 
-        // 공압 매핑 ?�이�??�데?�트 - 범위 검??
         if (comp.instanceId >= 0 && comp.instanceId < engine->maxComponents &&
             port_id >= 0 && port_id < 16 &&
             engine->componentPortToPneumaticNode != nullptr) {
@@ -1214,7 +1148,6 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
       }
     }
 
-    // 기계 ?�스???�드 ?�성
     if (portInfo.isMechanicalActive) {
       MechanicalSystem* mech = engine->mechanicalSystem;
       if (mech->nodeCount < mech->maxNodes) {
@@ -1226,31 +1159,27 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         node.base.nodeId = mech->nodeCount;
         node.base.isActive = true;
 
-        // 컴포?�트 ?�?�별 기계???�성 ?�정
         switch (comp.type) {
           case ComponentType::CYLINDER:
-            node.mass = 0.5f;         // ?�스??로드 질량 0.5kg
-            node.position[0] = 0.0f;  // 초기 ?�치 (?�전 ?�축)
-            // 구속조건: Y, Z�?고정, X축만 ?�동 가??
+            node.mass = 0.5f;
+            node.position[0] = 0.0f;
             node.isFixed[1] = node.isFixed[2] = true;
             node.isFixed[3] = node.isFixed[4] = node.isFixed[5] = true;
             break;
 
           case ComponentType::LIMIT_SWITCH:
-            node.mass = 0.01f;  // ?�위�??�추?�이??질량 10g
-            // 모든 �?고정 (?�촉?�만 측정)
+            node.mass = 0.01f;
             for (int i = 0; i < 6; i++)
               node.isFixed[i] = true;
             break;
 
           default:
-            node.mass = 0.001f;  // 기본 1g
+            node.mass = 0.001f;
             for (int i = 0; i < 6; i++)
               node.isFixed[i] = true;
             break;
         }
 
-        //  기계 매핑 ?�이�??�데?�트 - 범위 검??
         if (comp.instanceId >= 0 && comp.instanceId < engine->maxComponents &&
             engine->componentPortToMechanicalNode != nullptr) {
           engine->componentPortToMechanicalNode[comp.instanceId][0] =
@@ -1261,17 +1190,14 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
     }
   }
 
-  // 3. ?�?�어�??��? ?�성
   for (int w = 0; w < wireCount; w++) {
     const Wire& wire = wires[w];
 
     if (wire.isElectric) {
-      // ?�기 ?��? ?�성
       ElectricalNetwork* elec = engine->electricalNetwork;
       if (elec->edgeCount >= elec->maxEdges)
         continue;
 
-      // ?�?�어 ?�결 ?�보로�????�드 ID 찾기
       int fromNodeId = -1, toNodeId = -1;
 
       for (int n = 0; n < elec->nodeCount; n++) {
@@ -1296,24 +1222,22 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         edge.base.wireId = wire.id;
         edge.base.isActive = true;
 
-        // ?�?�어 물리???�성?�로부???�기???�성 계산
         float wireLength =
-            100.0f;  // 기본 100mm (?�제로는 wayPoints�?계산?�야 ??
+            100.0f;
         edge.length = wireLength;
-        edge.crossSectionArea = 0.5f;  // 0.5mm² ?�선
-        edge.resistivity = 1.7e-8f;    // 구리 비�???[Ω?�m]
-        edge.temperature = 20.0f;      // ?�온
+        edge.crossSectionArea = 0.5f;
+        edge.resistivity = 1.7e-8f;
+        edge.temperature = 20.0f;
 
         edge.resistance = (edge.resistivity * 1000.0f) *
                           (wireLength / 1000.0f) /
                           (edge.crossSectionArea / 1000000.0f);
         edge.conductance = 1.0f / edge.resistance;
-        edge.maxCurrent = 1.0f;  // 최�? 1A
+        edge.maxCurrent = 1.0f;
 
         elec->edgeCount++;
       }
     } else {
-      // 공압 ?��? ?�성
       PneumaticNetwork* pneu = engine->pneumaticNetwork;
       if (pneu->edgeCount >= pneu->maxEdges)
         continue;
@@ -1342,13 +1266,12 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         edge.base.wireId = wire.id;
         edge.base.isActive = true;
 
-        // 공압 배�? ?�성 ?�정 (기본�?
-        edge.diameter = 4.0f;  // 4mm ?�경
-        edge.length = 200.0f;  // 200mm 길이
+        edge.diameter = 4.0f;
+        edge.length = 200.0f;
         edge.crossSectionArea =
-            3.14159f * (edge.diameter / 2.0f) * (edge.diameter / 2.0f);  // ?×r²
-        edge.roughness = 0.05f;  // 0.05μm ?�면거칠�?
-        edge.curvature = 0.1f;   // �?��?�실계수
+            3.14159f * (edge.diameter / 2.0f) * (edge.diameter / 2.0f);
+        edge.roughness = 0.05f;
+        edge.curvature = 0.1f;
 
         pneu->edgeCount++;
       }
@@ -1358,10 +1281,8 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
   float buildTime = timer.GetElapsedMs();
   engine->performanceStats.networkBuildTime = buildTime;
 
-  //  ?�트?�크 구성 ?�료 ?�태 ?�정
   engine->isNetworkBuilt = true;
 
-  // ?��??�이??준�??�태 ?�인 (모든 조건??만족?�면 준�??�료)
   if (StateValidationFunctions::IsEngineReady(engine) &&
       StateValidationFunctions::IsNetworkValid(engine)) {
     engine->isReadyForSimulation = true;
@@ -1393,12 +1314,10 @@ int UpdateNetworkTopology(PhysicsEngine* engine) {
   if (!engine || !engine->isInitialized)
     return PHYSICS_ENGINE_ERROR_NOT_INITIALIZED;
 
-  // ?�접 ?�렬 ?�데?�트
   ElectricalNetwork* elec = engine->electricalNetwork;
   PneumaticNetwork* pneu = engine->pneumaticNetwork;
   MechanicalSystem* mech = engine->mechanicalSystem;
 
-  // ?�기 ?�트?�크 ?�접 ?�렬 구성
   for (int i = 0; i < elec->nodeCount; i++) {
     for (int j = 0; j < elec->nodeCount; j++) {
       elec->adjacencyMatrix[i][j] = 0;
@@ -1417,7 +1336,6 @@ int UpdateNetworkTopology(PhysicsEngine* engine) {
     }
   }
 
-  // 공압 ?�트?�크 ?�접 ?�렬 구성
   for (int i = 0; i < pneu->nodeCount; i++) {
     for (int j = 0; j < pneu->nodeCount; j++) {
       pneu->adjacencyMatrix[i][j] = 0;
@@ -1436,7 +1354,6 @@ int UpdateNetworkTopology(PhysicsEngine* engine) {
     }
   }
 
-  // 기계 ?�스???�접 ?�렬 구성
   for (int i = 0; i < mech->nodeCount; i++) {
     for (int j = 0; j < mech->nodeCount; j++) {
       mech->adjacencyMatrix[i][j] = 0;
@@ -1463,14 +1380,11 @@ int UpdateNetworkTopology(PhysicsEngine* engine) {
 
 extern "C" {
 
-// 물리?�진 ?�토�??�수??
 PhysicsEngine* CreatePhysicsEngine(int maxComponents, int maxWires) {
   PhysicsEngine* engine = new (std::nothrow) PhysicsEngine;
   if (!engine)
     return nullptr;
 
-  //  Create() ?�출 먼�? - memset???��??�서 ?�행??
-  // ?�시�?Create ?�수 ?�인?�만 ?�정
   engine->lifecycle.Create = LifecycleFunctions::Create;
 
   if (engine->lifecycle.Create(engine, maxComponents, maxWires) !=
@@ -1479,7 +1393,6 @@ PhysicsEngine* CreatePhysicsEngine(int maxComponents, int maxWires) {
     return nullptr;
   }
 
-  //  memset ?�후??모든 ?�수 ?�인???�설??
   engine->lifecycle.Create = LifecycleFunctions::Create;
   engine->lifecycle.Initialize = LifecycleFunctions::Initialize;
   engine->lifecycle.Reset = LifecycleFunctions::Reset;
@@ -1490,13 +1403,11 @@ PhysicsEngine* CreatePhysicsEngine(int maxComponents, int maxWires) {
   engine->networking.UpdateNetworkTopology =
       NetworkingFunctions::UpdateNetworkTopology;
 
-  //  ?�태 검�??�수 ?�인???�정
   engine->IsEngineReady = StateValidationFunctions::IsEngineReady;
   engine->IsNetworkValid = StateValidationFunctions::IsNetworkValid;
   engine->IsSafeToRunSimulation =
       StateValidationFunctions::IsSafeToRunSimulation;
 
-  //  물리?�진 초기??- ?�수 ?�인???�설????Initialize ?�출
   if (!engine->lifecycle.Initialize || !engine->lifecycle.Destroy) {
     if (engine->lifecycle.Destroy) {
       engine->lifecycle.Destroy(engine);
@@ -1522,7 +1433,6 @@ PhysicsEngine* CreateDefaultPhysicsEngine() {
 }
 
 void DestroyPhysicsEngine(PhysicsEngine* engine) {
-  // ?�전???�진 ?�멸 - null 체크 �??�수 ?�인??검�?
   if (engine) {
     if (engine->lifecycle.Destroy) {
       engine->lifecycle.Destroy(engine);

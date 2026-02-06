@@ -21,7 +21,6 @@ LDToLadderConverter::~LDToLadderConverter() {}
 
 bool LDToLadderConverter::ConvertFromLDFile(const std::string& ldFilePath,
                                             LadderProgram& ladderProgram) {
-  // 파일 읽기
   std::ifstream file(ldFilePath);
   if (!file.is_open()) {
     SetError("Failed to open .ld file: " + ldFilePath);
@@ -41,21 +40,17 @@ bool LDToLadderConverter::ConvertFromLDFile(const std::string& ldFilePath,
 
 bool LDToLadderConverter::ConvertFromLDString(const std::string& ldContent,
                                               LadderProgram& ladderProgram) {
-  // 통계 초기화
   stats_ = ConversionStats();
   parsed_networks_.clear();
 
-  // .ld 파일 파싱
   if (!ParseLDFile(ldContent)) {
     return false;
   }
 
-  // LadderProgram으로 변환
   if (!ConvertNetworksToLadder(ladderProgram)) {
     return false;
   }
 
-  // 검증
   if (!ValidateConvertedLadder(ladderProgram)) {
     return false;
   }
@@ -71,7 +66,6 @@ bool LDToLadderConverter::ConvertFromLDString(const std::string& ldContent,
 bool LDToLadderConverter::ParseLDFile(const std::string& ldContent) {
   LogDebug("🔍 Parsing .ld file content...");
 
-  // 네트워크 섹션들 추출
   std::vector<std::string> networkSections =
       ExtractXMLTags(ldContent, "network");
 
@@ -82,7 +76,6 @@ bool LDToLadderConverter::ParseLDFile(const std::string& ldContent) {
 
   LogDebug("📋 Found " + std::to_string(networkSections.size()) + " networks");
 
-  // 각 네트워크 파싱
   for (size_t i = 0; i < networkSections.size(); ++i) {
     LDNetwork network;
     network.networkNumber = static_cast<int>(i);
@@ -103,12 +96,10 @@ bool LDToLadderConverter::ParseNetwork(const std::string& networkXML,
                                        LDNetwork& network) {
   LogDebug("🔍 Parsing network " + std::to_string(network.networkNumber));
 
-  // 요소들 추출 (contact, coil, block 등)
   std::vector<std::string> contacts = ExtractXMLTags(networkXML, "contact");
   std::vector<std::string> coils = ExtractXMLTags(networkXML, "coil");
   std::vector<std::string> blocks = ExtractXMLTags(networkXML, "block");
 
-  // Contact 요소들 파싱
   for (const auto& contactXML : contacts) {
     LDElement element;
     if (ParseElement(contactXML, element)) {
@@ -118,7 +109,6 @@ bool LDToLadderConverter::ParseNetwork(const std::string& networkXML,
     }
   }
 
-  // Coil 요소들 파싱
   for (const auto& coilXML : coils) {
     LDElement element;
     if (ParseElement(coilXML, element)) {
@@ -128,7 +118,6 @@ bool LDToLadderConverter::ParseNetwork(const std::string& networkXML,
     }
   }
 
-  // Block 요소들 파싱 (타이머, 카운터 등)
   for (const auto& blockXML : blocks) {
     LDElement element;
     if (ParseElement(blockXML, element)) {
@@ -138,7 +127,6 @@ bool LDToLadderConverter::ParseNetwork(const std::string& networkXML,
     }
   }
 
-  // 연결선 정보 추출
   std::vector<std::string> connections =
       ExtractXMLTags(networkXML, "connection");
   for (const auto& conn : connections) {
@@ -155,11 +143,9 @@ bool LDToLadderConverter::ParseNetwork(const std::string& networkXML,
 
 bool LDToLadderConverter::ParseElement(const std::string& elementXML,
                                        LDElement& element) {
-  // 기본 속성 추출
   element.name = GetXMLAttribute(elementXML, "name");
   element.operation = GetXMLAttribute(elementXML, "operation");
 
-  // 위치 정보 추출
   std::string xStr = GetXMLAttribute(elementXML, "x");
   std::string yStr = GetXMLAttribute(elementXML, "y");
 
@@ -168,7 +154,6 @@ bool LDToLadderConverter::ParseElement(const std::string& elementXML,
   if (!yStr.empty())
     element.y = std::stoi(yStr);
 
-  // 추가 속성들 추출
   element.attributes["negated"] = GetXMLAttribute(elementXML, "negated");
   element.attributes["edge"] = GetXMLAttribute(elementXML, "edge");
   element.attributes["storage"] = GetXMLAttribute(elementXML, "storage");
@@ -184,11 +169,9 @@ bool LDToLadderConverter::ConvertNetworksToLadder(
     LadderProgram& ladderProgram) {
   LogDebug("🔄 Converting networks to ladder program...");
 
-  // 기존 래더 프로그램 초기화
   ladderProgram.rungs.clear();
   ladderProgram.verticalConnections.clear();
 
-  // 각 네트워크를 룽으로 변환
   for (const auto& network : parsed_networks_) {
     Rung rung;
     rung.number = network.networkNumber;
@@ -202,12 +185,10 @@ bool LDToLadderConverter::ConvertNetworksToLadder(
     ladderProgram.rungs.push_back(rung);
   }
 
-  // END 룽 추가
   Rung endRung;
   endRung.isEndRung = true;
   ladderProgram.rungs.push_back(endRung);
 
-  // 수직 연결선 생성
   GenerateVerticalConnections(ladderProgram);
 
   LogDebug("✅ Converted to " + std::to_string(ladderProgram.rungs.size()) +
@@ -223,18 +204,15 @@ bool LDToLadderConverter::ConvertNetworkToRung(const LDNetwork& network,
   LogDebug("🔄 Converting network " + std::to_string(network.networkNumber) +
            " to rung");
 
-  // 12개 셀로 초기화
   rung.cells.resize(12);
   for (auto& cell : rung.cells) {
     cell.type = LadderInstructionType::EMPTY;
   }
 
-  // 요소들을 X 좌표순으로 정렬
   std::vector<LDElement> sortedElements = network.elements;
   std::sort(sortedElements.begin(), sortedElements.end(),
             [](const LDElement& a, const LDElement& b) { return a.x < b.x; });
 
-  // 각 요소를 적절한 셀에 배치
   int cellIndex = 0;
   for (const auto& element : sortedElements) {
     if (cellIndex >= 12) {
@@ -245,15 +223,12 @@ bool LDToLadderConverter::ConvertNetworkToRung(const LDNetwork& network,
 
     LadderInstruction& instruction = rung.cells[cellIndex];
 
-    // 요소 타입과 오퍼레이션에 따라 명령어 타입 결정
     instruction.type =
         ConvertLDTypeToInstruction(element.type, element.operation);
     instruction.address = element.name;
 
-    // 특별한 속성들 처리
     if (element.attributes.count("negated") &&
         element.attributes.at("negated") == "true") {
-      // 부정 접점 처리
       if (instruction.type == LadderInstructionType::XIC) {
         instruction.type = LadderInstructionType::XIO;
       }
@@ -266,7 +241,6 @@ bool LDToLadderConverter::ConvertNetworkToRung(const LDNetwork& network,
     cellIndex++;
   }
 
-  // 레이아웃 최적화
   OptimizeRungLayout(rung);
 
   return true;
@@ -276,29 +250,29 @@ LadderInstructionType LDToLadderConverter::ConvertLDTypeToInstruction(
     const std::string& ldType, const std::string& operation) {
   if (ldType == "contact") {
     if (operation == "LD" || operation == "AND") {
-      return LadderInstructionType::XIC;  // 기본적으로 A접점
+      return LadderInstructionType::XIC;
     } else if (operation == "LDN" || operation == "ANDN") {
-      return LadderInstructionType::XIO;  // B접점
+      return LadderInstructionType::XIO;
     } else if (operation == "OR") {
-      return LadderInstructionType::XIC;  // OR 연결은 수직선으로 처리
+      return LadderInstructionType::XIC;
     } else if (operation == "ORN") {
-      return LadderInstructionType::XIO;  // OR 연결 B접점
+      return LadderInstructionType::XIO;
     }
   } else if (ldType == "coil") {
     if (operation == "ST") {
-      return LadderInstructionType::OTE;  // 일반 출력
+      return LadderInstructionType::OTE;
     } else if (operation == "S") {
-      return LadderInstructionType::SET;  // SET 명령
+      return LadderInstructionType::SET;
     } else if (operation == "R") {
-      return LadderInstructionType::RST;  // RESET 명령
+      return LadderInstructionType::RST;
     }
   } else if (ldType == "block") {
     if (operation == "TON") {
-      return LadderInstructionType::TON;  // 타이머 ON 딜레이
+      return LadderInstructionType::TON;
     } else if (operation == "CTU") {
-      return LadderInstructionType::CTU;  // 업 카운터
+      return LadderInstructionType::CTU;
     } else if (operation == "RES") {
-      return LadderInstructionType::RST_TMR_CTR;  // 리셋
+      return LadderInstructionType::RST_TMR_CTR;
     }
   }
 
@@ -308,7 +282,6 @@ LadderInstructionType LDToLadderConverter::ConvertLDTypeToInstruction(
 }
 
 void LDToLadderConverter::OptimizeRungLayout(Rung& rung) {
-  // 빈 셀들을 제거하고 왼쪽으로 정렬
   std::vector<LadderInstruction> nonEmptyInstructions;
 
   for (const auto& cell : rung.cells) {
@@ -317,7 +290,6 @@ void LDToLadderConverter::OptimizeRungLayout(Rung& rung) {
     }
   }
 
-  // 모든 셀을 EMPTY로 초기화
   for (auto& cell : rung.cells) {
     cell.type = LadderInstructionType::EMPTY;
     cell.address.clear();
@@ -325,7 +297,6 @@ void LDToLadderConverter::OptimizeRungLayout(Rung& rung) {
     cell.isActive = false;
   }
 
-  // 비어있지 않은 명령어들을 다시 배치
   for (size_t i = 0; i < nonEmptyInstructions.size() && i < rung.cells.size();
        ++i) {
     rung.cells[i] = nonEmptyInstructions[i];
@@ -334,13 +305,9 @@ void LDToLadderConverter::OptimizeRungLayout(Rung& rung) {
 
 void LDToLadderConverter::GenerateVerticalConnections(
     LadderProgram& ladderProgram) {
-  (void)ladderProgram;  // unused parameter - Phase 3에서 구현 예정
-  // OpenPLC의 OR 연산을 수직 연결선으로 변환
-  // 이 부분은 향후 고도화될 수 있음
+  (void)ladderProgram;
   LogDebug("🔗 Generating vertical connections (simplified implementation)");
 
-  // 현재는 기본적인 수직 연결만 생성
-  // 실제 구현에서는 .ld 파일의 연결선 정보를 분석해야 함
 }
 
 
@@ -432,7 +399,6 @@ bool LDToLadderConverter::ValidateConvertedLadder(
     return false;
   }
 
-  // 각 룽의 명령어 유효성 검사
   for (const auto& rung : ladderProgram.rungs) {
     if (rung.isEndRung)
       continue;
@@ -452,10 +418,9 @@ bool LDToLadderConverter::ValidateConvertedLadder(
 bool LDToLadderConverter::CheckInstructionValidity(
     const LadderInstruction& instruction) {
   if (instruction.type == LadderInstructionType::EMPTY) {
-    return true;  // 빈 셀은 유효
+    return true;
   }
 
-  // 주소가 있는 명령어는 주소가 비어있으면 안됨
   if (instruction.type == LadderInstructionType::XIC ||
       instruction.type == LadderInstructionType::XIO ||
       instruction.type == LadderInstructionType::OTE ||

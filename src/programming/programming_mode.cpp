@@ -1,39 +1,19 @@
 // programming_mode.cpp
-
-//
-
 // Implementation of programming mode.
 
-
-
 #include "plc_emulator/programming/programming_mode.h"
-
-
-
 #include "plc_emulator/programming/compiled_plc_executor.h"
-
 #include "plc_emulator/project/ladder_to_ld_converter.h"
-
 #include "plc_emulator/project/openplc_compiler_integration.h"
 
-
-
 #include <algorithm>
-
 #include <fstream>
-
 #include <functional>
-
 #include <iostream>
 #include <regex>
-
 #include <set>
-
 #include <sstream>
-
 #include <string>
-
-
 
 namespace plc {
 

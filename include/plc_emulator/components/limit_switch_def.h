@@ -7,6 +7,6 @@ namespace plc {
 
 const ComponentDefinition* GetLimitSwitchDefinition();
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_LIMIT_SWITCH_DEF_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_LIMIT_SWITCH_DEF_H_ */

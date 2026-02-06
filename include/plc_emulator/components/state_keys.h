@@ -40,6 +40,6 @@ constexpr const char* kPlcError = "plc_error";
 constexpr const char* kPlcXPrefix = "plc_x_";
 constexpr const char* kPlcYPrefix = "plc_y_";
 }
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_STATE_KEYS_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_COMPONENTS_STATE_KEYS_H_ */

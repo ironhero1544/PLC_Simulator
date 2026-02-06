@@ -1,4 +1,4 @@
-﻿// compiled_plc_executor.cpp
+// compiled_plc_executor.cpp
 //
 // Implementation of PLC executor.
 
@@ -14,20 +14,7 @@
 
 namespace plc {
 
-/**
- * @brief Constructor with safe memory initialization
-  * C?꾧뎄議곗껜?먮뒗 ? ?④퍡 sfe 硫붾え由??큛tiliz?먯꽌i??
- *
- * MEMORY SAFETY INITIALIZATION:
- * Ensures all PLC memory structures are properly initialized to prevent
- * undefined behavior during scan cycle execution. The PLCMemory constructor
- * zeros all arrays to provide deterministic initial state.
- *
- * TIMING CHARACTERISTICS:
- * - Default 10ms scan cycle
- * - High-resolution timestamp for accurate cycle time measurement
- * - Thread-safe execution state management
- */
+// Initialize executor state.
 CompiledPLCExecutor::CompiledPLCExecutor() {
   memory_ = PLCMemory();
   memory_.last_scan_time = std::chrono::steady_clock::now();
@@ -41,30 +28,7 @@ CompiledPLCExecutor::~CompiledPLCExecutor() {
   SetContinuousExecution(false);
 }
 
-/**
- * @brief Load and parse compiled C++ code with comprehensive error handling
-  * 濡쒕뱶 諛??뚯떛 而댄뙆?펋 C++ code ? ?④퍡 comprehensive ?ㅻ쪟 h諛뢬?큙
- * @param compiledCode Generated C++ code from OpenPLC compiler
-  * Gener?먯꽌ed C++ code 遺??OpenPLC 而댄뙆?펢
- * @return true if successful, false on parsing errors
-  * 李?留뚯빟 ?깃났ful, 嫄곗쭞 ??prs?큙 ?ㅻ쪟s
- *
- * CRITICAL COMPILATION ERROR PREVENTION:
- * This method handles the most common source of PLC execution failures -
- * malformed or incomplete compiled code from the OpenPLC compiler.
- *
- * ERROR SCENARIOS HANDLED:
- * 1. Empty or null compiled code
- * 2. Syntax errors in generated C++ code
- * 3. Unsupported instruction formats
- * 4. Memory allocation failures during parsing
- * 5. Invalid variable references
- *
- * RECOVERY STRATEGY:
- * - Clear previous instruction cache to prevent stale code execution
- * - Detailed error logging for debugging compilation issues
- * - Safe failure mode preserves previous working state
- */
+// Cache generated code and parse it into the instruction list.
 bool CompiledPLCExecutor::LoadCompiledCode(const std::string& compiledCode) {
   loaded_code_ = compiledCode;
   instructions_.clear();
@@ -93,36 +57,7 @@ bool CompiledPLCExecutor::LoadFromCompilationResult(
   return LoadCompiledCode(result.generatedCode);
 }
 
-/**
- * @brief Execute PLC scan cycle with comprehensive error handling and timing
-  * ?ㅽ뻾 PLC s?????덈떎 cycle ? ?④퍡 comprehensive ?ㅻ쪟 h諛뢬?큙 諛?tim?큙
- * @return ExecutionResult containing success status, timing, and error
-  * Executi?껽esult c?꼝?대궡g ?깃났 st?먯꽌us, tim?큙, 諛??ㅻ쪟
- * information
- *
- * CRITICAL PLC SCAN CYCLE IMPLEMENTATION:
- * This method implements the standard industrial PLC scan cycle following
- * the INPUT SCAN ??PROGRAM SCAN ??OUTPUT SCAN pattern. Comprehensive
- * error handling prevents crashes that could stop industrial processes.
- *
- * SCAN CYCLE ERROR PREVENTION:
- * 1. Empty instruction validation prevents null pointer execution
- * 2. Exception handling catches runtime errors in compiled code
- * 3. Execution state management prevents concurrent access
- * 4. Performance timing with microsecond precision
- * 5. Instruction-level error isolation
- *
- * INDUSTRIAL SAFETY FEATURES:
- * - Automatic execution state cleanup on failure
- * - Detailed error reporting for maintenance
- * - Cycle time monitoring for performance analysis
- * - Memory corruption protection during execution
- *
- * REAL-TIME CHARACTERISTICS:
- * - High-resolution timing measurement
- * - Deterministic execution path
- * - Bounded execution time monitoring
- */
+// Execute one PLC scan cycle and return timing/status.
 CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
   ExecutionResult result;
   auto startTime = std::chrono::high_resolution_clock::now();
@@ -151,10 +86,10 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
 
   is_running_ = true;
 
-  // INDUSTRIAL PLC SCAN CYCLE EXECUTION
+  // Run the scan cycle.
   try {
-    // STAGE 1: INPUT SCAN - Physical inputs set externally via SetInput()
-    // STAGE 2: PROGRAM SCAN - Execute ladder logic with error isolation
+    // Stage 1: input scan (inputs set via SetInput()).
+    // Stage 2: program scan (execute ladder logic).
     int executedInstructions = 0;
     for (const auto& instruction : instructions_) {
       if (!ExecuteInstruction(instruction)) {
@@ -167,9 +102,8 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
       executedInstructions++;
     }
 
-    // STAGE 3: OUTPUT SCAN - Outputs already set in Y array during execution
+    // Stage 3: output scan (Y outputs already set).
 
-    // ?ㅽ뻾 ?듦퀎 怨꾩궛
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
         endTime - startTime);
@@ -178,7 +112,6 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
     result.cycleTime_us = static_cast<int>(duration.count());
     result.instructionCount = executedInstructions;
 
-    // ?ㅼ틪 ?쒓컙 ?낅뜲?댄듃
     memory_.last_scan_time = std::chrono::steady_clock::now();
     memory_.scan_cycle_ms = static_cast<int>(duration.count() / 1000);
 
@@ -188,15 +121,13 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
     }
 
   } catch (const std::exception& e) {
-    // CRITICAL EXCEPTION HANDLING: Prevent crashes from corrupting PLC state
+    // Keep state consistent after failures.
     result.success = false;
     result.errorMessage =
         "Exception during execution: " + std::string(e.what());
 
-    // SAFETY: Ensure execution state is properly cleaned up
     is_running_ = false;
 
-    // DEBUGGING: Log exception details for troubleshooting
     if (debug_mode_) {
       DebugLog("CRITICAL: Scan cycle exception - " + std::string(e.what()));
     }
@@ -215,8 +146,6 @@ void CompiledPLCExecutor::SetContinuousExecution(bool enable,
   if (enable) {
     DebugLog("Starting continuous execution mode with " +
              std::to_string(cycleTime_ms) + "ms cycle time");
-    // ?ㅼ젣 援ы쁽?먯꽌??蹂꾨룄 ?ㅻ젅?쒖뿉???ㅽ뻾?????덉쓬
-    // 吏湲덉? ?⑥닚?섍쾶 ?⑥씪 ?ㅼ틪留?吏??
   } else {
     DebugLog("Stopping continuous execution mode");
   }
@@ -251,34 +180,6 @@ bool CompiledPLCExecutor::GetMemory(int address) const {
   return false;
 }
 
-/**
- * @brief Get device state with comprehensive bounds checking and error handling
-  * 媛?몄삤湲?device st?먯꽌e ? ?④퍡 comprehensive bounds ?뺤씤?큙 諛??ㅻ쪟 h諛뢬?큙
- * @param address Device address string (e.g., "X0", "Y15", "M999")
-  * Device 異붽?ress 臾몄옄??(e.g., "X0", "Y15", "M999")
- * @return Device state or false if invalid address
-  * Device st?먯꽌e ?먮뒗 嫄곗쭞 留뚯빟 ?큩lID 異붽?ress
- *
- * CRITICAL MEMORY SAFETY FEATURES:
- * This method implements multiple layers of protection against memory access
- * violations that could cause segmentation faults or memory corruption.
- *
- * ACCESS VIOLATION PREVENTION:
- * 1. Empty string validation prevents null pointer access
- * 2. Address parsing with exception handling for malformed addresses
- * 3. Device type validation prevents invalid memory access
- * 4. Array bounds checking for all device types
- * 5. Safe fallback return value for all error conditions
- *
- * DEVICE MEMORY LAYOUT:
- * - X devices: 16 inputs (X0-X15)
- * - Y devices: 16 outputs (Y0-Y15)
- * - M devices: 1000 memory bits (M0-M999)
- *
- * ERROR RECOVERY:
- * Returns false for any invalid access instead of crashing, ensuring
- * system stability even with malformed device addresses.
- */
 int CompiledPLCExecutor::GetTimerValue(int index) const {
   if (index >= 0 && index < 256) {
     return memory_.T[index];
@@ -307,6 +208,7 @@ bool CompiledPLCExecutor::GetCounterLastPower(int index) const {
   return false;
 }
 
+// Return device state for X/Y/M/T/C addresses.
 bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
   if (address.empty())
     return false;
@@ -314,7 +216,7 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
   char deviceType = address[0];
   int deviceAddr = 0;
 
-  // SAFE ADDRESS PARSING: Handle malformed numeric addresses
+  // Parse numeric address safely.
   try {
     deviceAddr = std::stoi(address.substr(1));
   } catch (...) {
@@ -339,7 +241,7 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
     return memory_.C[idx] > 0;
   };
 
-  // BOUNDS-CHECKED DEVICE ACCESS
+  // Bounds-checked device access.
   switch (deviceType) {
     case 'X':
       return (deviceAddr >= 0 && deviceAddr < 16) ? memory_.X[deviceAddr]
@@ -359,29 +261,7 @@ bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
   }
 }
 
-/**
- * @brief Set device state with memory protection and validation
-  * ?ㅼ젙 device st?먯꽌e ? ?④퍡 硫붾え由?protecti??諛?vlID?먯꽌i??
- * @param address Device address string (must be valid format)
-  * Device 異붽?ress 臾몄옄??(?댁빞 ?쒕떎 ?대떎 vlID ?꾪븳m?먯꽌)
- * @param state New device state
-  * New device st?먯꽌e
- *
- * MEMORY CORRUPTION PREVENTION:
- * This method implements the same safety features as GetDeviceState() for
- * write operations, preventing memory corruption that could crash the PLC
- * or cause unpredictable behavior in industrial systems.
- *
- * WRITE PROTECTION FEATURES:
- * - Address format validation
- * - Bounds checking for all device arrays
- * - Silent failure for invalid addresses (no exceptions)
- * - Device type verification
- *
- * INDUSTRIAL SAFETY:
- * Invalid write attempts are silently ignored rather than causing system
- * crashes, maintaining industrial process stability.
- */
+// Update device state for X/Y/M addresses.
 void CompiledPLCExecutor::SetDeviceState(const std::string& address,
                                          bool state) {
   if (address.empty())
@@ -390,14 +270,14 @@ void CompiledPLCExecutor::SetDeviceState(const std::string& address,
   char deviceType = address[0];
   int deviceAddr = 0;
 
-  // SAFE ADDRESS PARSING: Handle malformed addresses gracefully
+  // Parse numeric address safely.
   try {
     deviceAddr = std::stoi(address.substr(1));
   } catch (...) {
     return;
   }
 
-  // BOUNDS-CHECKED DEVICE WRITES
+  // Bounds-checked device writes.
   switch (deviceType) {
     case 'X':
       if (deviceAddr >= 0 && deviceAddr < 16) {
@@ -417,30 +297,9 @@ void CompiledPLCExecutor::SetDeviceState(const std::string& address,
   }
 }
 
-/**
- * @brief Reset all PLC memory to safe initial state
-  * Re吏묓빀 ll PLC 硫붾え由?sfe ?큛til st?먯꽌e
- *
- * MEMORY SAFETY RESET:
- * This method provides complete memory initialization to prevent undefined
- * behavior from residual data in PLC memory structures. Essential for
- * reliable PLC startup and emergency reset procedures.
- *
- * COMPREHENSIVE RESET COVERAGE:
- * - Input/Output devices (X/Y arrays)
- * - Memory devices (M array)
- * - Timer/Counter values (T/C arrays)
- * - Accumulator and stack state
- * - All internal execution state
- *
- * INDUSTRIAL APPLICATIONS:
- * - Emergency stop procedures
- * - Program restart operations
- * - Memory corruption recovery
- * - Maintenance mode initialization
- */
+// Reset PLC memory and execution state.
 void CompiledPLCExecutor::ResetMemory() {
-  // DEVICE MEMORY INITIALIZATION
+  // Reset device memory.
   for (int i = 0; i < 16; i++) {
     memory_.X[i] = false;
     memory_.Y[i] = false;
@@ -450,13 +309,13 @@ void CompiledPLCExecutor::ResetMemory() {
     memory_.M[i] = false;
   }
 
-  // TIMER/COUNTER RESET
+  // Reset timers and counters.
   for (int i = 0; i < 256; i++) {
     memory_.T[i] = 0;
     memory_.C[i] = 0;
   }
 
-  // EXECUTION STATE RESET
+  // Reset execution state.
   memory_.accumulator = false;
   memory_.stack_pointer = 0;
 
@@ -473,32 +332,7 @@ void CompiledPLCExecutor::ResetMemory() {
   DebugLog("Memory reset completed");
 }
 
-/**
- * @brief Parse compiled C++ code into executable instructions
-  * ?뚯떛 而댄뙆?펋 C++ code ??executble 紐낅졊s
- * @param code Generated C++ code from OpenPLC compiler
-  * Gener?먯꽌ed C++ code 遺??OpenPLC 而댄뙆?펢
- * @return true if parsing successful, false on syntax errors
-  * 李?留뚯빟 prs?큙 ?깃났ful, 嫄곗쭞 ??syntx ?ㅻ쪟s
- *
- * CRITICAL PARSING ERROR PREVENTION:
- * This method handles the complex task of converting generated C++ code
- * into a simplified instruction format that can be safely executed.
- * Robust error handling prevents malformed code from crashing the PLC.
- *
- * PARSING SAFETY FEATURES:
- * 1. Line-by-line processing prevents buffer overflows
- * 2. Whitespace normalization prevents parsing inconsistencies
- * 3. Comment filtering prevents accidental code execution
- * 4. Unknown instruction tolerance maintains system stability
- * 5. Memory allocation protection during instruction storage
- *
- * ERROR RECOVERY STRATEGY:
- * - Unknown instructions are marked but don't fail parsing
- * - Malformed lines are logged for debugging
- * - Partial parsing results can still be executed
- * - Debug logging provides detailed parsing feedback
- */
+// Parse generated C++ into executable instructions.
 bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
   std::istringstream stream(code);
   std::string line;
@@ -507,7 +341,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
   while (std::getline(stream, line)) {
     lineNumber++;
 
-    // WHITESPACE NORMALIZATION: Prevent parsing inconsistencies
+    // Normalize whitespace for consistent parsing.
     line.erase(0, line.find_first_not_of(" \t"));
     if (!line.empty()) {
       size_t last = line.find_last_not_of(" \t\r\n");
@@ -515,7 +349,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
         line.erase(last + 1);
     }
 
-    // Remove inline comments
+    // Remove inline comments.
     size_t commentPos = line.find("//");
     if (commentPos != std::string::npos) {
       line = line.substr(0, commentPos);
@@ -534,14 +368,14 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
     if (line == "{" || line == "}" || line == "};")
       continue;  // Skip braces only lines
 
-    // Helper: validate PLC target names
+    // Validate PLC target names.
     auto is_valid_target = [](const std::string& t) -> bool {
       static const std::regex re(R"(^(accumulator|[XYM]\[\d+\]|[XYM]\d+)$)");
       return std::regex_match(t, re);
     };
 
-    // INSTRUCTION TYPE ANALYSIS with error tolerance
-    // PLC helper instructions
+    // Analyze instruction types with error tolerance.
+    // PLC helper instructions.
     if (line.rfind("PLC_", 0) == 0) {
       std::istringstream plcStream(line);
       std::string op;
@@ -596,7 +430,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
       }
     }
 
-    // Conditional assignment: if (accumulator) X0 = true;
+    // Conditional assignment: if (accumulator) X0 = true.
     {
       static const std::regex condRegex(
           R"(^if\s*\(\s*accumulator\s*\)\s*([A-Za-z0-9_\[\]]+)\s*=\s*(true|false)\s*;?$)");
@@ -621,7 +455,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
       std::string lhs = line.substr(0, equalPos);
       std::string rhs = line.substr(equalPos + 3);
 
-      // Trim lhs/rhs
+      // Trim lhs/rhs.
       auto trim = [](std::string s) {
         s.erase(0, s.find_first_not_of(" \t"));
         size_t last = s.find_last_not_of(" \t");
@@ -631,7 +465,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
       };
       lhs = trim(lhs);
 
-      // Remove inline comments from rhs and trailing semicolon
+      // Remove inline comments from rhs and trailing semicolon.
       size_t rhsComment = rhs.find("//");
       if (rhsComment != std::string::npos)
         rhs = rhs.substr(0, rhsComment);
@@ -639,7 +473,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
       if (!rhs.empty() && rhs.back() == ';')
         rhs.pop_back();
 
-      // Validate PLC target; ignore non-PLC assignments (e.g., C++ variables)
+      // Ignore non-PLC assignments (e.g., C++ variables).
       if (!is_valid_target(lhs)) {
         if (debug_mode_)
           DebugLog("Skipping non-PLC assignment: " + lhs);
@@ -659,7 +493,7 @@ bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
                  instruction.originalLine);
       }
     } else {
-      // Unknown or non-assignment line: skip adding instruction
+      // Skip non-assignment lines.
       continue;
     }
   }
@@ -767,10 +601,10 @@ bool CompiledPLCExecutor::ExecuteInstruction(
     }
 
     case ParsedInstruction::COMMENT:
-      return true;  // comment
+      return true;  // Comment line.
 
     case ParsedInstruction::UNKNOWN:
-      return true;  // ignore unknown lines
+      return true;  // Ignore unknown lines.
 
     default:
       return false;
@@ -780,10 +614,8 @@ bool CompiledPLCExecutor::ExecuteInstruction(
 bool CompiledPLCExecutor::ExecuteAssignment(
     const ParsedInstruction& instruction) {
 
-  // 1. ?쒗쁽???됯?
   bool result = EvaluateExpression(instruction.operand1);
 
-  // 2. ???蹂?섏뿉 ?좊떦
   bool* targetPtr = GetVariablePointer(instruction.target);
   if (targetPtr) {
     *targetPtr = result;
@@ -800,49 +632,20 @@ bool CompiledPLCExecutor::ExecuteAssignment(
   }
 }
 
-/**
- * @brief Get memory pointer for variable with bounds checking and validation
-  * 媛?몄삤湲?硫붾え由??ъ씤???꾪븳 vrible ? ?④퍡 bounds ?뺤씤?큙 諛?vlID?먯꽌i??
- * @param varName Variable name (e.g., "X[5]", "Y[10]", "M[100]", "accumulator")
-  * Vrible ?대쫫 (e.g., "X[5]", "Y[10]", "M[100]", "ccumul?먯꽌?먮뒗")
- * @return Pointer to memory location or nullptr if invalid
-  * Po?큧er 硫붾え由?loc?먯꽌i???먮뒗 nullptr 留뚯빟 ?큩lID
- *
- * CRITICAL MEMORY SAFETY:
- * This method provides safe access to PLC memory through pointers while
- * preventing buffer overflows and invalid memory access that could cause
- * segmentation faults or memory corruption.
- *
- * POINTER SAFETY FEATURES:
- * 1. Variable name validation prevents malformed access
- * 2. Regex-based parsing ensures correct format
- * 3. Bounds checking for all array accesses
- * 4. Null pointer return for invalid requests
- * 5. Exception handling for regex parsing errors
- *
- * MEMORY LAYOUT PROTECTION:
- * - Accumulator: Single boolean value
- * - X arrays: 16 elements (X[0] to X[15])
- * - Y arrays: 16 elements (Y[0] to Y[15])
- * - M arrays: 1000 elements (M[0] to M[999])
- *
- * ERROR HANDLING:
- * Returns nullptr for any invalid access, preventing crashes and providing
- * safe failure mode for instruction execution.
- */
+// Map a variable token to PLC memory storage.
 bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
-  // Normalize: remove whitespace and trailing semicolon
+  // Remove whitespace and trailing semicolon.
   std::string name = varName;
   name.erase(std::remove_if(name.begin(), name.end(), ::isspace), name.end());
   if (!name.empty() && name.back() == ';')
     name.pop_back();
 
-  // SPECIAL VARIABLE: Accumulator access
+  // Accumulator access.
   if (name == "accumulator") {
     return &memory_.accumulator;
   }
 
-  // ARRAY VARIABLE PARSING: X[index], Y[index], M[index]
+  // Handle X[index], Y[index], M[index].
   std::regex arrayRegex(R"(([XYM])\[(\d+)\])");
   std::smatch match;
 
@@ -850,7 +653,7 @@ bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
     char deviceType = match[1].str()[0];
     int index = std::stoi(match[2].str());
 
-    // BOUNDS-CHECKED POINTER RETURN
+    // Bounds-check pointer return.
     switch (deviceType) {
       case 'X':
         return (index >= 0 && index < 16) ? &memory_.X[index] : nullptr;
@@ -861,7 +664,7 @@ bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
     }
   }
 
-  // PLAIN VARIABLE PARSING: X1, Y2, M3
+  // Handle X1, Y2, M3.
   std::regex plainRegex(R"(([XYM])(\d+))");
   if (std::regex_match(name, match, plainRegex)) {
     char deviceType = match[1].str()[0];
@@ -876,56 +679,25 @@ bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
     }
   }
 
-  // SAFE FAILURE: Return null for invalid variable names
+  // Return nullptr for invalid variable names.
   return nullptr;
 }
 
-/**
- * @brief Evaluate boolean expressions with recursive parsing and error handling
-  * Evlu?먯꽌e boole expressi?꼜 ? ?④퍡 recursive prs?큙 諛??ㅻ쪟 h諛뢬?큙
- * @param expression Boolean expression string (e.g., "X[11]", "accumulator &&
-  * Boole expressi??臾몄옄??(e.g., "X[11]", "ccumul?먯꽌?먮뒗 &&
- * !M[2]")
- * @return Evaluated boolean result
-  * Evlu?먯꽌ed boole result
- *
- * CRITICAL EXPRESSION EVALUATION SAFETY:
- * This method handles complex boolean expressions that could cause stack
- * overflow, infinite recursion, or parsing errors. Robust error handling
- * prevents malformed expressions from crashing the PLC.
- *
- * RECURSIVE SAFETY FEATURES:
- * 1. Whitespace normalization prevents parsing errors
- * 2. Operator precedence handling (NOT, AND, OR)
- * 3. Recursive descent with implicit stack limits
- * 4. Safe variable pointer dereferencing
- * 5. Fallback values for all error conditions
- *
- * SUPPORTED EXPRESSION SYNTAX:
- * - Simple variables: "X[5]", "accumulator"
- * - NOT operations: "!M[10]"
- * - AND operations: "X[1] && X[2]"
- * - OR operations: "M[5] || M[6]"
- * - Complex expressions: "accumulator && !M[2] || X[11]"
- *
- * ERROR RECOVERY:
- * Invalid expressions return false instead of crashing, maintaining
- * system stability even with malformed ladder logic.
- */
+// Evaluate boolean expressions used by compiled ladder logic.
 bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
   std::string expr = expression;
 
-  // Remove inline comments and trailing semicolon
+  // Remove inline comments and trailing semicolon.
   size_t cpos = expr.find("//");
   if (cpos != std::string::npos)
     expr = expr.substr(0, cpos);
 
-  // WHITESPACE NORMALIZATION: Prevent parsing inconsistencies
+  // Normalize whitespace for consistent parsing.
   expr.erase(std::remove_if(expr.begin(), expr.end(), ::isspace), expr.end());
   if (!expr.empty() && expr.back() == ';')
     expr.pop_back();
 
-  // Normalize textual operators to C++-style
+  // Normalize textual operators to C++ style.
   auto replace_all = [](std::string& s, const std::string& from,
                         const std::string& to) {
     size_t pos = 0;
@@ -938,7 +710,7 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
   replace_all(expr, "OR", "||");
   replace_all(expr, "NOT", "!");
 
-  // Handle bare NOT/! as negation of accumulator as a safe fallback
+  // Treat bare NOT as accumulator negation.
   if (expr == "!") {
     return !memory_.accumulator;
   }
@@ -980,7 +752,7 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
     return true;
   };
 
-  // SIMPLE VARIABLE CASE: Direct variable access
+  // Direct variable access.
   if (expr.find("&&") == std::string::npos &&
       expr.find("||") == std::string::npos &&
       (expr.empty() || expr[0] != '!')) {
@@ -995,13 +767,13 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
     return varPtr ? *varPtr : false;
   }
 
-  // NOT OPERATION: Highest precedence, recursive evaluation
+  // NOT has highest precedence.
   if (!expr.empty() && expr[0] == '!') {
     std::string innerExpr = expr.substr(1);
     return !EvaluateExpression(innerExpr);
   }
 
-  // AND OPERATION: Medium precedence, left-to-right evaluation
+  // AND has medium precedence.
   size_t andPos = expr.find("&&");
   if (andPos != std::string::npos) {
     std::string left = expr.substr(0, andPos);
@@ -1009,7 +781,7 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
     return EvaluateExpression(left) && EvaluateExpression(right);
   }
 
-  // OR OPERATION: Lowest precedence, left-to-right evaluation
+  // OR has lowest precedence.
   size_t orPos = expr.find("||");
   if (orPos != std::string::npos) {
     std::string left = expr.substr(0, orPos);
@@ -1017,7 +789,7 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
     return EvaluateExpression(left) || EvaluateExpression(right);
   }
 
-  // SAFE FALLBACK: Return false for unparseable expressions
+  // Return false for unparseable expressions.
   return false;
 }
 
@@ -1032,23 +804,7 @@ int CompiledPLCExecutor::ExtractNumber(const std::string& str) {
   return -1;
 }
 
-/**
- * @brief Set error state with logging and result tracking
-  * ?ㅼ젙 ?ㅻ쪟 st?먯꽌e ? ?④퍡 logg?큙 諛?result trck?큙
- * @param error Error message describing the failure
-  * Err?먮뒗 messge describ?큙 ?ㅽ뙣
- *
- * ERROR STATE MANAGEMENT:
- * This method provides centralized error handling for the PLC executor,
- * ensuring consistent error reporting and debug logging across all
- * execution paths.
- *
- * ERROR TRACKING FEATURES:
- * - Persistent error state in execution results
- * - Conditional debug logging for troubleshooting
- * - Thread-safe error message storage
- * - Consistent error format for external monitoring
- */
+// Record the last error and log when debugging is enabled.
 void CompiledPLCExecutor::SetError(const std::string& error) {
   last_result_.success = false;
   last_result_.errorMessage = error;

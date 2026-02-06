@@ -1,3 +1,10 @@
+/*
+ * component_transform.h
+ *
+ * 컴포넌트 좌표 변환 유틸리티 선언.
+ * Declarations for component coordinate transform helpers.
+ */
+
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_COMPONENT_TRANSFORM_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_COMPONENT_TRANSFORM_H_
 
@@ -77,6 +84,6 @@ inline bool IsPointInsideComponent(const PlacedComponent& comp,
          local.y <= comp.size.height;
 }
 
-}  // namespace plc
+}  /* namespace plc */
 
-#endif  // PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_COMPONENT_TRANSFORM_H_
+#endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_COMPONENT_TRANSFORM_H_ */

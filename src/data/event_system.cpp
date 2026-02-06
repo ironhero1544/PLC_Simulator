@@ -2,9 +2,6 @@
 //
 // Implementation of event system.
 
-// src/EventSystem.cpp
-// EventSystem 구현 - C언어 스타일 이벤트 시스템
-
 #include "plc_emulator/data/event_system.h"
 
 #include <cstdlib>
@@ -17,12 +14,12 @@ namespace plc {
 EventDispatcher* CreateEventDispatcher() {
   EventDispatcher* dispatcher = new EventDispatcher();
 
-  // 리스너 배열 초기화
+  // Initialize listener slots.
   for (int i = 0; i < EVENT_TYPE_COUNT; i++) {
     dispatcher->listeners[i] = nullptr;
   }
 
-  // 함수 포인터들 연결
+  // Wire up function pointers.
   dispatcher->Subscribe = EventDispatcher_Subscribe;
   dispatcher->Unsubscribe = EventDispatcher_Unsubscribe;
   dispatcher->Dispatch = EventDispatcher_Dispatch;
@@ -33,7 +30,7 @@ EventDispatcher* CreateEventDispatcher() {
 
 void DestroyEventDispatcher(EventDispatcher* dispatcher) {
   if (dispatcher) {
-    // 모든 리스너 해제
+    // Release all listeners.
     dispatcher->Clear(dispatcher);
     delete dispatcher;
   }
@@ -47,13 +44,13 @@ bool EventDispatcher_Subscribe(EventDispatcher* dispatcher, EventType type,
     return false;
   }
 
-  // 새 리스너 노드 생성
+  // Create a new listener node.
   EventListener* newListener = new EventListener();
   newListener->callback = callback;
   newListener->userData = userData;
   newListener->next = nullptr;
 
-  // 리스트 맨 앞에 삽입
+  // Insert at the list head.
   if (dispatcher->listeners[type] == nullptr) {
     dispatcher->listeners[type] = newListener;
   } else {
@@ -73,7 +70,7 @@ bool EventDispatcher_Unsubscribe(EventDispatcher* dispatcher, EventType type,
   EventListener* current = dispatcher->listeners[type];
   EventListener* prev = nullptr;
 
-  // 연결 리스트에서 해당 콜백을 찾아 제거
+  // Remove the matching callback from the list.
   while (current) {
     if (current->callback == callback) {
       if (prev) {
@@ -88,7 +85,7 @@ bool EventDispatcher_Unsubscribe(EventDispatcher* dispatcher, EventType type,
     current = current->next;
   }
 
-  return false;  // 해당 콜백을 찾지 못함
+  return false;  // Callback not found.
 }
 
 void EventDispatcher_Dispatch(EventDispatcher* dispatcher,
@@ -103,7 +100,7 @@ void EventDispatcher_Dispatch(EventDispatcher* dispatcher,
     return;
   }
 
-  // 해당 타입의 모든 리스너들에게 이벤트 전달
+  // Dispatch to all listeners for this type.
   EventListener* current = dispatcher->listeners[type];
   while (current) {
     if (current->callback) {
@@ -118,7 +115,7 @@ void EventDispatcher_Clear(EventDispatcher* dispatcher) {
     return;
   }
 
-  // 모든 이벤트 타입의 리스너들 해제
+  // Clear listeners for all event types.
   for (int i = 0; i < EVENT_TYPE_COUNT; i++) {
     EventListener* current = dispatcher->listeners[i];
     while (current) {

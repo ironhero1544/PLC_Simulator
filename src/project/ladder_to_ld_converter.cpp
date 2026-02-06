@@ -4,13 +4,13 @@
 
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 
-#include "plc_emulator/programming/programming_mode.h"  // 🔥 **IMPORTANT**: 실제 타입 정의 포함
-#include "plc_emulator/project/ladder_ir.h"  // 🔥 **NEW**: LadderIR 지원
+#include "plc_emulator/programming/programming_mode.h"
+#include "plc_emulator/project/ladder_ir.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
-#include <iomanip>  // 🔥 **NEW**: setw 지원
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -457,7 +457,6 @@ void LadderToLDConverter::ConvertSingleRung(const Rung& rung, int rungIndex,
   LadderInstruction output;
   bool hasOutput = false;
 
-  // 조건 부분 처리
   for (const auto& cell : rung.cells) {
     if (cell.type == LadderInstructionType::XIC ||
         cell.type == LadderInstructionType::XIO) {
@@ -478,10 +477,9 @@ void LadderToLDConverter::ConvertSingleRung(const Rung& rung, int rungIndex,
     }
   }
 
-  // 출력 부분 처리
   if (hasOutput && !output.address.empty()) {
     if (!hasCondition) {
-      ldContent += "LD TRUE";  // 조건이 없으면 항상 참
+      ldContent += "LD TRUE";
     }
     AppendOutputInstruction(output, ldContent);
   }
@@ -577,7 +575,7 @@ std::string LadderToLDConverter::ConvertAddress(
   try {
     deviceNumber = std::stoi(address.substr(1));
   } catch (...) {
-    return address;  // 변환 실패 시 원래 주소 반환
+    return address;
   }
 
   switch (deviceType) {
@@ -591,7 +589,7 @@ std::string LadderToLDConverter::ConvertAddress(
       break;
   }
 
-  return address;  // 변환할 수 없는 주소는 그대로 반환
+  return address;
 }
 
 std::string LadderToLDConverter::GetLDInstructionName(
@@ -623,7 +621,6 @@ void LadderToLDConverter::DebugLog(const std::string& message) {
 }
 
 // ============================================================================
-// 🔥 **NEW**: IR 기반 고정밀도 변환 함수들 (Phase 3)
 // ============================================================================
 
 std::string LadderToLDConverter::ConvertToLDStringWithIR(
@@ -631,34 +628,27 @@ std::string LadderToLDConverter::ConvertToLDStringWithIR(
   DebugLog("🔥 Starting IR-based conversion...");
   last_error_.clear();
 
-  // 1. LadderProgram → LadderIR 변환
   DebugLog("Step 1: Converting to IR...");
   LadderIRProgram irProgram = LadderToIRConverter::ConvertToIR(program);
 
-  // IR 구조 디버그 출력
   if (debug_mode_) {
     irProgram.PrintIRStructure();
   }
 
-  // 2. LadderIR → 스택 명령어 변환
   DebugLog("Step 2: Generating stack instructions...");
   std::vector<std::string> stackInstructions =
       GenerateStackInstructions(irProgram);
 
-  // 3. .ld 파일 형식으로 조합
   DebugLog("Step 3: Building .ld file content...");
   std::stringstream ldContent;
 
-  // .ld 파일 헤더
   DeviceSet devices = CollectUsedDevices(program);
   ldContent << GenerateLDHeader(devices) << "\n\n";
 
-  // 메인 PROGRAM 섹션
   ldContent << "PROGRAM main\n";
   ldContent << "VAR\n";
   ldContent << "END_VAR\n\n";
 
-  // 스택 명령어들을 .ld 형식으로 변환
   for (const auto& instruction : stackInstructions) {
     if (!instruction.empty()) {
       ldContent << "    " << instruction << ";\n";
@@ -676,11 +666,9 @@ std::vector<std::string> LadderToLDConverter::GenerateStackInstructions(
   DebugLog(
       "Generating advanced stack instructions with MPS/ORB/MPP support...");
 
-  // IR → 스택 명령어 변환 (고급 병렬 처리 포함)
   std::vector<std::string> instructions =
       IRToStackConverter::ConvertToStackInstructions(irProgram);
 
-  // 📊 **변환 통계 로깅**
   DebugLog("Generated " + std::to_string(instructions.size()) +
            " stack instructions");
 
@@ -692,26 +680,19 @@ std::vector<std::string> LadderToLDConverter::GenerateStackInstructions(
     std::cout << "=====================================\n\n";
   }
 
-  // 🧠 **추론**: 스택 명령어 후처리
-  // OpenPLC는 특정 형식을 요구하므로 명령어 형식 조정
   for (auto& instruction : instructions) {
-    // LOAD → LD 변환
     if (instruction.find("LOAD ") == 0) {
       instruction.replace(0, 5, "LD ");
     }
-    // LOAD_NOT → LDN 변환
     else if (instruction.find("LOAD_NOT ") == 0) {
       instruction.replace(0, 9, "LDN ");
     }
-    // OUT → ST 변환
     else if (instruction.find("OUT ") == 0) {
       instruction.replace(0, 4, "ST ");
     }
-    // AND_NOT → ANDN 변환
     else if (instruction.find("AND_NOT ") == 0) {
       instruction.replace(0, 8, "ANDN ");
     }
-    // OR_NOT → ORN 변환
     else if (instruction.find("OR_NOT ") == 0) {
       instruction.replace(0, 7, "ORN ");
     }

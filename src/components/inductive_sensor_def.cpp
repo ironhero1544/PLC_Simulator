@@ -35,7 +35,7 @@ void RenderInductiveSensor(ImDrawList* draw_list,
 
   ImVec2 head_start = {screen_pos.x + 25 * zoom, screen_pos.y + 2 * zoom};
   ImVec2 head_end = {screen_pos.x + 75 * zoom, screen_pos.y + 15 * zoom};
-  // 용량형 센서 디자인 유지 + 헤드만 초록색
+  // Keep the sensor head green to match the design.
   draw_list->AddRectFilled(head_start, head_end, IM_COL32(0, 200, 0, 255),
                            3.0f * zoom);
   draw_list->AddRect(head_start, head_end, IM_COL32(51, 51, 51, 255),

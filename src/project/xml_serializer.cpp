@@ -26,17 +26,17 @@ XMLSerializer::SerializationResult XMLSerializer::SerializeToXML(
   try {
     std::stringstream xml;
 
-    // XML 헤더
+    // XML header.
     xml << GenerateXMLHeader();
     xml << "<LadderProgram>\n";
 
-    // 메타데이터
+    // Metadata.
     xml << GenerateMetadata();
 
-    // Rungs 직렬화
+    // Serialize rungs.
     xml << SerializeRungs(program.rungs);
 
-    // VerticalConnections 직렬화
+    // Serialize vertical connections.
     xml << SerializeVerticalConnections(program.verticalConnections);
 
     xml << "</LadderProgram>\n";
@@ -65,28 +65,28 @@ XMLSerializer::DeserializationResult XMLSerializer::DeserializeFromXML(
   LogDebug("🔄 Starting XML deserialization...");
 
   try {
-    // XML 헤더 검증
+    // Validate XML header.
     if (!ParseXMLHeader(xmlContent)) {
       result.success = false;
       result.errorMessage = "Invalid XML header: " + last_error_;
       return result;
     }
 
-    // 메타데이터 파싱
+    // Parse metadata.
     if (!ParseMetadata(xmlContent, result)) {
       result.success = false;
       result.errorMessage = "Failed to parse metadata: " + last_error_;
       return result;
     }
 
-    // Rungs 파싱
+    // Parse rungs.
     if (!ParseRungs(xmlContent, result.program)) {
       result.success = false;
       result.errorMessage = "Failed to parse rungs: " + last_error_;
       return result;
     }
 
-    // VerticalConnections 파싱
+    // Parse vertical connections.
     if (!ParseVerticalConnections(xmlContent, result.program)) {
       result.success = false;
       result.errorMessage =
@@ -154,7 +154,7 @@ XMLSerializer::DeserializationResult XMLSerializer::LoadFromXMLFile(
 }
 
 // =============================================================================
-// XML 생성 관련 함수들
+// XML generation helpers.
 // =============================================================================
 
 std::string XMLSerializer::GenerateXMLHeader() const {
@@ -248,7 +248,7 @@ std::string XMLSerializer::SerializeVerticalConnection(
 }
 
 // =============================================================================
-// XML 파싱 관련 함수들
+// XML parsing helpers.
 // =============================================================================
 
 bool XMLSerializer::ParseXMLHeader(const std::string& xmlContent) {
@@ -270,7 +270,7 @@ bool XMLSerializer::ParseMetadata(const std::string& xmlContent,
   std::string metadata = ExtractXMLTag(xmlContent, "Metadata");
   if (metadata.empty()) {
     LogDebug("⚠️ No metadata found (backward compatibility)");
-    return true;  // Metadata는 선택사항
+    return true;  // Metadata is optional.
   }
 
   result.sourceVersion = GetXMLContent(ExtractXMLTag(metadata, "Version"));
@@ -317,7 +317,7 @@ bool XMLSerializer::ParseRung(const std::string& rungXML, Rung& rung) {
 
   auto cellElements = ExtractXMLTags(cellsSection, "Cell");
   rung.cells.clear();
-  rung.cells.resize(12);  // 기본 12셀로 초기화
+  rung.cells.resize(12);  // Default to 12 cells.
 
   for (const auto& cellXML : cellElements) {
     int index = std::stoi(GetXMLAttribute(cellXML, "index"));
@@ -350,7 +350,7 @@ bool XMLSerializer::ParseVerticalConnections(const std::string& xmlContent,
       ExtractXMLTag(xmlContent, "VerticalConnections");
   if (connectionsSection.empty()) {
     LogDebug("⚠️ No vertical connections found");
-    return true;  // VerticalConnections는 선택사항
+    return true;  // Vertical connections are optional.
   }
 
   auto connectionElements = ExtractXMLTags(connectionsSection, "Connection");
@@ -391,7 +391,7 @@ bool XMLSerializer::ParseVerticalConnection(const std::string& connXML,
 }
 
 // =============================================================================
-// 유틸리티 함수들
+// Utility helpers.
 // =============================================================================
 
 std::string XMLSerializer::EscapeXMLString(const std::string& str) const {

@@ -2,9 +2,6 @@
 //
 // Implementation of I/O mapper.
 
-// src/IOMapper.cpp
-// Phase 2: I/O 매핑 시스템 구현 - 실배선 정보를 분석하여 자동 I/O 매핑 생성
-
 #include "plc_emulator/io/io_mapper.h"
 
 #include <algorithm>
@@ -23,7 +20,7 @@ IOMapper* CreateIOMapper() {
     return nullptr;
   }
 
-  // 함수 포인터들 연결
+  // Wire up function pointers.
   mapper->ExtractMapping = IOMapper_ExtractMapping;
   mapper->FindPLCComponent = IOMapper_FindPLCComponent;
   mapper->TraceAllConnections = IOMapper_TraceAllConnections;
@@ -32,12 +29,12 @@ IOMapper* CreateIOMapper() {
   mapper->ValidateConnection = IOMapper_ValidateConnection;
   mapper->ValidateMappingResult = IOMapper_ValidateMappingResult;
 
-  // 내부 데이터 초기화
+  // Initialize internal state.
   mapper->isInitialized = false;
-  mapper->maxInputPorts = 16;   // FX3U PLC 기본값
-  mapper->maxOutputPorts = 16;  // FX3U PLC 기본값
+  mapper->maxInputPorts = 16;   // FX3U defaults.
+  mapper->maxOutputPorts = 16;  // FX3U defaults.
 
-  // 추적용 임시 데이터 할당
+  // Allocate tracing state.
   mapper->visitedComponents = new std::vector<bool>();
   mapper->bfsQueue = new std::queue<int>();
 
@@ -55,7 +52,7 @@ void DestroyIOMapper(IOMapper* mapper) {
 
   ShutdownIOMapper(mapper);
 
-  // 임시 데이터 해제
+  // Release tracing state.
   delete mapper->visitedComponents;
   delete mapper->bfsQueue;
 
@@ -66,10 +63,10 @@ bool InitializeIOMapper(IOMapper* mapper) {
   if (!mapper)
     return false;
 
-  // 마지막 결과 초기화
+  // Reset last result.
   mapper->lastResult = MappingResult();
 
-  // 추적용 데이터 초기화
+  // Reset tracing state.
   mapper->visitedComponents->clear();
   while (!mapper->bfsQueue->empty()) {
     mapper->bfsQueue->pop();
@@ -84,7 +81,7 @@ void ShutdownIOMapper(IOMapper* mapper) {
   if (!mapper)
     return;
 
-  // 추적용 데이터 정리
+  // Clear tracing state.
   if (mapper->visitedComponents) {
     mapper->visitedComponents->clear();
   }
@@ -137,14 +134,14 @@ MappingResult IOMapper_ExtractMapping(
   int outputCounter = 0;
 
   for (const auto& connection : connections) {
-    // 전기 연결만 매핑 (공압은 Phase 3에서 처리)
+    // Map electrical connections only; pneumatic handled in Phase 3.
     if (!connection.isElectrical) {
       result.AddWarning(
           "Skipped pneumatic connection (will be handled in Phase 3)");
       continue;
     }
 
-    // PLC 포트 분석
+    // Determine PLC port direction.
     bool isInput = IOMapper_IsPLCInputPort(plcComponent, connection.fromPortId);
     std::string plcAddress;
 
@@ -161,7 +158,7 @@ MappingResult IOMapper_ExtractMapping(
       continue;
     }
 
-    // 대상 컴포넌트 찾기
+    // Find the target component.
     auto targetComponent =
         std::find_if(components->begin(), components->end(),
                      [&](const PlacedComponent& comp) {
@@ -185,14 +182,14 @@ MappingResult IOMapper_ExtractMapping(
   result.mapping.isValid = result.mapping.ValidateMapping();
   result.success = result.mapping.isValid && !result.HasErrors();
 
-  // 타임스탬프 설정
+  // Set timestamp.
   auto now = std::chrono::system_clock::now();
   auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                        now.time_since_epoch())
                        .count();
   result.mapping.lastUpdated = timestamp;
 
-  // 결과 저장
+  // Store result.
   mapper->lastResult = result;
 
   std::cout << "✅ I/O mapping extraction completed. Success: "
@@ -232,8 +229,8 @@ std::vector<ConnectionTrace> IOMapper_TraceAllConnections(
   if (!mapper || !wires || !components)
     return connections;
 
-  // PLC의 모든 포트에 대해 연결 추적
-  int maxPorts = IOMapper_GetMaxPortCount(ComponentType::PLC);  // 32포트
+  // Trace all PLC ports.
+  int maxPorts = IOMapper_GetMaxPortCount(ComponentType::PLC);  // 32 ports.
 
   for (int portId = 0; portId < maxPorts; portId++) {
     ConnectionTrace trace = IOMapper_TraceSpecificConnection(
@@ -256,18 +253,17 @@ std::vector<int> IOMapper_TraceWireConnection(IOMapper* mapper,
   if (!mapper || !wires)
     return connectedComponents;
 
-  // 미사용 파라미터 경고 제거
   (void)fromPortId;
 
-  // BFS를 위한 초기화
+  // Initialize BFS state.
   mapper->visitedComponents->clear();
-  mapper->visitedComponents->resize(1000, false);  // 충분한 크기로 할당
+  mapper->visitedComponents->resize(1000, false);  // Fixed traversal budget.
 
   while (!mapper->bfsQueue->empty()) {
     mapper->bfsQueue->pop();
   }
 
-  // BFS 시작
+  // Start BFS.
   mapper->bfsQueue->push(fromComponentId);
   (*mapper->visitedComponents)[fromComponentId] = true;
 
@@ -275,10 +271,10 @@ std::vector<int> IOMapper_TraceWireConnection(IOMapper* mapper,
     int currentId = mapper->bfsQueue->front();
     mapper->bfsQueue->pop();
 
-    // 현재 컴포넌트에서 나가는 모든 와이어 찾기
+    // Visit wires from the current component.
     for (const auto& wire : *wires) {
       if (!wire.isElectric)
-        continue;  // 전기 배선만 추적
+        continue;  // Track electrical wires only.
 
       int nextId = -1;
 
@@ -304,7 +300,6 @@ ConnectionTrace IOMapper_TraceSpecificConnection(
     IOMapper* mapper, int plcComponentId, int plcPortId,
     const std::vector<Wire>* wires,
     const std::vector<PlacedComponent>* components) {
-  // 미사용 파라미터 경고 제거
   (void)mapper;
   (void)components;
 
@@ -312,7 +307,7 @@ ConnectionTrace IOMapper_TraceSpecificConnection(
   trace.fromComponentId = plcComponentId;
   trace.fromPortId = plcPortId;
 
-  // 해당 포트에서 나가는 와이어 찾기
+  // Find wires connected to the port.
   for (const auto& wire : *wires) {
     if (!wire.isElectric)
       continue;
@@ -343,7 +338,6 @@ std::string IOMapper_GeneratePLCAddress(IOMapper* mapper, int portId,
   if (!mapper)
     return "";
 
-  // 미사용 파라미터 경고 제거
   (void)type;
 
   std::ostringstream oss;
@@ -392,7 +386,7 @@ bool IOMapper_ValidateConnection(
   if (!mapper || !wire || !components)
     return false;
 
-  // 기본 검증: 유효한 컴포넌트 ID인지 확인
+  // Basic validation for component IDs.
   bool fromValid = false, toValid = false;
 
   for (const auto& comp : *components) {
@@ -415,13 +409,11 @@ bool IOMapper_ValidateMappingResult(IOMapper* mapper,
 
 bool IOMapper_CheckCircularConnection(IOMapper* mapper, int startComponentId,
                                       const std::vector<Wire>* wires) {
-  // 미사용 파라미터 경고 제거
   (void)mapper;
   (void)startComponentId;
   (void)wires;
-  // 순환 연결 감지 로직 (간단한 버전)
-  // 실제로는 더 복잡한 그래프 알고리즘이 필요할 수 있음
-  return false;  // 현재는 false 반환 (Phase 3에서 개선)
+  // Stub: circular detection is not implemented yet.
+  return false;
 }
 
 
@@ -436,11 +428,11 @@ std::vector<Wire*> IOMapper_FindWiresByComponent(const std::vector<Wire>* wires,
     bool matches = false;
 
     if (portId == -1) {
-      // 모든 포트
+      // All ports.
       matches = (wire.fromComponentId == componentId ||
                  wire.toComponentId == componentId);
     } else {
-      // 특정 포트
+      // Specific port.
       matches =
           (wire.fromComponentId == componentId && wire.fromPortId == portId) ||
           (wire.toComponentId == componentId && wire.toPortId == portId);
@@ -560,16 +552,15 @@ std::string IOMapper_GetComponentRole(ComponentType type) {
 }
 
 bool IOMapper_IsElectricPort(const PlacedComponent* component, int portId) {
-  // 미사용 파라미터 경고 제거
   (void)component;
   (void)portId;
-  // 모든 포트를 전기로 가정 (Phase 3에서 공압 구분 구현)
+  // Assume all ports are electric (Phase 3 will refine this).
   return true;
 }
 
 bool IOMapper_IsPLCInputPort(const PlacedComponent* plcComponent, int portId) {
   (void)plcComponent;  // unused parameter
-  // FX3U PLC 포트 규칙: 0-15는 입력(X), 16-31은 출력(Y)
+  // FX3U ports: 0-15 input (X), 16-31 output (Y).
   return portId >= 0 && portId < 16;
 }
 
