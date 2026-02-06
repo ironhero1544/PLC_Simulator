@@ -45,7 +45,8 @@ enum class LadderInstructionType {
   RST,
   TON,
   CTU,
-  RST_TMR_CTR
+  RST_TMR_CTR,
+  BKRST
 };
 
 /*

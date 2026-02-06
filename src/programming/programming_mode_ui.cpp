@@ -541,6 +541,7 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
     bool isTimerCounter = (instruction.type == LadderInstructionType::TON ||
                            instruction.type == LadderInstructionType::CTU ||
                            instruction.type == LadderInstructionType::RST_TMR_CTR);
+    bool isBkrst = (instruction.type == LadderInstructionType::BKRST);
 
     if (instruction.type == LadderInstructionType::HLINE) {
       float centerY = p_min.y + 17.5f * layout_scale;
@@ -571,6 +572,25 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
             ImVec2(p_min.x + (cellWidth - preset_size.x) * 0.5f, bottomY),
             IM_COL32(20, 20, 200, 255), instruction.preset.c_str());
       }
+    } else if (isBkrst) {
+      std::string topLine = "BKRST";
+      if (!instruction.address.empty()) {
+        topLine += " " + instruction.address;
+      }
+      ImVec2 topSize = ImGui::CalcTextSize(topLine.c_str());
+      float topY = p_min.y + 1.0f * layout_scale;
+      draw_list->AddText(
+          ImVec2(p_min.x + (cellWidth - topSize.x) * 0.5f, topY),
+          IM_COL32_BLACK, topLine.c_str());
+
+      if (!instruction.preset.empty()) {
+        ImVec2 preset_size = ImGui::CalcTextSize(instruction.preset.c_str());
+        float bottomY =
+            p_min.y + 35.0f * layout_scale - preset_size.y - 1.0f * layout_scale;
+        draw_list->AddText(
+            ImVec2(p_min.x + (cellWidth - preset_size.x) * 0.5f, bottomY),
+            IM_COL32(20, 20, 200, 255), instruction.preset.c_str());
+      }
     } else {
       const char* symbol = GetInstructionSymbol(instruction.type);
       ImVec2 text_size = ImGui::CalcTextSize(symbol);
@@ -580,7 +600,7 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
                          IM_COL32_BLACK, symbol);
     }
 
-    if (!isTimerCounter) {
+    if (!isTimerCounter && !isBkrst) {
       if (!instruction.address.empty()) {
         ImVec2 addr_size = ImGui::CalcTextSize(instruction.address.c_str());
         draw_list->AddText(
@@ -888,7 +908,7 @@ void ProgrammingMode::RenderAddressPopup() {
     }
 
     if (pending_instruction_type_ == LadderInstructionType::OTE) {
-      ImGui::TextDisabled("%s", TR("ui.programming.device_example", "Example: Y0, T1 K10, C2 K5, SET M0, RST Y0"));
+      ImGui::TextDisabled("%s", TR("ui.programming.device_example", "Example: Y0, T1 K10, C2 K5, SET M0, RST Y0, BKRST M0 K4"));
     }
 
     ImGui::Spacing();
@@ -1008,6 +1028,8 @@ const char* ProgrammingMode::GetInstructionSymbol(
       return "[CTU]";
     case LadderInstructionType::RST_TMR_CTR:
       return "[RST]";
+    case LadderInstructionType::BKRST:
+      return "[BKRST]";
     default:
       return "";
   }

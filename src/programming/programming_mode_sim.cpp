@@ -317,6 +317,7 @@ void ProgrammingMode::UpdateVisualActiveStates() {
           case LadderInstructionType::OTE:
           case LadderInstructionType::SET:
           case LadderInstructionType::RST:
+          case LadderInstructionType::BKRST:
             cell.isActive = plc_executor_->GetDeviceState(cell.address);
             break;
           default:

@@ -456,6 +456,8 @@ std::string XMLSerializer::InstructionTypeToString(
       return "CTU";
     case LadderInstructionType::RST_TMR_CTR:
       return "RST_TMR_CTR";
+    case LadderInstructionType::BKRST:
+      return "BKRST";
     default:
       return "UNKNOWN";
   }
@@ -483,6 +485,8 @@ LadderInstructionType XMLSerializer::StringToInstructionType(
     return LadderInstructionType::CTU;
   if (str == "RST_TMR_CTR")
     return LadderInstructionType::RST_TMR_CTR;
+  if (str == "BKRST")
+    return LadderInstructionType::BKRST;
   return LadderInstructionType::EMPTY;
 }
 

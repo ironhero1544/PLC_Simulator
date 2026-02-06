@@ -428,7 +428,8 @@ bool LDToLadderConverter::CheckInstructionValidity(
       instruction.type == LadderInstructionType::RST ||
       instruction.type == LadderInstructionType::TON ||
       instruction.type == LadderInstructionType::CTU ||
-      instruction.type == LadderInstructionType::RST_TMR_CTR) {
+      instruction.type == LadderInstructionType::RST_TMR_CTR ||
+      instruction.type == LadderInstructionType::BKRST) {
     if (instruction.address.empty()) {
       LogDebug("⚠️ Instruction without address: type " +
                std::to_string(static_cast<int>(instruction.type)));

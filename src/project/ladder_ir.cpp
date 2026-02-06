@@ -309,6 +309,10 @@ std::unique_ptr<IRNode> LadderToIRConverter::ConvertCellToNode(
       node = std::make_unique<IRNode>(IRNodeType::RESET_COIL, nodeId,
                                       cell.address);
       break;
+    case LadderInstructionType::BKRST:
+      node = std::make_unique<IRNode>(IRNodeType::RESET_COIL, nodeId,
+                                      cell.address);
+      break;
 
     case LadderInstructionType::TON: {
       auto timerNode =

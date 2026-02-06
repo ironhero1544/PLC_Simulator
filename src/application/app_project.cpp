@@ -163,6 +163,10 @@ LadderInstructionType Application::StringToInstructionType(
 
     return LadderInstructionType::RST_TMR_CTR;
 
+  if (str == "BKRST")
+
+    return LadderInstructionType::BKRST;
+
   if (str == "HLINE")
 
     return LadderInstructionType::HLINE;

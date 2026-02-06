@@ -10,6 +10,18 @@
 namespace plc {
 namespace {
 
+bool IsPointInsideCircle(ImVec2 point, ImVec2 center, float radius) {
+  float dx = point.x - center.x;
+  float dy = point.y - center.y;
+  return (dx * dx + dy * dy) <= (radius * radius);
+}
+
+constexpr float kButtonUnitCenterX = 25.0f;
+constexpr float kButtonUnitBaseY = 20.0f;
+constexpr float kButtonUnitSpacingY = 30.0f;
+constexpr float kButtonUnitRadius = 9.0f;
+constexpr float kEmergencyStopRadius = 26.0f;
+
 
 bool HandleButtonUnitMouseDown(PlacedComponent* comp, ImVec2 world_pos,
                                int button) {
@@ -17,10 +29,13 @@ bool HandleButtonUnitMouseDown(PlacedComponent* comp, ImVec2 world_pos,
     return false;
   }
   bool handled = false;
-  float local_y = world_pos.y - comp->position.y;
+  ImVec2 local(world_pos.x - comp->position.x,
+               world_pos.y - comp->position.y);
   for (int i = 0; i < 2; ++i) {
-    float y_offset = 20.0f + static_cast<float>(i) * 30.0f;
-    if (local_y > y_offset - 8.0f && local_y < y_offset + 8.0f) {
+    float y_offset = kButtonUnitBaseY + static_cast<float>(i) *
+                                          kButtonUnitSpacingY;
+    if (IsPointInsideCircle(local, ImVec2(kButtonUnitCenterX, y_offset),
+                            kButtonUnitRadius)) {
       std::string key = std::string(state_keys::kPressedPrefix) +
                         std::to_string(i);
       comp->internalStates[key] = 1.0f;
@@ -46,14 +61,18 @@ bool HandleButtonUnitDoubleClick(PlacedComponent* comp, ImVec2 world_pos,
   if (!comp || button != ImGuiMouseButton_Left) {
     return false;
   }
-  float local_y = world_pos.y - comp->position.y;
-  if (local_y >= 70.0f && local_y <= 90.0f) {
-    std::string key = std::string(state_keys::kPressedPrefix) + "2";
-    float current = comp->internalStates.count(key)
-                        ? comp->internalStates.at(key)
-                        : 0.0f;
-    comp->internalStates[key] = 1.0f - current;
+  ImVec2 local(world_pos.x - comp->position.x,
+               world_pos.y - comp->position.y);
+  float y_offset = kButtonUnitBaseY + 2.0f * kButtonUnitSpacingY;
+  if (!IsPointInsideCircle(local, ImVec2(kButtonUnitCenterX, y_offset),
+                           kButtonUnitRadius)) {
+    return false;
   }
+  std::string key = std::string(state_keys::kPressedPrefix) + "2";
+  float current = comp->internalStates.count(key)
+                      ? comp->internalStates.at(key)
+                      : 0.0f;
+  comp->internalStates[key] = 1.0f - current;
   return true;
 }
 
@@ -105,8 +124,13 @@ bool HandleMeterValveMouseWheel(PlacedComponent* comp, ImVec2 world_pos,
 
 bool HandleEmergencyStopDoubleClick(PlacedComponent* comp, ImVec2 world_pos,
                                     int button) {
-  (void)world_pos;
   if (!comp || button != ImGuiMouseButton_Left) {
+    return false;
+  }
+  ImVec2 local(world_pos.x - comp->position.x,
+               world_pos.y - comp->position.y);
+  if (!IsPointInsideCircle(local, ImVec2(40.0f, 35.0f),
+                           kEmergencyStopRadius)) {
     return false;
   }
   float current = comp->internalStates.count(state_keys::kIsPressed)

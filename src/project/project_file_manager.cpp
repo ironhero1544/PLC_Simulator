@@ -376,7 +376,8 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
           cell.type == plc::LadderInstructionType::SET ||
           cell.type == plc::LadderInstructionType::RST ||
           cell.type == plc::LadderInstructionType::TON ||
-          cell.type == plc::LadderInstructionType::CTU) {
+          cell.type == plc::LadderInstructionType::CTU ||
+          cell.type == plc::LadderInstructionType::BKRST) {
         output = cell;
         hasOutput = true;
         break;
@@ -432,6 +433,16 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
   auto emit_output = [&](const plc::LadderInstruction& output) {
     std::string outAddress = FormatDeviceAddress(output.address);
     switch (output.type) {
+      case plc::LadderInstructionType::BKRST: {
+        std::string count = output.preset;
+        if (count.empty()) {
+          count = "K1";
+        } else if (count[0] != 'K' && count[0] != 'k') {
+          count = "K" + count;
+        }
+        add_instruction("BKRST", outAddress + " " + count);
+        break;
+      }
       case plc::LadderInstructionType::SET:
         add_instruction("SET", outAddress);
         break;
@@ -692,6 +703,35 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
           }
         }
       }
+      continue;
+    }
+
+    if (instr == "BKRST" || instr == "BKRSTP") {
+      plc::LadderInstruction output;
+      output.type = plc::LadderInstructionType::BKRST;
+      std::string base = device;
+      std::string count_token;
+
+      size_t split = device.find_first_of(" \t");
+      if (split != std::string::npos) {
+        base = TrimField(device.substr(0, split));
+        count_token = TrimField(device.substr(split + 1));
+      }
+
+      if (count_token.empty() && fields.size() > 4) {
+        count_token = TrimField(fields[4]);
+      }
+
+      if (count_token.empty()) {
+        count_token = "K1";
+      } else if (count_token[0] != 'K' && count_token[0] != 'k') {
+        count_token = "K" + count_token;
+      }
+
+      output.address = base.empty() ? device : base;
+      output.preset = count_token;
+
+      flush_output(output, pending_or_x);
       continue;
     }
 

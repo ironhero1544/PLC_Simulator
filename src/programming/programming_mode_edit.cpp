@@ -5,6 +5,8 @@
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <limits>
 #include <map>
 #include <set>
 #include <cctype>
@@ -84,6 +86,102 @@ bool TryParseDevicePreset(const char* text,
   }
 
   return false;
+}
+
+bool TryParseBkrstCommand(const char* text, std::string* device,
+                          std::string* preset, bool* is_pulse) {
+  if (!text || !device || !preset) {
+    return false;
+  }
+  if (is_pulse) {
+    *is_pulse = false;
+  }
+
+  std::string input(text);
+  size_t pos = input.find_first_not_of(" \t\r\n");
+  if (pos == std::string::npos) {
+    return false;
+  }
+  if (input.compare(pos, 5, "BKRST") != 0) {
+    return false;
+  }
+  pos += 5;
+
+  pos = input.find_first_not_of(" \t\r\n", pos);
+  if (pos != std::string::npos) {
+    if (input[pos] == '(') {
+      size_t end = input.find(')', pos);
+      if (end != std::string::npos) {
+        std::string inside = input.substr(pos + 1, end - pos - 1);
+        for (char ch : inside) {
+          if (std::toupper(static_cast<unsigned char>(ch)) == 'P') {
+            if (is_pulse) {
+              *is_pulse = true;
+            }
+            break;
+          }
+        }
+        pos = end + 1;
+      }
+    } else if (std::toupper(static_cast<unsigned char>(input[pos])) == 'P') {
+      if (is_pulse) {
+        *is_pulse = true;
+      }
+      pos++;
+    }
+  }
+
+  pos = input.find_first_not_of(" \t\r\n", pos);
+  if (pos == std::string::npos) {
+    return false;
+  }
+
+  char type = static_cast<char>(std::toupper(
+      static_cast<unsigned char>(input[pos])));
+  if (!std::isalpha(static_cast<unsigned char>(type))) {
+    return false;
+  }
+
+  size_t start = pos;
+  pos++;
+  size_t digit_start = pos;
+  while (pos < input.size() &&
+         std::isdigit(static_cast<unsigned char>(input[pos]))) {
+    pos++;
+  }
+  if (pos == digit_start) {
+    return false;
+  }
+
+  std::string device_str = input.substr(start, pos - start);
+  pos = input.find_first_not_of(" \t\r\n", pos);
+
+  int count = 1;
+  if (pos != std::string::npos) {
+    size_t end = pos;
+    while (end < input.size() &&
+           !std::isspace(static_cast<unsigned char>(input[end]))) {
+      end++;
+    }
+    std::string token = input.substr(pos, end - pos);
+    if (!token.empty()) {
+      if (token[0] == 'K' || token[0] == 'k') {
+        token = token.substr(1);
+      }
+      if (!token.empty()) {
+        char* endptr = nullptr;
+        long parsed = std::strtol(token.c_str(), &endptr, 10);
+        if (endptr && *endptr == '\0' && parsed > 0 &&
+            parsed <= std::numeric_limits<int>::max()) {
+          count = static_cast<int>(parsed);
+        }
+      }
+    }
+  }
+
+  *device = device_str;
+  *preset = "K" + std::to_string(count);
+  return true;
 }
 }  // namespace
 
@@ -341,8 +439,15 @@ void ProgrammingMode::ConfirmInstruction() {
   char deviceTypeBuffer[64] = {0};
 
   if (pending_instruction_type_ == LadderInstructionType::OTE) {
-    if (TryParseDevicePreset(temp_address_buffer_, 'T', &deviceNum,
-                             &presetNum)) {
+    std::string bkDevice;
+    std::string bkPreset;
+    if (TryParseBkrstCommand(temp_address_buffer_, &bkDevice, &bkPreset,
+                             nullptr)) {
+      newInstruction.type = LadderInstructionType::BKRST;
+      newInstruction.address = bkDevice;
+      newInstruction.preset = bkPreset;
+    } else if (TryParseDevicePreset(temp_address_buffer_, 'T', &deviceNum,
+                                    &presetNum)) {
       newInstruction.type = LadderInstructionType::TON;
       newInstruction.address = "T" + std::to_string(deviceNum);
       newInstruction.preset = "K" + std::to_string(presetNum);
@@ -372,7 +477,8 @@ void ProgrammingMode::ConfirmInstruction() {
        newInstruction.type == LadderInstructionType::RST ||
        newInstruction.type == LadderInstructionType::TON ||
        newInstruction.type == LadderInstructionType::CTU ||
-       newInstruction.type == LadderInstructionType::RST_TMR_CTR);
+       newInstruction.type == LadderInstructionType::RST_TMR_CTR ||
+       newInstruction.type == LadderInstructionType::BKRST);
 
   int targetCell = isOutputInstruction ? 11 : selected_cell_;
   if (targetCell < 0 || targetCell >= 12)
@@ -409,9 +515,17 @@ void ProgrammingMode::EditCurrentInstruction() {
     return;
   }
 
-  std::string full_command = instruction.address;
-  if (!instruction.preset.empty()) {
-    full_command += " " + instruction.preset;
+  std::string full_command;
+  if (instruction.type == LadderInstructionType::BKRST) {
+    full_command = "BKRST " + instruction.address;
+    if (!instruction.preset.empty()) {
+      full_command += " " + instruction.preset;
+    }
+  } else {
+    full_command = instruction.address;
+    if (!instruction.preset.empty()) {
+      full_command += " " + instruction.preset;
+    }
   }
   strncpy(temp_address_buffer_, full_command.c_str(),
           sizeof(temp_address_buffer_) - 1);
@@ -564,7 +678,8 @@ void ProgrammingMode::UpdateHorizontalLines(int rungIndex) {
                        cells[i].type == LadderInstructionType::RST ||
                        cells[i].type == LadderInstructionType::TON ||
                        cells[i].type == LadderInstructionType::CTU ||
-                       cells[i].type == LadderInstructionType::RST_TMR_CTR);
+                       cells[i].type == LadderInstructionType::RST_TMR_CTR ||
+                       cells[i].type == LadderInstructionType::BKRST);
       if (isOutput) {
         coil_pos = i;
         break;

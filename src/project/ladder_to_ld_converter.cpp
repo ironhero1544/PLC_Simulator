@@ -36,7 +36,8 @@ bool IsOutputType(LadderInstructionType type) {
          type == LadderInstructionType::RST ||
          type == LadderInstructionType::TON ||
          type == LadderInstructionType::CTU ||
-         type == LadderInstructionType::RST_TMR_CTR;
+         type == LadderInstructionType::RST_TMR_CTR ||
+         type == LadderInstructionType::BKRST;
 }
 
 bool TryParseDeviceAddress(const std::string& address, char* type,
@@ -499,6 +500,48 @@ LadderToLDConverter::DeviceSet LadderToLDConverter::CollectUsedDevices(
       if (!IsContactType(cell.type) && !IsOutputType(cell.type)) {
         continue;
       }
+      if (cell.type == LadderInstructionType::BKRST) {
+        char type = '\0';
+        int index = 0;
+        if (TryParseDeviceAddress(cell.address, &type, &index)) {
+          int count = 1;
+          std::string raw = cell.preset;
+          if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+            raw = raw.substr(1);
+          }
+          if (!raw.empty()) {
+            char* end = nullptr;
+            long parsed = std::strtol(raw.c_str(), &end, 10);
+            if (end && *end == '\0' && parsed > 0 &&
+                parsed <= std::numeric_limits<int>::max()) {
+              count = static_cast<int>(parsed);
+            }
+          }
+          for (int i = 0; i < count; ++i) {
+            int value = index + i;
+            switch (type) {
+              case 'X':
+                devices.x_inputs.insert(value);
+                break;
+              case 'Y':
+                devices.y_outputs.insert(value);
+                break;
+              case 'M':
+                devices.m_bits.insert(value);
+                break;
+              case 'T':
+                devices.t_timers.insert(value);
+                break;
+              case 'C':
+                devices.c_counters.insert(value);
+                break;
+              default:
+                break;
+            }
+          }
+          continue;
+        }
+      }
       char type = '\0';
       int index = 0;
       if (!TryParseDeviceAddress(cell.address, &type, &index)) {
@@ -545,6 +588,33 @@ void LadderToLDConverter::AppendOutputInstruction(
     case LadderInstructionType::RST_TMR_CTR:
       ldContent += "\nR " + address;
       break;
+    case LadderInstructionType::BKRST: {
+      char type = '\0';
+      int index = 0;
+      int count = 1;
+      if (TryParseDeviceAddress(output.address, &type, &index)) {
+        std::string raw = output.preset;
+        if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+          raw = raw.substr(1);
+        }
+        if (!raw.empty()) {
+          char* end = nullptr;
+          long parsed = std::strtol(raw.c_str(), &end, 10);
+          if (end && *end == '\0' && parsed > 0 &&
+              parsed <= std::numeric_limits<int>::max()) {
+            count = static_cast<int>(parsed);
+          }
+        }
+        for (int i = 0; i < count; ++i) {
+          std::string addr = std::string(1, type) +
+                             std::to_string(index + i);
+          ldContent += "\nR " + addr;
+        }
+      } else {
+        ldContent += "\nR " + address;
+      }
+      break;
+    }
     case LadderInstructionType::TON:
       ldContent += "\nTON " + address;
       if (!preset.empty()) {
@@ -609,6 +679,8 @@ std::string LadderToLDConverter::GetLDInstructionName(
       return "TON";
     case LadderInstructionType::CTU:
       return "CTU";
+    case LadderInstructionType::BKRST:
+      return "BKRST";
     default:
       return "";
   }

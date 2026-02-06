@@ -47,14 +47,32 @@ FetchContent_Declare(glad GIT_REPOSITORY https://github.com/Dav1dde/glad.git GIT
 FetchContent_Declare(imgui GIT_REPOSITORY https://github.com/ocornut/imgui.git GIT_TAG v1.89.2)
 FetchContent_Declare(nlohmann_json GIT_REPOSITORY https://github.com/nlohmann/json.git GIT_TAG v3.11.2)
 FetchContent_Declare(miniz GIT_REPOSITORY https://github.com/richgel999/miniz.git GIT_TAG 3.0.2)
+FetchContent_Declare(box2d GIT_REPOSITORY https://github.com/erincatto/box2d.git GIT_TAG v3.1.1)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glfw glad imgui nlohmann_json miniz)
+FetchContent_MakeAvailable(glfw glad imgui nlohmann_json miniz box2d)
+# Suppress warnings from Box2D.
+if(TARGET box2d::box2d)
+    get_target_property(BOX2D_TARGET box2d::box2d ALIASED_TARGET)
+endif()
+if(NOT BOX2D_TARGET AND TARGET box2d)
+    set(BOX2D_TARGET box2d)
+endif()
+if(BOX2D_TARGET)
+    if(MSVC)
+        target_compile_options(${BOX2D_TARGET} PRIVATE /W0)
+    else()
+        target_compile_options(${BOX2D_TARGET} PRIVATE -w)
+    endif()
+    get_target_property(BOX2D_INCLUDES ${BOX2D_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+    if(BOX2D_INCLUDES)
+        target_include_directories(${BOX2D_TARGET} SYSTEM INTERFACE ${BOX2D_INCLUDES})
+    endif()
+endif()
 
-add_subdirectory(third_party/box2d)
 
 add_library(imgui_lib
         ${imgui_SOURCE_DIR}/imgui.cpp

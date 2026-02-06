@@ -7,9 +7,11 @@
 #include "plc_emulator/project/openplc_compiler_integration.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -393,6 +395,56 @@ void ProgrammingMode::GetUsedDevices(std::vector<std::string>& M,
 
   std::set<std::string> usedM, usedT, usedC;
 
+  auto try_parse_index = [](const std::string& text, int* value) -> bool {
+    if (!value || text.empty()) {
+      return false;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(text.c_str(), &end, 10);
+    if (!end || *end != '\0') {
+      return false;
+    }
+    if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    *value = static_cast<int>(parsed);
+    return true;
+  };
+
+  auto try_parse_bkrst = [&](const LadderInstruction& cell, char* type,
+                             int* start, int* count) -> bool {
+    if (!type || !start || !count) {
+      return false;
+    }
+    if (cell.type != LadderInstructionType::BKRST ||
+        cell.address.size() < 2) {
+      return false;
+    }
+    char device_type = cell.address[0];
+    if (device_type != 'M' && device_type != 'T' && device_type != 'C') {
+      return false;
+    }
+    int base = 0;
+    if (!try_parse_index(cell.address.substr(1), &base)) {
+      return false;
+    }
+    int parsed_count = 0;
+    std::string raw = cell.preset;
+    if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+      raw = raw.substr(1);
+    }
+    if (!raw.empty() && !try_parse_index(raw, &parsed_count)) {
+      return false;
+    }
+    if (parsed_count <= 0) {
+      parsed_count = 1;
+    }
+    *type = device_type;
+    *start = base;
+    *count = parsed_count;
+    return true;
+  };
+
 
 
   for (const auto& rung : ladder_program_.rungs) {
@@ -404,6 +456,26 @@ void ProgrammingMode::GetUsedDevices(std::vector<std::string>& M,
     for (const auto& cell : rung.cells) {
 
       if (!cell.address.empty()) {
+
+        if (cell.type == LadderInstructionType::BKRST) {
+          char type = '\0';
+          int start = 0;
+          int count = 0;
+          if (try_parse_bkrst(cell, &type, &start, &count)) {
+            for (int i = 0; i < count; ++i) {
+              std::string addr = std::string(1, type) +
+                                 std::to_string(start + i);
+              if (type == 'M') {
+                usedM.insert(addr);
+              } else if (type == 'T') {
+                usedT.insert(addr);
+              } else if (type == 'C') {
+                usedC.insert(addr);
+              }
+            }
+            continue;
+          }
+        }
 
         switch (cell.address[0]) {
 
@@ -506,6 +578,10 @@ std::string ProgrammingMode::InstructionTypeToString(
     case LadderInstructionType::RST_TMR_CTR:
 
       return "RST_TMR_CTR";
+
+    case LadderInstructionType::BKRST:
+
+      return "BKRST";
 
     case LadderInstructionType::HLINE:
 
@@ -638,6 +714,10 @@ LadderInstructionType ProgrammingMode::StringToInstructionType(
   if (str == "RST_TMR_CTR")
 
     return LadderInstructionType::RST_TMR_CTR;
+
+  if (str == "BKRST")
+
+    return LadderInstructionType::BKRST;
 
   if (str == "HLINE")
 
@@ -932,7 +1012,8 @@ void ProgrammingMode::UpdateUIFromSimulatorState(const SimulatorState& state) {
           cell.type == LadderInstructionType::RST ||
           cell.type == LadderInstructionType::TON ||
           cell.type == LadderInstructionType::CTU ||
-          cell.type == LadderInstructionType::RST_TMR_CTR) {
+          cell.type == LadderInstructionType::RST_TMR_CTR ||
+          cell.type == LadderInstructionType::BKRST) {
         cell.isActive = GetDeviceState(cell.address);
         continue;
       }
@@ -1336,6 +1417,28 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
     }
 
   };
+
+  auto parse_count = [&](const std::string& presetStr) -> int {
+    if (presetStr.empty()) {
+      return 1;
+    }
+    std::string raw = presetStr;
+    if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+      raw = raw.substr(1);
+    }
+    if (raw.empty()) {
+      return 1;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(raw.c_str(), &end, 10);
+    if (!end || *end != '\0') {
+      return 1;
+    }
+    if (parsed <= 0 || parsed > std::numeric_limits<int>::max()) {
+      return 1;
+    }
+    return static_cast<int>(parsed);
+  };
 for (const auto& rung : ladder_program_.rungs) {
 
     if (rung.isEndRung)
@@ -1378,6 +1481,34 @@ for (const auto& rung : ladder_program_.rungs) {
 
           break;
 
+        case LadderInstructionType::BKRST: {
+
+          if (cell.address.empty()) {
+            break;
+          }
+          char deviceType = cell.address[0];
+          if (deviceType != 'T' && deviceType != 'C') {
+            break;
+          }
+          char* end = nullptr;
+          long base = std::strtol(cell.address.substr(1).c_str(), &end, 10);
+          if (!end || *end != '\0' || base < 0 ||
+              base > std::numeric_limits<int>::max()) {
+            break;
+          }
+          int count = parse_count(cell.preset);
+          for (int i = 0; i < count; ++i) {
+            std::string addr = std::string(1, deviceType) +
+                               std::to_string(static_cast<int>(base) + i);
+            if (deviceType == 'T') {
+              ensure_timer(addr, cell.preset);
+            } else if (deviceType == 'C') {
+              ensure_counter(addr, cell.preset);
+            }
+          }
+          break;
+        }
+
         default:
 
           break;
@@ -1397,6 +1528,40 @@ void ProgrammingMode::GetUsedCoils(std::vector<std::string>& coils) const {
 
   std::set<std::string> used;
 
+  auto try_parse_index = [](const std::string& text, int* value) -> bool {
+    if (!value || text.empty()) {
+      return false;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(text.c_str(), &end, 10);
+    if (!end || *end != '\0') {
+      return false;
+    }
+    if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    *value = static_cast<int>(parsed);
+    return true;
+  };
+
+  auto parse_count = [&](const std::string& presetStr) -> int {
+    if (presetStr.empty()) {
+      return 1;
+    }
+    std::string raw = presetStr;
+    if (!raw.empty() && (raw[0] == 'K' || raw[0] == 'k')) {
+      raw = raw.substr(1);
+    }
+    if (raw.empty()) {
+      return 1;
+    }
+    int value = 0;
+    if (!try_parse_index(raw, &value) || value <= 0) {
+      return 1;
+    }
+    return value;
+  };
+
   for (const auto& rung : ladder_program_.rungs) {
 
     if (rung.isEndRung)
@@ -1413,9 +1578,26 @@ void ProgrammingMode::GetUsedCoils(std::vector<std::string>& coils) const {
 
         case LadderInstructionType::RST:
 
+        case LadderInstructionType::BKRST:
+
           if (!cell.address.empty())
 
-            used.insert(cell.address);
+            if (cell.type == LadderInstructionType::BKRST) {
+              char type = cell.address[0];
+              int base = 0;
+              if (cell.address.size() >= 2 &&
+                  try_parse_index(cell.address.substr(1), &base)) {
+                int count = parse_count(cell.preset);
+                for (int i = 0; i < count; ++i) {
+                  used.insert(std::string(1, type) +
+                              std::to_string(base + i));
+                }
+              } else {
+                used.insert(cell.address);
+              }
+            } else {
+              used.insert(cell.address);
+            }
 
           break;
 
