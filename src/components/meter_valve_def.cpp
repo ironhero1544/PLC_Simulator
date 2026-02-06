@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/core/component_transform.h"
 #include "nanosvg.h"
 #include "nanosvgrast.h"
 
@@ -18,6 +19,39 @@ namespace {
 
 ImU32 ToImU32(const Color& c) {
   return IM_COL32(c.r * 255, c.g * 255, c.b * 255, c.a * 255);
+}
+
+ImVec2 ApplyComponentTransform(const PlacedComponent& comp,
+                               ImVec2 point,
+                               ImVec2 center) {
+  ImVec2 offset(point.x - center.x, point.y - center.y);
+  if (comp.flip_x) {
+    offset.x = -offset.x;
+  }
+  if (comp.flip_y) {
+    offset.y = -offset.y;
+  }
+  ImVec2 rotated = RotatePoint(offset, comp.rotation_quadrants);
+  return ImVec2(center.x + rotated.x, center.y + rotated.y);
+}
+
+ImVec2 UndoComponentTransform(const PlacedComponent& comp,
+                              ImVec2 point,
+                              ImVec2 center) {
+  ImVec2 offset(point.x - center.x, point.y - center.y);
+  ImVec2 rotated = RotatePoint(offset, -comp.rotation_quadrants);
+  if (comp.flip_x) {
+    rotated.x = -rotated.x;
+  }
+  if (comp.flip_y) {
+    rotated.y = -rotated.y;
+  }
+  return ImVec2(center.x + rotated.x, center.y + rotated.y);
+}
+
+bool IsPointInsideRect(ImVec2 point, ImVec2 min, ImVec2 max) {
+  return point.x >= min.x && point.x <= max.x && point.y >= min.y &&
+         point.y <= max.y;
 }
 
 struct SvgTexture {
@@ -270,6 +304,9 @@ void RenderMeterValve(ImDrawList* draw_list,
                       ImVec2 pos,
                       float zoom) {
   ImVec2 size = {50.0f * zoom, 80.0f * zoom};
+  ImVec2 base_center = {comp.size.width * zoom * 0.5f,
+                        comp.size.height * zoom * 0.5f};
+  ImVec2 display_center = {pos.x + base_center.x, pos.y + base_center.y};
 
   draw_list->AddRectFilled(pos, {pos.x + size.x, pos.y + size.y},
                            IM_COL32(240, 240, 240, 255));
@@ -303,7 +340,10 @@ void RenderMeterValve(ImDrawList* draw_list,
   ImVec2 arrow_max = {arrow_min.x + arrow_size, arrow_min.y + arrow_size};
 
   float arrow_rounding = 2.0f * zoom;
-  bool arrow_hover = ImGui::IsMouseHoveringRect(arrow_min, arrow_max, true);
+  ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+  ImVec2 mouse_unrotated =
+      UndoComponentTransform(comp, mouse_pos, display_center);
+  bool arrow_hover = IsPointInsideRect(mouse_unrotated, arrow_min, arrow_max);
   ImU32 arrow_fill =
       arrow_hover ? IM_COL32(230, 230, 230, 255) : IM_COL32(245, 245, 245, 255);
   ImU32 arrow_border = IM_COL32(0, 0, 0, 255);
@@ -356,9 +396,12 @@ void RenderMeterValve(ImDrawList* draw_list,
   float popup_item = popup_icon + popup_pad * 2.0f;
   float popup_spacing = 12.0f;
   float popup_width = popup_item * 2.0f + popup_spacing;
-  float arrow_center_x = (arrow_min.x + arrow_max.x) * 0.5f;
-  ImVec2 popup_pos = {arrow_center_x - popup_width * 0.5f,
-                      arrow_max.y + 10.0f};
+  ImVec2 arrow_center = {(arrow_min.x + arrow_max.x) * 0.5f,
+                         (arrow_min.y + arrow_max.y) * 0.5f};
+  ImVec2 arrow_screen =
+      ApplyComponentTransform(comp, arrow_center, display_center);
+  ImVec2 popup_pos = {arrow_screen.x - popup_width * 0.5f,
+                      arrow_screen.y + 10.0f};
   ImGui::SetNextWindowPos(popup_pos, ImGuiCond_Always);
   ImGui::SetNextWindowBgAlpha(1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 6.0f));

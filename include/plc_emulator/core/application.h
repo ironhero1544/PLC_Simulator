@@ -71,6 +71,9 @@ namespace plc {
         void DebugLog(const std::string& message);
         void QueuePhysicsWarningDialog(const std::string& message);
         float GetLayoutScale() const;
+        const CompiledPLCExecutor* GetCompiledPlcExecutor() const {
+          return compiled_plc_executor_.get();
+        }
         /*
          * 프로젝트 저장과 로드.
          * Project save/load.

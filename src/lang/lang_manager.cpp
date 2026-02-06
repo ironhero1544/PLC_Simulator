@@ -4,6 +4,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -70,25 +71,53 @@ void CopyLimited(char* dest, size_t dest_size, const char* src) {
   dest[len] = '\0';
 }
 
+#ifdef _WIN32
+bool WideToUtf8(const wchar_t* src, char* dest, size_t dest_size) {
+  if (!src || !dest || dest_size == 0) {
+    return false;
+  }
+  int written = WideCharToMultiByte(CP_UTF8, 0, src, -1, dest,
+                                    static_cast<int>(dest_size), nullptr,
+                                    nullptr);
+  if (written <= 0 || static_cast<size_t>(written) > dest_size) {
+    dest[0] = '\0';
+    return false;
+  }
+  return true;
+}
+
+bool Utf8ToWide(const char* src, wchar_t* dest, size_t dest_size) {
+  if (!src || !dest || dest_size == 0) {
+    return false;
+  }
+  int written = MultiByteToWideChar(CP_UTF8, 0, src, -1, dest,
+                                    static_cast<int>(dest_size));
+  if (written <= 0 || static_cast<size_t>(written) > dest_size) {
+    dest[0] = L'\0';
+    return false;
+  }
+  return true;
+}
+#endif
+
 bool GetExecutableDir(char* out_dir, size_t out_size) {
   if (!out_dir || out_size == 0) {
     return false;
   }
   out_dir[0] = '\0';
 #ifdef _WIN32
-  char path[MAX_PATH] = {0};
-  DWORD len = GetModuleFileNameA(nullptr, path, MAX_PATH);
+  wchar_t path[MAX_PATH] = {0};
+  DWORD len = GetModuleFileNameW(nullptr, path, MAX_PATH);
   if (len == 0 || len >= MAX_PATH) {
     return false;
   }
   for (int i = static_cast<int>(len) - 1; i >= 0; --i) {
-    if (path[i] == '\\' || path[i] == '/') {
-      path[i] = '\0';
+    if (path[i] == L'\\' || path[i] == L'/') {
+      path[i] = L'\0';
       break;
     }
   }
-  CopyLimited(out_dir, out_size, path);
-  return out_dir[0] != '\0';
+  return WideToUtf8(path, out_dir, out_size);
 #else
   (void)out_dir;
   (void)out_size;
@@ -110,6 +139,23 @@ bool BuildLangPath(const char* filename, char* out_path, size_t out_size) {
 }
 
 bool BuildUserLangPath(char* out_path, size_t out_size) {
+  if (!out_path || out_size == 0) {
+    return false;
+  }
+#ifdef _WIN32
+  wchar_t appdata[260] = {0};
+  DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", appdata,
+                                      static_cast<DWORD>(sizeof(appdata) /
+                                                         sizeof(appdata[0])));
+  if (len > 0 && len < sizeof(appdata) / sizeof(appdata[0])) {
+    char utf8[260] = {0};
+    if (WideToUtf8(appdata, utf8, sizeof(utf8))) {
+      std::snprintf(out_path, out_size, "%s\\PLCSimulator\\user_lang.txt",
+                    utf8);
+      return true;
+    }
+  }
+#endif
   return BuildLangPath("user_lang.txt", out_path, out_size);
 }
 
@@ -117,7 +163,15 @@ bool LoadLangFile(const char* path) {
   if (!path || path[0] == '\0') {
     return false;
   }
-  FILE* file = std::fopen(path, "r");
+  FILE* file = nullptr;
+#ifdef _WIN32
+  wchar_t wpath[520] = {0};
+  if (Utf8ToWide(path, wpath, sizeof(wpath) / sizeof(wpath[0]))) {
+    file = _wfopen(wpath, L"r");
+  }
+#else
+  file = std::fopen(path, "r");
+#endif
   if (!file) {
     return false;
   }
@@ -154,6 +208,111 @@ bool LoadLangFile(const char* path) {
   return true;
 }
 
+bool FileExists(const char* path) {
+  if (!path || path[0] == '\0') {
+    return false;
+  }
+#ifdef _WIN32
+  wchar_t wpath[520] = {0};
+  if (!Utf8ToWide(path, wpath, sizeof(wpath) / sizeof(wpath[0]))) {
+    return false;
+  }
+  DWORD attrs = GetFileAttributesW(wpath);
+  return (attrs != INVALID_FILE_ATTRIBUTES);
+#else
+  FILE* file = std::fopen(path, "r");
+  if (!file) {
+    return false;
+  }
+  std::fclose(file);
+  return true;
+#endif
+}
+
+bool GetCurrentDir(char* out_dir, size_t out_size) {
+  if (!out_dir || out_size == 0) {
+    return false;
+  }
+  out_dir[0] = '\0';
+#ifdef _WIN32
+  wchar_t wpath[520] = {0};
+  DWORD len = GetCurrentDirectoryW(
+      static_cast<DWORD>(sizeof(wpath) / sizeof(wpath[0])), wpath);
+  if (len == 0 || len >= sizeof(wpath) / sizeof(wpath[0])) {
+    return false;
+  }
+  return WideToUtf8(wpath, out_dir, out_size);
+#else
+  (void)out_dir;
+  (void)out_size;
+  return false;
+#endif
+}
+
+bool StripLastPathComponent(char* path) {
+  if (!path) {
+    return false;
+  }
+  size_t len = std::strlen(path);
+  if (len == 0) {
+    return false;
+  }
+  for (size_t i = len; i-- > 0;) {
+    if (path[i] == '\\' || path[i] == '/') {
+      path[i] = '\0';
+      return i > 0;
+    }
+  }
+  return false;
+}
+
+bool BuildLangPathFromBase(const char* base_dir, const char* filename,
+                           char* out_path, size_t out_size) {
+  if (!base_dir || !filename || !out_path || out_size == 0) {
+    return false;
+  }
+  std::snprintf(out_path, out_size, "%s\\resources\\lang\\%s", base_dir,
+                filename);
+  return true;
+}
+
+bool FindLangFilePath(const char* filename, char* out_path, size_t out_size) {
+  if (!filename || !out_path || out_size == 0) {
+    return false;
+  }
+
+  char base[260] = {0};
+  if (GetExecutableDir(base, sizeof(base))) {
+    char probe[260] = {0};
+    CopyLimited(probe, sizeof(probe), base);
+    for (int i = 0; i < 4; ++i) {
+      BuildLangPathFromBase(probe, filename, out_path, out_size);
+      if (FileExists(out_path)) {
+        return true;
+      }
+      if (!StripLastPathComponent(probe)) {
+        break;
+      }
+    }
+  }
+
+  if (GetCurrentDir(base, sizeof(base))) {
+    char probe[260] = {0};
+    CopyLimited(probe, sizeof(probe), base);
+    for (int i = 0; i < 4; ++i) {
+      BuildLangPathFromBase(probe, filename, out_path, out_size);
+      if (FileExists(out_path)) {
+        return true;
+      }
+      if (!StripLastPathComponent(probe)) {
+        break;
+      }
+    }
+  }
+
+  return false;
+}
+
 const char* DetectWindowsLangCode() {
 #ifdef _WIN32
   WCHAR buffer[256] = {0};
@@ -187,7 +346,15 @@ const char* DetectWindowsLangCode() {
 void ResolveInitialLanguage() {
   char path[260] = {0};
   if (BuildUserLangPath(path, sizeof(path))) {
-    FILE* file = std::fopen(path, "r");
+    FILE* file = nullptr;
+#ifdef _WIN32
+    wchar_t wpath[520] = {0};
+    if (Utf8ToWide(path, wpath, sizeof(wpath) / sizeof(wpath[0]))) {
+      file = _wfopen(wpath, L"r");
+    }
+#else
+    file = std::fopen(path, "r");
+#endif
     if (file) {
       char line[32] = {0};
       if (std::fgets(line, sizeof(line), file)) {
@@ -209,10 +376,11 @@ void ResolveInitialLanguage() {
   }
 
   char lang_path[260] = {0};
-  if (!BuildLangPath(filename, lang_path, sizeof(lang_path)) ||
+  if (!FindLangFilePath(filename, lang_path, sizeof(lang_path)) ||
       !LoadLangFile(lang_path)) {
-    BuildLangPath("en.lang", lang_path, sizeof(lang_path));
-    LoadLangFile(lang_path);
+    if (FindLangFilePath("en.lang", lang_path, sizeof(lang_path))) {
+      LoadLangFile(lang_path);
+    }
     CopyLimited(g_active_lang, sizeof(g_active_lang), "en");
     return;
   }
@@ -226,14 +394,22 @@ bool WriteUserLangFile(const char* code) {
   }
 #ifdef _WIN32
   char dir_path[260] = {0};
-  if (GetExecutableDir(dir_path, sizeof(dir_path))) {
-    std::strncat(dir_path, "\\resources", sizeof(dir_path) - std::strlen(dir_path) - 1);
-    CreateDirectoryA(dir_path, nullptr);
-    std::strncat(dir_path, "\\lang", sizeof(dir_path) - std::strlen(dir_path) - 1);
-    CreateDirectoryA(dir_path, nullptr);
+  CopyLimited(dir_path, sizeof(dir_path), path);
+  StripLastPathComponent(dir_path);
+  wchar_t wdir[520] = {0};
+  if (Utf8ToWide(dir_path, wdir, sizeof(wdir) / sizeof(wdir[0]))) {
+    CreateDirectoryW(wdir, nullptr);
   }
 #endif
-  FILE* file = std::fopen(path, "w");
+  FILE* file = nullptr;
+#ifdef _WIN32
+  wchar_t wpath[520] = {0};
+  if (Utf8ToWide(path, wpath, sizeof(wpath) / sizeof(wpath[0]))) {
+    file = _wfopen(wpath, L"w");
+  }
+#else
+  file = std::fopen(path, "w");
+#endif
   if (!file) {
     return false;
   }

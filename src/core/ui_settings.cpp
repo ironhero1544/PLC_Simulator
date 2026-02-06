@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -62,30 +63,96 @@ void CopyLimited(char* dest, size_t dest_size, const char* src) {
   dest[len] = '\0';
 }
 
+#ifdef _WIN32
+bool WideToUtf8(const wchar_t* src, char* dest, size_t dest_size) {
+  if (!src || !dest || dest_size == 0) {
+    return false;
+  }
+  int written = WideCharToMultiByte(CP_UTF8, 0, src, -1, dest,
+                                    static_cast<int>(dest_size), nullptr,
+                                    nullptr);
+  if (written <= 0 || static_cast<size_t>(written) > dest_size) {
+    dest[0] = '\0';
+    return false;
+  }
+  return true;
+}
+
+bool Utf8ToWide(const char* src, wchar_t* dest, size_t dest_size) {
+  if (!src || !dest || dest_size == 0) {
+    return false;
+  }
+  int written = MultiByteToWideChar(CP_UTF8, 0, src, -1, dest,
+                                    static_cast<int>(dest_size));
+  if (written <= 0 || static_cast<size_t>(written) > dest_size) {
+    dest[0] = L'\0';
+    return false;
+  }
+  return true;
+}
+
+bool GetLocalAppDataUtf8(char* out_dir, size_t out_size) {
+  if (!out_dir || out_size == 0) {
+    return false;
+  }
+  out_dir[0] = '\0';
+  wchar_t appdata[260] = {0};
+  DWORD len = GetEnvironmentVariableW(
+      L"LOCALAPPDATA", appdata,
+      static_cast<DWORD>(sizeof(appdata) / sizeof(appdata[0])));
+  if (len > 0 && len < sizeof(appdata) / sizeof(appdata[0])) {
+    return WideToUtf8(appdata, out_dir, out_size);
+  }
+  len = GetEnvironmentVariableW(
+      L"APPDATA", appdata,
+      static_cast<DWORD>(sizeof(appdata) / sizeof(appdata[0])));
+  if (len > 0 && len < sizeof(appdata) / sizeof(appdata[0])) {
+    return WideToUtf8(appdata, out_dir, out_size);
+  }
+  return false;
+}
+#endif
+
 bool GetExecutableDir(char* out_dir, size_t out_size) {
   if (!out_dir || out_size == 0) {
     return false;
   }
   out_dir[0] = '\0';
 #ifdef _WIN32
-  char path[MAX_PATH] = {0};
-  DWORD len = GetModuleFileNameA(nullptr, path, MAX_PATH);
+  wchar_t path[MAX_PATH] = {0};
+  DWORD len = GetModuleFileNameW(nullptr, path, MAX_PATH);
   if (len == 0 || len >= MAX_PATH) {
     return false;
   }
   for (int i = static_cast<int>(len) - 1; i >= 0; --i) {
-    if (path[i] == '\\' || path[i] == '/') {
-      path[i] = '\0';
+    if (path[i] == L'\\' || path[i] == L'/') {
+      path[i] = L'\0';
       break;
     }
   }
-  CopyLimited(out_dir, out_size, path);
-  return out_dir[0] != '\0';
+  return WideToUtf8(path, out_dir, out_size);
 #else
   (void)out_dir;
   (void)out_size;
   return false;
 #endif
+}
+
+bool StripLastPathComponent(char* path) {
+  if (!path) {
+    return false;
+  }
+  size_t len = std::strlen(path);
+  if (len == 0) {
+    return false;
+  }
+  for (size_t i = len; i-- > 0;) {
+    if (path[i] == '\\' || path[i] == '/') {
+      path[i] = '\0';
+      return i > 0;
+    }
+  }
+  return false;
 }
 
 bool BuildSettingsPath(char* out_path, size_t out_size) {
@@ -99,6 +166,61 @@ bool BuildSettingsPath(char* out_path, size_t out_size) {
   std::snprintf(out_path, out_size, "%s\\resources\\config\\ui_settings.cfg",
                 base_dir);
   return true;
+}
+
+bool BuildUserSettingsPath(char* out_path, size_t out_size) {
+  if (!out_path || out_size == 0) {
+    return false;
+  }
+#ifdef _WIN32
+  char base_dir[260] = {0};
+  if (GetLocalAppDataUtf8(base_dir, sizeof(base_dir))) {
+    std::snprintf(out_path, out_size, "%s\\PLCSimulator\\ui_settings.cfg",
+                  base_dir);
+    return true;
+  }
+#endif
+  return false;
+}
+
+bool OpenFileRead(const char* path, FILE** out_file) {
+  if (!out_file) {
+    return false;
+  }
+  *out_file = nullptr;
+  if (!path || path[0] == '\0') {
+    return false;
+  }
+#ifdef _WIN32
+  wchar_t wpath[520] = {0};
+  if (!Utf8ToWide(path, wpath, sizeof(wpath) / sizeof(wpath[0]))) {
+    return false;
+  }
+  *out_file = _wfopen(wpath, L"r");
+#else
+  *out_file = std::fopen(path, "r");
+#endif
+  return *out_file != nullptr;
+}
+
+bool OpenFileWrite(const char* path, FILE** out_file) {
+  if (!out_file) {
+    return false;
+  }
+  *out_file = nullptr;
+  if (!path || path[0] == '\0') {
+    return false;
+  }
+#ifdef _WIN32
+  wchar_t wpath[520] = {0};
+  if (!Utf8ToWide(path, wpath, sizeof(wpath) / sizeof(wpath[0]))) {
+    return false;
+  }
+  *out_file = _wfopen(wpath, L"w");
+#else
+  *out_file = std::fopen(path, "w");
+#endif
+  return *out_file != nullptr;
 }
 
 }  // namespace
@@ -120,12 +242,15 @@ bool LoadUiSettings(UiSettings* settings) {
     return false;
   }
   SetDefaultUiSettings(settings);
+  FILE* file = nullptr;
   char path[260] = {0};
-  if (!BuildSettingsPath(path, sizeof(path))) {
-    return false;
-  }
-  FILE* file = std::fopen(path, "r");
-  if (!file) {
+  if (BuildUserSettingsPath(path, sizeof(path)) &&
+      OpenFileRead(path, &file)) {
+    // Loaded from user path.
+  } else if (BuildSettingsPath(path, sizeof(path)) &&
+             OpenFileRead(path, &file)) {
+    // Loaded from legacy path.
+  } else {
     return false;
   }
   char line[128] = {0};
@@ -159,22 +284,21 @@ bool LoadUiSettings(UiSettings* settings) {
 
 bool SaveUiSettings(const UiSettings& settings) {
   char path[260] = {0};
-  if (!BuildSettingsPath(path, sizeof(path))) {
+  bool has_user_path = BuildUserSettingsPath(path, sizeof(path));
+  if (!has_user_path && !BuildSettingsPath(path, sizeof(path))) {
     return false;
   }
 #ifdef _WIN32
   char dir_path[260] = {0};
-  if (GetExecutableDir(dir_path, sizeof(dir_path))) {
-    std::strncat(dir_path, "\\resources",
-                 sizeof(dir_path) - std::strlen(dir_path) - 1);
-    CreateDirectoryA(dir_path, nullptr);
-    std::strncat(dir_path, "\\config",
-                 sizeof(dir_path) - std::strlen(dir_path) - 1);
-    CreateDirectoryA(dir_path, nullptr);
+  CopyLimited(dir_path, sizeof(dir_path), path);
+  StripLastPathComponent(dir_path);
+  wchar_t wdir[520] = {0};
+  if (Utf8ToWide(dir_path, wdir, sizeof(wdir) / sizeof(wdir[0]))) {
+    CreateDirectoryW(wdir, nullptr);
   }
 #endif
-  FILE* file = std::fopen(path, "w");
-  if (!file) {
+  FILE* file = nullptr;
+  if (!OpenFileWrite(path, &file)) {
     return false;
   }
   std::fprintf(file, "ui_scale=%.2f\n", settings.ui_scale);

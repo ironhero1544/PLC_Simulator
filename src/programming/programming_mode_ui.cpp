@@ -36,6 +36,14 @@ void ProgrammingMode::RenderProgrammingHeader() {
 
 void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
   const float layout_scale = GetLayoutScale();
+  const char* edit_label =
+      TR("ui.programming.toolbar_edit", "Edit (F3)");
+  const char* monitor_label =
+      TR("ui.programming.toolbar_monitor", "Monitor (F2)");
+  const char* save_label =
+      TR("ui.programming.toolbar_save", "Save");
+  const char* compile_label =
+      TR("ui.programming.toolbar_compile", "Compile");
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.94f, 0.94f, 0.94f, 1.0f));
   if (ImGui::BeginChild("ProgrammingToolbar", ImVec2(0, 50 * layout_scale),
                         true,
@@ -44,14 +52,15 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("Edit (F3)", ImVec2(100 * layout_scale, 30 * layout_scale));
+      ImGui::Button(edit_label,
+                    ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
     } else {
       ImGui::PushStyleColor(ImGuiCol_Button,
                             !is_monitor_mode_
                                 ? ImVec4(0.4f, 0.6f, 0.8f, 1.0f)
                                 : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-      if (ImGui::Button("Edit (F3)",
+      if (ImGui::Button(edit_label,
                         ImVec2(100 * layout_scale, 30 * layout_scale))) {
         is_monitor_mode_ = false;
       }
@@ -63,7 +72,7 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
     ImGui::PushStyleColor(ImGuiCol_Button,
                           is_monitor_mode_ ? ImVec4(0.4f, 0.6f, 0.8f, 1.0f)
                                           : ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-    if (ImGui::Button("Monitor (F2)",
+    if (ImGui::Button(monitor_label,
                       ImVec2(100 * layout_scale, 30 * layout_scale))) {
       if (!is_monitor_mode_) {
         is_monitor_mode_ = true;
@@ -78,10 +87,11 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning || is_monitor_mode_) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("Save", ImVec2(100 * layout_scale, 30 * layout_scale));
+      ImGui::Button(save_label,
+                    ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
     } else {
-      if (ImGui::Button("Save",
+      if (ImGui::Button(save_label,
                         ImVec2(100 * layout_scale, 30 * layout_scale))) {
 
         // ???**NEW**: .csv ???????????????????????????????????????????????????
@@ -203,11 +213,11 @@ void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
 
     if (isPlcRunning || is_monitor_mode_) {
       ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-      ImGui::Button("Compile",
+      ImGui::Button(compile_label,
                     ImVec2(100 * layout_scale, 30 * layout_scale));
       ImGui::PopStyleVar();
     } else {
-      if (ImGui::Button("Compile",
+      if (ImGui::Button(compile_label,
                         ImVec2(100 * layout_scale, 30 * layout_scale))) {
         CompileLadderToOpenPLC();
       }
@@ -732,16 +742,29 @@ void ProgrammingMode::RenderDeviceMonitor() {
 }
 void ProgrammingMode::RenderKeyboardHelp() {
   ImGui::Text("%s", TR("ui.programming.shortcuts", "Keyboard Shortcuts"));
-  ImGui::BulletText("F5: XIC (NO)");
-  ImGui::BulletText("F6: XIO (NC)");
-  ImGui::BulletText("F7: Coil (OUT)");
-  ImGui::BulletText("F9: Add vertical");
-  ImGui::BulletText("Shift+F9: Remove vertical");
-  ImGui::BulletText("Del: Delete");
-  ImGui::BulletText("Insert: Add");
-  ImGui::BulletText("Ctrl+Arrow: Toggle line path");
-  ImGui::BulletText("Ctrl+Z: Undo");
-  ImGui::BulletText("Ctrl+Y / Ctrl+Shift+Z: Redo");
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_f5", "F5: XIC (NO)"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_f6", "F6: XIO (NC)"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_f7", "F7: Coil (OUT)"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_f9", "F9: Add vertical"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_shift_f9",
+               "Shift+F9: Remove vertical"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_del", "Del: Delete"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_insert", "Insert: Add"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_ctrl_arrow",
+               "Ctrl+Arrow: Toggle line path"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_ctrl_z", "Ctrl+Z: Undo"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_ctrl_y",
+               "Ctrl+Y / Ctrl+Shift+Z: Redo"));
 }
 
 void ProgrammingMode::RenderCursorInfo() {
@@ -755,8 +778,12 @@ void ProgrammingMode::RenderCursorInfo() {
 
 void ProgrammingMode::RenderSimulationControl() {
   const float layout_scale = GetLayoutScale();
+  const bool allow_toggle = !monitor_external_plc_;
   ImGui::Text("%s", TR("ui.programming.input_controls", "Input Controls"));
   ImGui::Text("%s", TR("ui.programming.inputs_label", "Inputs (X0-X15)"));
+  if (!allow_toggle) {
+    ImGui::BeginDisabled();
+  }
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                       ImVec2(5 * layout_scale, 5 * layout_scale));
   for (int i = 0; i < 16; i++) {
@@ -767,13 +794,18 @@ void ProgrammingMode::RenderSimulationControl() {
                                 : ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
     if (ImGui::Button(address.c_str(),
                       ImVec2(55 * layout_scale, 35 * layout_scale))) {
-      SetDeviceState(address, !state);
+      if (allow_toggle) {
+        SetDeviceState(address, !state);
+      }
     }
     ImGui::PopStyleColor();
     if ((i + 1) % 4 != 0)
       ImGui::SameLine();
   }
   ImGui::PopStyleVar();
+  if (!allow_toggle) {
+    ImGui::EndDisabled();
+  }
   ImGui::Spacing();
   ImGui::Text("%s", TR("ui.programming.outputs_label", "Outputs (Y0-Y15)"));
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,

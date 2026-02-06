@@ -26,7 +26,6 @@ ui.status.zoom_info=Zoom %.1fx | Pos: (%.0f, %.0f) | Components: %zu | Wires: %z
 ui.status.tool_fmt=Tool: %s
 ui.toolbar.save_layout=저장
 ui.toolbar.load_layout=불러오기
-ui.programming.load=Load
 
 # Common
 ui.common.yes=Yes
@@ -147,6 +146,21 @@ ui.wiring.context.flip_horizontal=수평 뒤집기
 ui.wiring.context.flip_vertical=수직 뒤집기
 
 # Programming UI
+ui.programming.toolbar_edit=작성 (F3)
+ui.programming.toolbar_monitor=모니터 (F2)
+ui.programming.toolbar_save=저장
+ui.programming.load=불러오기
+ui.programming.toolbar_compile=컴파일
+ui.programming.shortcut_f5=F5: XIC (NO)
+ui.programming.shortcut_f6=F6: XIO (NC)
+ui.programming.shortcut_f7=F7: Coil (OUT)
+ui.programming.shortcut_f9=F9: 세로 추가
+ui.programming.shortcut_shift_f9=Shift+F9: 세로 삭제
+ui.programming.shortcut_del=Del: 삭제
+ui.programming.shortcut_insert=Insert: 추가
+ui.programming.shortcut_ctrl_arrow=Ctrl+화살표: 라인 경로 전환
+ui.programming.shortcut_ctrl_z=Ctrl+Z: 실행 취소
+ui.programming.shortcut_ctrl_y=Ctrl+Y / Ctrl+Shift+Z: 다시 실행
 ui.programming.timers_counters=타이머 / 카운터
 ui.programming.timer_value_fmt=%s  K%d/%d
 ui.programming.counter_value_fmt=%s  K%d/%d

@@ -277,6 +277,7 @@ class ProgrammingMode {
   void ConfirmVerticalConnection();
 
   void SimulateLadderProgram();
+  void SyncFromExternalPlc();
 
   void ExecuteWithOpenPLCEngine();
   bool CompileLadderToOpenPLC();
@@ -318,6 +319,7 @@ class ProgrammingMode {
   int selected_rung_;
   int selected_cell_;
   bool is_monitor_mode_;
+  bool monitor_external_plc_ = false;
 
   std::map<std::string, bool> device_states_;
   std::map<std::string, TimerState> timer_states_;

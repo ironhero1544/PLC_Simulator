@@ -2,6 +2,7 @@
 // Implementation of programming mode.
 
 #include "plc_emulator/programming/programming_mode.h"
+#include "plc_emulator/core/application.h"
 #include "plc_emulator/programming/compiled_plc_executor.h"
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 #include "plc_emulator/project/openplc_compiler_integration.h"
@@ -234,7 +235,11 @@ void ProgrammingMode::Update() {
 
 
 
-    SimulateLadderProgram();
+    if (monitor_external_plc_) {
+      SyncFromExternalPlc();
+    } else {
+      SimulateLadderProgram();
+    }
 
   } else {
 
@@ -309,6 +314,8 @@ void ProgrammingMode::UpdateWithPlcState(bool isPlcRunning) {
 
 
 
+  monitor_external_plc_ = isPlcRunning;
+
   if (isPlcRunning) {
 
     if (!is_monitor_mode_) {
@@ -329,6 +336,79 @@ void ProgrammingMode::UpdateWithPlcState(bool isPlcRunning) {
 
   Update();
 
+}
+
+void ProgrammingMode::SyncFromExternalPlc() {
+  if (!application_) {
+    return;
+  }
+  const CompiledPLCExecutor* executor = application_->GetCompiledPlcExecutor();
+  if (!executor) {
+    return;
+  }
+
+  for (int i = 0; i < 16; ++i) {
+    std::string x_addr = "X" + std::to_string(i);
+    device_states_[x_addr] = executor->GetDeviceState(x_addr);
+  }
+  for (int i = 0; i < 16; ++i) {
+    std::string y_addr = "Y" + std::to_string(i);
+    device_states_[y_addr] = executor->GetDeviceState(y_addr);
+  }
+  for (int i = 0; i < 1000; ++i) {
+    std::string m_addr = "M" + std::to_string(i);
+    device_states_[m_addr] = executor->GetDeviceState(m_addr);
+  }
+
+  auto parse_index = [](const std::string& address, int* out) -> bool {
+    if (!out || address.size() < 2) {
+      return false;
+    }
+    char* end = nullptr;
+    long parsed = std::strtol(address.c_str() + 1, &end, 10);
+    if (!end || *end != '\0') {
+      return false;
+    }
+    if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+      return false;
+    }
+    *out = static_cast<int>(parsed);
+    return true;
+  };
+
+  for (auto& pair : timer_states_) {
+    int idx = -1;
+    if (!parse_index(pair.first, &idx) || idx < 0 || idx >= 256) {
+      continue;
+    }
+    TimerState& timer = pair.second;
+    timer.value = executor->GetTimerValue(idx);
+    timer.enabled = executor->GetTimerEnabled(idx);
+    if (timer.preset > 0) {
+      int preset_ms = timer.preset * 100;
+      timer.done = (timer.value >= preset_ms);
+    } else {
+      timer.done = timer.enabled;
+    }
+  }
+
+  for (auto& pair : counter_states_) {
+    int idx = -1;
+    if (!parse_index(pair.first, &idx) || idx < 0 || idx >= 256) {
+      continue;
+    }
+    CounterState& counter = pair.second;
+    counter.value = executor->GetCounterValue(idx);
+    counter.lastPower = executor->GetCounterLastPower(idx);
+    if (counter.preset > 0) {
+      counter.done = (counter.value >= counter.preset);
+    } else {
+      counter.done = (counter.value > 0);
+    }
+  }
+
+  SimulatorState snapshot = GetCurrentStateSnapshot();
+  UpdateUIFromSimulatorState(snapshot);
 }
 
 
@@ -1286,9 +1366,13 @@ void ProgrammingMode::UpdateCompileErrorRungsOnCompileFailure(
 void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
 
+  std::set<std::string> explicit_timers;
+  std::set<std::string> explicit_counters;
+
   auto ensure_timer = [&](const std::string& addr,
 
-                          const std::string& presetStr) {
+                          const std::string& presetStr,
+                          bool override_preset) {
 
     int preset = 0;
 
@@ -1345,7 +1429,12 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     } else {
 
-      it->second.preset = preset;
+      it->second.value = 0;
+      it->second.done = false;
+      it->second.enabled = false;
+      if (override_preset) {
+        it->second.preset = preset;
+      }
 
     }
 
@@ -1355,7 +1444,8 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     auto ensure_counter = [&](const std::string& addr,
 
-                            const std::string& presetStr) {
+                            const std::string& presetStr,
+                            bool override_preset) {
 
     int preset = 0;
 
@@ -1412,7 +1502,12 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
     } else {
 
-      it->second.preset = preset;
+      it->second.value = 0;
+      it->second.done = false;
+      it->second.lastPower = false;
+      if (override_preset) {
+        it->second.preset = preset;
+      }
 
     }
 
@@ -1455,13 +1550,15 @@ for (const auto& rung : ladder_program_.rungs) {
 
         case LadderInstructionType::TON:
 
-          ensure_timer(cell.address, cell.preset);
+          ensure_timer(cell.address, cell.preset, true);
+          explicit_timers.insert(cell.address);
 
           break;
 
         case LadderInstructionType::CTU:
 
-          ensure_counter(cell.address, cell.preset);
+          ensure_counter(cell.address, cell.preset, true);
+          explicit_counters.insert(cell.address);
 
           break;
 
@@ -1469,13 +1566,21 @@ for (const auto& rung : ladder_program_.rungs) {
 
           if (!cell.address.empty()) {
 
-            if (cell.address[0] == 'T')
+            if (cell.address[0] == 'T') {
 
-              ensure_timer(cell.address, cell.preset);
+              bool override_preset =
+                  (explicit_timers.find(cell.address) ==
+                   explicit_timers.end());
+              ensure_timer(cell.address, std::string(), override_preset);
 
-            else if (cell.address[0] == 'C')
+            } else if (cell.address[0] == 'C') {
 
-              ensure_counter(cell.address, cell.preset);
+              bool override_preset =
+                  (explicit_counters.find(cell.address) ==
+                   explicit_counters.end());
+              ensure_counter(cell.address, std::string(), override_preset);
+
+            }
 
           }
 
@@ -1501,9 +1606,14 @@ for (const auto& rung : ladder_program_.rungs) {
             std::string addr = std::string(1, deviceType) +
                                std::to_string(static_cast<int>(base) + i);
             if (deviceType == 'T') {
-              ensure_timer(addr, cell.preset);
+              bool override_preset =
+                  (explicit_timers.find(addr) == explicit_timers.end());
+              ensure_timer(addr, std::string(), override_preset);
             } else if (deviceType == 'C') {
-              ensure_counter(addr, cell.preset);
+              bool override_preset =
+                  (explicit_counters.find(addr) ==
+                   explicit_counters.end());
+              ensure_counter(addr, std::string(), override_preset);
             }
           }
           break;
@@ -1580,8 +1690,7 @@ void ProgrammingMode::GetUsedCoils(std::vector<std::string>& coils) const {
 
         case LadderInstructionType::BKRST:
 
-          if (!cell.address.empty())
-
+          if (!cell.address.empty()) {
             if (cell.type == LadderInstructionType::BKRST) {
               char type = cell.address[0];
               int base = 0;
@@ -1598,6 +1707,7 @@ void ProgrammingMode::GetUsedCoils(std::vector<std::string>& coils) const {
             } else {
               used.insert(cell.address);
             }
+          }
 
           break;
 

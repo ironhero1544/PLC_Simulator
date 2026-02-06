@@ -46,86 +46,68 @@ enum class ListFilter {
   SEMICONDUCTOR = 2
 };
 
-int FindComponentDefinitionIndex(ComponentType type) {
-  int count = GetComponentDefinitionCount();
-  for (int i = 0; i < count; ++i) {
-    const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
-    if (def && def->type == type) {
-      return i;
-    }
-  }
-  return -1;
-}
-
 struct ComponentListEntry {
   const ComponentDefinition* def = nullptr;
   int index = -1;
 };
 
-const std::vector<ComponentType>& GetOrderedComponentTypes(ListFilter filter) {
-  static const std::vector<ComponentType> kAutomation = {
+const std::vector<ComponentType>& GetFunctionAxisOrder() {
+  static const std::vector<ComponentType> kFunctionAxis = {
       ComponentType::PLC,
-      ComponentType::FRL,
-      ComponentType::CYLINDER,
+      ComponentType::POWER_SUPPLY,
+      ComponentType::EMERGENCY_STOP,
+      ComponentType::BUTTON_UNIT,
       ComponentType::LIMIT_SWITCH,
+      ComponentType::SENSOR,
+      ComponentType::INDUCTIVE_SENSOR,
+      ComponentType::RING_SENSOR,
+      ComponentType::FRL,
+      ComponentType::MANIFOLD,
+      ComponentType::METER_VALVE,
+      ComponentType::VALVE_SINGLE,
+      ComponentType::VALVE_DOUBLE,
+      ComponentType::CYLINDER,
       ComponentType::PROCESSING_CYLINDER,
       ComponentType::CONVEYOR,
-      ComponentType::RING_SENSOR,
-      ComponentType::INDUCTIVE_SENSOR,
-      ComponentType::SENSOR,
-      ComponentType::BOX,
       ComponentType::TOWER_LAMP,
-      ComponentType::VALVE_SINGLE,
-      ComponentType::VALVE_DOUBLE,
-      ComponentType::BUTTON_UNIT,
-      ComponentType::POWER_SUPPLY,
+      ComponentType::BOX,
+      ComponentType::WORKPIECE_METAL,
+      ComponentType::WORKPIECE_NONMETAL,
   };
-  static const std::vector<ComponentType> kSemiconductor = {
-      ComponentType::PLC,
-      ComponentType::METER_VALVE,
-      ComponentType::FRL,
-      ComponentType::LIMIT_SWITCH,
-      ComponentType::SENSOR,
-      ComponentType::CYLINDER,
-      ComponentType::VALVE_SINGLE,
-      ComponentType::VALVE_DOUBLE,
-      ComponentType::BUTTON_UNIT,
-  };
-  if (filter == ListFilter::AUTOMATION) {
-    return kAutomation;
+  return kFunctionAxis;
+}
+
+int GetFunctionAxisOrderIndex(ComponentType type) {
+  const auto& order = GetFunctionAxisOrder();
+  auto it = std::find(order.begin(), order.end(), type);
+  if (it == order.end()) {
+    return static_cast<int>(order.size());
   }
-  return kSemiconductor;
+  return static_cast<int>(std::distance(order.begin(), it));
 }
 
 std::vector<ComponentListEntry> BuildComponentList(ListFilter filter) {
   std::vector<ComponentListEntry> entries;
-  if (filter == ListFilter::ALL) {
-    int count = GetComponentDefinitionCount();
-    entries.reserve(count);
-    for (int i = 0; i < count; ++i) {
-      const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
-      if (!def || !IsComponentVisibleByFilter(def->category,
-                                              static_cast<int>(filter))) {
-        continue;
-      }
-      entries.push_back({def, i});
+  int count = GetComponentDefinitionCount();
+  entries.reserve(count);
+  for (int i = 0; i < count; ++i) {
+    const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
+    if (!def || !IsComponentVisibleByFilter(def->category,
+                                            static_cast<int>(filter))) {
+      continue;
     }
-    return entries;
+    entries.push_back({def, i});
   }
 
-  const std::vector<ComponentType>& order = GetOrderedComponentTypes(filter);
-  entries.reserve(order.size());
-  for (ComponentType type : order) {
-    const ComponentDefinition* def = GetComponentDefinition(type);
-    if (!def) {
-      continue;
-    }
-    int index = FindComponentDefinitionIndex(type);
-    if (index < 0) {
-      continue;
-    }
-    entries.push_back({def, index});
-  }
+  std::sort(entries.begin(), entries.end(),
+            [](const ComponentListEntry& a, const ComponentListEntry& b) {
+              int rank_a = GetFunctionAxisOrderIndex(a.def->type);
+              int rank_b = GetFunctionAxisOrderIndex(b.def->type);
+              if (rank_a != rank_b) {
+                return rank_a < rank_b;
+              }
+              return a.index < b.index;
+            });
   return entries;
 }
 

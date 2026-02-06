@@ -893,7 +893,7 @@ void Application::RenderWiringCanvas() {
             }
           }
 
-          if (is_canvas_hovered &&
+          if (is_canvas_hovered && !is_dragging_ &&
               ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
               selected_component_id_ != -1 && !is_moving_component_) {
             for (const auto& comp : placed_components_) {

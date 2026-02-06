@@ -691,16 +691,16 @@ void Application::SetupCustomStyle() {
 
 bool Application::RestartApplication() {
 #ifdef _WIN32
-  const char* cmd = GetCommandLineA();
-  if (!cmd || cmd[0] == '\0') {
+  const wchar_t* cmd = GetCommandLineW();
+  if (!cmd || cmd[0] == L'\0') {
     return false;
   }
-  char cmdline[32768] = {0};
-  std::strncpy(cmdline, cmd, sizeof(cmdline) - 1);
-  STARTUPINFOA startup_info = {};
+  wchar_t cmdline[32768] = {0};
+  lstrcpynW(cmdline, cmd, static_cast<int>(_countof(cmdline)));
+  STARTUPINFOW startup_info = {};
   PROCESS_INFORMATION process_info = {};
   startup_info.cb = sizeof(startup_info);
-  BOOL created = CreateProcessA(nullptr, cmdline, nullptr, nullptr, FALSE, 0,
+  BOOL created = CreateProcessW(nullptr, cmdline, nullptr, nullptr, FALSE, 0,
                                 nullptr, nullptr, &startup_info,
                                 &process_info);
   if (!created) {
