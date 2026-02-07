@@ -7,10 +7,15 @@
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 #include "plc_emulator/project/openplc_compiler_integration.h"
 
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
 #include <limits>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace plc {
 
@@ -32,6 +37,45 @@ bool TryParseIndex(const std::string& text, int* value) {
 
   *value = static_cast<int>(parsed);
   return true;
+}
+
+std::string BuildTempLadderProgramPath() {
+#ifdef _WIN32
+  char temp_dir[MAX_PATH] = {0};
+  DWORD len = GetTempPathA(MAX_PATH, temp_dir);
+  if (len > 0 && len < MAX_PATH) {
+    std::string path(temp_dir);
+    if (!path.empty()) {
+      char last_char = path[path.size() - 1];
+      if (last_char != '\\' && last_char != '/') {
+        path.push_back('\\');
+      }
+      path += "temp_ladder_program.ld";
+      return path;
+    }
+  }
+#endif
+
+  const char* env_temp = std::getenv("TMPDIR");
+#ifdef _WIN32
+  if (!env_temp) {
+    env_temp = std::getenv("TEMP");
+  }
+  if (!env_temp) {
+    env_temp = std::getenv("TMP");
+  }
+#endif
+
+  std::string path =
+      (env_temp && env_temp[0] != '\0') ? std::string(env_temp) : ".";
+  if (!path.empty()) {
+    char last_char = path[path.size() - 1];
+    if (last_char != '\\' && last_char != '/') {
+      path.push_back('/');
+    }
+  }
+  path += "temp_ladder_program.ld";
+  return path;
 }
 }  // namespace
 
@@ -166,11 +210,12 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
     return false;
   }
 
-  std::ofstream ldFile("temp_ladder_program.ld");
+  const std::string temp_ld_path = BuildTempLadderProgramPath();
+  std::ofstream ldFile(temp_ld_path, std::ios::trunc);
   if (!ldFile) {
-    last_compile_error_ = "Failed to create temporary LD file";
-    std::cerr << "[COMPILE ERROR] Failed to create temporary LD file"
-              << std::endl;
+    last_compile_error_ =
+        "Failed to create temporary LD file: " + temp_ld_path;
+    std::cerr << "[COMPILE ERROR] " << last_compile_error_ << std::endl;
     compile_failed_ = true;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
     UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
@@ -181,7 +226,8 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
   ldFile.close();
 
   OpenPLCCompilerIntegration compiler;
-  auto result = compiler.CompileLDFile("temp_ladder_program.ld");
+  auto result = compiler.CompileLDFile(temp_ld_path);
+  std::remove(temp_ld_path.c_str());
 
   if (!result.success) {
     last_compile_error_ = result.errorMessage;

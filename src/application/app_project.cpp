@@ -11,7 +11,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -20,6 +22,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "nlohmann/json.hpp"
 
@@ -123,6 +129,45 @@ bool ComponentTypeFromString(const std::string& value, ComponentType* out) {
     return false;
   }
   return true;
+}
+
+std::string BuildTempLadderProgramPath() {
+#ifdef _WIN32
+  char temp_dir[MAX_PATH] = {0};
+  DWORD len = GetTempPathA(MAX_PATH, temp_dir);
+  if (len > 0 && len < MAX_PATH) {
+    std::string path(temp_dir);
+    if (!path.empty()) {
+      char last_char = path[path.size() - 1];
+      if (last_char != '\\' && last_char != '/') {
+        path.push_back('\\');
+      }
+      path += "temp_ladder_program.ld";
+      return path;
+    }
+  }
+#endif
+
+  const char* env_temp = std::getenv("TMPDIR");
+#ifdef _WIN32
+  if (!env_temp) {
+    env_temp = std::getenv("TEMP");
+  }
+  if (!env_temp) {
+    env_temp = std::getenv("TMP");
+  }
+#endif
+
+  std::string path =
+      (env_temp && env_temp[0] != '\0') ? std::string(env_temp) : ".";
+  if (!path.empty()) {
+    char last_char = path[path.size() - 1];
+    if (last_char != '\\' && last_char != '/') {
+      path.push_back('/');
+    }
+  }
+  path += "temp_ladder_program.ld";
+  return path;
 }
 
 }  // namespace
@@ -650,7 +695,7 @@ void Application::CompileAndLoadLadderProgram() {
 
 
 
-    std::string tempLdPath = "temp_ladder_program.ld";
+    const std::string tempLdPath = BuildTempLadderProgramPath();
 
     bool convertSuccess =
 
@@ -691,6 +736,7 @@ void Application::CompileAndLoadLadderProgram() {
 
 
     auto compilationResult = compiler.CompileLDFile(tempLdPath);
+    std::remove(tempLdPath.c_str());
 
 
 
@@ -757,12 +803,6 @@ void Application::CompileAndLoadLadderProgram() {
     std::cout << "[INFO] Compiled ladder program loaded successfully!" << std::endl;
 
     std::cout << "[INFO] CompiledPLCExecutor is ready for execution" << std::endl;
-
-
-
-    // Step 4: Cleanup temporary files
-
-    std::remove(tempLdPath.c_str());
 
 
 
