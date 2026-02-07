@@ -17,13 +17,18 @@ void RenderBox(ImDrawList* draw_list,
   draw_list->AddRectFilled(pos, {pos.x + size.x, pos.y + size.y},
                            IM_COL32(101, 67, 33, 255));
 
-  draw_list->PushClipRect(pos, {pos.x + size.x, pos.y + size.y}, true);
-  for (float x = -size.y; x < size.x; x += 20.0f * zoom) {
-    draw_list->AddLine({pos.x + x, pos.y},
-                       {pos.x + x + size.y, pos.y + size.y},
-                       IM_COL32(139, 69, 19, 255), 2.0f * zoom);
+  const float spacing = 20.0f * zoom;
+  for (float d = -size.y; d <= size.x; d += spacing) {
+    // Diagonal line x = d + y, clipped analytically to [0,w]x[0,h].
+    float y_start = d < 0.0f ? -d : 0.0f;
+    float y_end = (size.x - d) < size.y ? (size.x - d) : size.y;
+    if (y_start > y_end) {
+      continue;
+    }
+    ImVec2 p0 = {pos.x + d + y_start, pos.y + y_start};
+    ImVec2 p1 = {pos.x + d + y_end, pos.y + y_end};
+    draw_list->AddLine(p0, p1, IM_COL32(139, 69, 19, 255), 2.0f * zoom);
   }
-  draw_list->PopClipRect();
 
   draw_list->AddRect(pos, {pos.x + size.x, pos.y + size.y},
                      IM_COL32(0, 0, 0, 255), 0, 0, 5.0f * zoom);

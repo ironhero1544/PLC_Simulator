@@ -173,7 +173,6 @@ void RenderPlc(ImDrawList* draw_list,
   ImU32 x_on = IM_COL32(0, 200, 0, 255);
   ImU32 y_on = IM_COL32(255, 165, 0, 255);
   ImU32 off = IM_COL32(60, 60, 60, 255);
-  draw_list->PushClipRect(led_area_start, led_area_end, true);
   for (int i = 0; i < 16; ++i) {
     float x0 = led_area_start.x + cell_width * i;
     float x1 = led_area_start.x + cell_width * (i + 1);
@@ -196,7 +195,6 @@ void RenderPlc(ImDrawList* draw_list,
     draw_list->AddRectFilled({x0, y_row0}, {x1, y_row1},
                              y_active ? y_on : off);
   }
-  draw_list->PopClipRect();
 
   if (zoom > 0.5f) {
     draw_list->AddText(

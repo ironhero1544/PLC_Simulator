@@ -300,8 +300,8 @@ typedef struct CylinderPhysicsState {
 
 
 /*
- * 컴포넌트 물리 상태 유니온.
- * Union of component physics states.
+ * 컴포넌트 물리 상태 유니온. (고속 동기화 로직이므로 std::variant를 사용하지 않음)
+ * Union of component physics states. (Since it is a fast synchronization logic, std::variant is not used)
  */
 typedef union ComponentPhysicsState {
   PLCPhysicsState plc;
