@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -77,6 +78,11 @@ struct Box2dContext {
 Box2dContext& GetBox2dContext() {
   static Box2dContext context;
   return context;
+}
+
+std::mutex& GetBox2dMutex() {
+  static std::mutex mutex;
+  return mutex;
 }
 
 uint64_t MakeKey(int instance_id, ShapeRole role) {
@@ -560,6 +566,7 @@ bool BeamOverlaps(Box2dContext& ctx,
 
 bool Application::UpdateWorkpieceInteractionsBox2d(float delta_time,
                                                    bool warmup_only) {
+  std::lock_guard<std::mutex> lock(GetBox2dMutex());
   Box2dContext& ctx = GetBox2dContext();
   if (!EnsureWorld(ctx, this)) {
     return false;
@@ -1231,6 +1238,7 @@ bool Application::UpdateWorkpieceInteractionsBox2d(float delta_time,
 }
 
 bool Application::UpdateSensorsBox2d() {
+  std::lock_guard<std::mutex> lock(GetBox2dMutex());
   Box2dContext& ctx = GetBox2dContext();
   if (!EnsureWorld(ctx, this)) {
     return false;

@@ -122,6 +122,10 @@ typedef struct ElectricalNetwork {
   int maxIterations;
   int currentIteration;
   bool isConverged;
+
+  // Per-network scratch buffer for iterative solver state.
+  float* solverVoltageOld;
+  int solverVoltageCapacity;
 } ElectricalNetwork;
 
 
@@ -236,6 +240,13 @@ typedef struct PneumaticNetwork {
   int maxIterations;
   int currentIteration;
   bool isConverged;
+
+  // Per-network scratch buffers for Newton solver (residual/delta/Jacobian).
+  float* solverResidualBuffer;
+  float* solverDeltaBuffer;
+  float* solverJacobianBuffer;
+  float** solverJacobianRows;
+  int solverBufferSize;
 } PneumaticNetwork;
 
 
@@ -357,6 +368,18 @@ typedef struct MechanicalSystem {
   float maxTimeStep;
   float dampingStabilization;
   bool isStable;
+
+  // Per-system scratch buffers for RK4 and linearized dynamics terms.
+  float* solverState;
+  float* solverK1;
+  float* solverK2;
+  float* solverK3;
+  float* solverK4;
+  float* solverTempState;
+  float* solverKq;
+  float* solverCqdot;
+  float* solverRhs;
+  int solverDofCapacity;
 } MechanicalSystem;
 
 

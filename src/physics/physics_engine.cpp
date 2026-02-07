@@ -420,6 +420,8 @@ void CleanupElectricalNetwork(ElectricalNetwork* elec) {
   }
   SafeDeallocateArray(elec->currentVector);
   SafeDeallocateArray(elec->voltageVector);
+  SafeDeallocateArray(elec->solverVoltageOld);
+  elec->solverVoltageCapacity = 0;
 }
 
 void CleanupPneumaticNetwork(PneumaticNetwork* pneu) {
@@ -431,6 +433,11 @@ void CleanupPneumaticNetwork(PneumaticNetwork* pneu) {
   }
   SafeDeallocateArray(pneu->massFlowVector);
   SafeDeallocateArray(pneu->pressureVector);
+  SafeDeallocateArray(pneu->solverResidualBuffer);
+  SafeDeallocateArray(pneu->solverDeltaBuffer);
+  SafeDeallocateArray(pneu->solverJacobianBuffer);
+  SafeDeallocateArray(pneu->solverJacobianRows);
+  pneu->solverBufferSize = 0;
 }
 
 void CleanupMechanicalSystem(MechanicalSystem* mech) {
@@ -454,6 +461,16 @@ void CleanupMechanicalSystem(MechanicalSystem* mech) {
   SafeDeallocateArray(mech->velocityVector);
   SafeDeallocateArray(mech->accelerationVector);
   SafeDeallocateArray(mech->forceVector);
+  SafeDeallocateArray(mech->solverState);
+  SafeDeallocateArray(mech->solverK1);
+  SafeDeallocateArray(mech->solverK2);
+  SafeDeallocateArray(mech->solverK3);
+  SafeDeallocateArray(mech->solverK4);
+  SafeDeallocateArray(mech->solverTempState);
+  SafeDeallocateArray(mech->solverKq);
+  SafeDeallocateArray(mech->solverCqdot);
+  SafeDeallocateArray(mech->solverRhs);
+  mech->solverDofCapacity = 0;
 }
 
 int InitializeElectricalNetwork(PhysicsEngine* engine) {
@@ -509,6 +526,15 @@ int InitializeElectricalNetwork(PhysicsEngine* engine) {
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
   }
 
+  elec->solverVoltageOld = SafeAllocateArray<float>(elec->maxNodes);
+  if (!elec->solverVoltageOld) {
+    CleanupElectricalNetwork(elec);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate electrical solver scratch buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  elec->solverVoltageCapacity = elec->maxNodes;
+
   elec->convergenceTolerance = engine->convergenceTolerance;
   elec->maxIterations = engine->maxIterations;
   elec->groundNodeId = -1;
@@ -558,6 +584,53 @@ int InitializePneumaticNetwork(PhysicsEngine* engine) {
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate pneumatic pressure vector");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+
+  pneu->solverBufferSize = pneu->maxNodes + pneu->maxEdges;
+  if (pneu->solverBufferSize <= 0) {
+    CleanupPneumaticNetwork(pneu);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Invalid pneumatic solver buffer size");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+
+  pneu->solverResidualBuffer =
+      SafeAllocateArray<float>(pneu->solverBufferSize);
+  if (!pneu->solverResidualBuffer) {
+    CleanupPneumaticNetwork(pneu);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate pneumatic residual buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+
+  pneu->solverDeltaBuffer = SafeAllocateArray<float>(pneu->solverBufferSize);
+  if (!pneu->solverDeltaBuffer) {
+    CleanupPneumaticNetwork(pneu);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate pneumatic delta buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+
+  const int jacobian_size = pneu->solverBufferSize * pneu->solverBufferSize;
+  pneu->solverJacobianBuffer = SafeAllocateArray<float>(jacobian_size);
+  if (!pneu->solverJacobianBuffer) {
+    CleanupPneumaticNetwork(pneu);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate pneumatic Jacobian buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+
+  pneu->solverJacobianRows =
+      SafeAllocateArray<float*>(pneu->solverBufferSize);
+  if (!pneu->solverJacobianRows) {
+    CleanupPneumaticNetwork(pneu);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate pneumatic Jacobian row pointers");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  for (int i = 0; i < pneu->solverBufferSize; ++i) {
+    pneu->solverJacobianRows[i] =
+        &pneu->solverJacobianBuffer[i * pneu->solverBufferSize];
   }
 
   pneu->convergenceTolerance = engine->convergenceTolerance;
@@ -652,6 +725,72 @@ int InitializeMechanicalSystem(PhysicsEngine* engine) {
     CleanupMechanicalSystem(mech);
     SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
                    "Failed to allocate mechanical force vector");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+
+  mech->solverDofCapacity = dof;
+  const int state_size = 2 * dof;
+  mech->solverState = SafeAllocateArray<float>(state_size);
+  if (!mech->solverState) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical state buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverK1 = SafeAllocateArray<float>(state_size);
+  if (!mech->solverK1) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical k1 buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverK2 = SafeAllocateArray<float>(state_size);
+  if (!mech->solverK2) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical k2 buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverK3 = SafeAllocateArray<float>(state_size);
+  if (!mech->solverK3) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical k3 buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverK4 = SafeAllocateArray<float>(state_size);
+  if (!mech->solverK4) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical k4 buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverTempState = SafeAllocateArray<float>(state_size);
+  if (!mech->solverTempState) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical temporary state buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverKq = SafeAllocateArray<float>(dof);
+  if (!mech->solverKq) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical Kq buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverCqdot = SafeAllocateArray<float>(dof);
+  if (!mech->solverCqdot) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical Cqdot buffer");
+    return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
+  }
+  mech->solverRhs = SafeAllocateArray<float>(dof);
+  if (!mech->solverRhs) {
+    CleanupMechanicalSystem(mech);
+    SetEngineError(engine, PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION,
+                   "Failed to allocate mechanical RHS buffer");
     return PHYSICS_ENGINE_ERROR_MEMORY_ALLOCATION;
   }
 
@@ -768,6 +907,7 @@ int Destroy(PhysicsEngine* engine) {
     Deallocate2DArray(elec->conductanceMatrix, elec->maxNodes);
     SafeDeallocateArray(elec->currentVector);
     SafeDeallocateArray(elec->voltageVector);
+    SafeDeallocateArray(elec->solverVoltageOld);
     delete engine->electricalNetwork;
     engine->electricalNetwork = nullptr;
   }
@@ -779,6 +919,10 @@ int Destroy(PhysicsEngine* engine) {
     Deallocate2DArray(pneu->adjacencyMatrix, pneu->maxNodes);
     SafeDeallocateArray(pneu->massFlowVector);
     SafeDeallocateArray(pneu->pressureVector);
+    SafeDeallocateArray(pneu->solverResidualBuffer);
+    SafeDeallocateArray(pneu->solverDeltaBuffer);
+    SafeDeallocateArray(pneu->solverJacobianBuffer);
+    SafeDeallocateArray(pneu->solverJacobianRows);
     delete engine->pneumaticNetwork;
     engine->pneumaticNetwork = nullptr;
   }
@@ -797,6 +941,15 @@ int Destroy(PhysicsEngine* engine) {
     SafeDeallocateArray(mech->velocityVector);
     SafeDeallocateArray(mech->accelerationVector);
     SafeDeallocateArray(mech->forceVector);
+    SafeDeallocateArray(mech->solverState);
+    SafeDeallocateArray(mech->solverK1);
+    SafeDeallocateArray(mech->solverK2);
+    SafeDeallocateArray(mech->solverK3);
+    SafeDeallocateArray(mech->solverK4);
+    SafeDeallocateArray(mech->solverTempState);
+    SafeDeallocateArray(mech->solverKq);
+    SafeDeallocateArray(mech->solverCqdot);
+    SafeDeallocateArray(mech->solverRhs);
     delete engine->mechanicalSystem;
     engine->mechanicalSystem = nullptr;
   }

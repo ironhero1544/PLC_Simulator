@@ -21,10 +21,8 @@ constexpr int kMaxElectricalNodes = kMaxComponents * 32;
 constexpr int kMaxElectricalEdges = kMaxComponents * 50;
 constexpr int kMaxPneumaticNodes = kMaxComponents * 16;
 constexpr int kMaxPneumaticEdges = kMaxComponents * 30;
-constexpr int kMaxPneumaticSize = kMaxPneumaticNodes + kMaxPneumaticEdges;
 constexpr int kMaxMechanicalNodes = kMaxComponents * 8;
 constexpr int kMaxMechanicalEdges = kMaxComponents * 20;
-constexpr int kMaxMechanicalDof = 6 * kMaxMechanicalNodes;
 
 void LogFixedBufferLimitOnce(const char* label, int nodeCount, int maxNodes, int edgeCount, int maxEdges) {
   static bool loggedElectrical = false;
@@ -129,7 +127,11 @@ class ElectricalSolver {
     UpdateConductanceMatrix(network);
     UpdateCurrentVector(network);
 
-    static float voltageOld[kMaxElectricalNodes];
+    if (!network->solverVoltageOld ||
+        network->solverVoltageCapacity < network->nodeCount) {
+      return -1;
+    }
+    float* voltageOld = network->solverVoltageOld;
     MathUtils::VectorCopy(network->voltageVector, voltageOld, network->nodeCount);
 
     network->currentIteration = 0;
@@ -313,16 +315,14 @@ class PneumaticSolver {
     network->currentIteration = 0;
     network->isConverged = false;
     int n = network->nodeCount + network->edgeCount;
-    static float residualBuffer[kMaxPneumaticSize];
-    static float deltaBuffer[kMaxPneumaticSize];
-    static float jacobianBuffer[kMaxPneumaticSize][kMaxPneumaticSize];
-    static float* jacobianRows[kMaxPneumaticSize];
-    for (int i = 0; i < n; i++) {
-      jacobianRows[i] = jacobianBuffer[i];
+    if (!network->solverResidualBuffer || !network->solverDeltaBuffer ||
+        !network->solverJacobianRows || !network->solverJacobianBuffer ||
+        network->solverBufferSize < n) {
+      return -1;
     }
-    float* residual = residualBuffer;
-    float* delta = deltaBuffer;
-    float** jacobian = jacobianRows;
+    float* residual = network->solverResidualBuffer;
+    float* delta = network->solverDeltaBuffer;
+    float** jacobian = network->solverJacobianRows;
 
     while (network->currentIteration < network->maxIterations &&
            !network->isConverged) {
@@ -571,15 +571,21 @@ class MechanicalSolver {
     }
 
     int dof = 6 * system->nodeCount;
+    if (!system->solverState || !system->solverK1 || !system->solverK2 ||
+        !system->solverK3 || !system->solverK4 || !system->solverTempState ||
+        !system->solverKq || !system->solverCqdot || !system->solverRhs ||
+        system->solverDofCapacity < dof) {
+      return -1;
+    }
 
     UpdateSystemMatrices(system);
 
-    static float state[2 * kMaxMechanicalDof];  // [q, q?]
-    static float k1[2 * kMaxMechanicalDof];
-    static float k2[2 * kMaxMechanicalDof];
-    static float k3[2 * kMaxMechanicalDof];
-    static float k4[2 * kMaxMechanicalDof];
-    static float temp_state[2 * kMaxMechanicalDof];
+    float* state = system->solverState;  // [q, q?]
+    float* k1 = system->solverK1;
+    float* k2 = system->solverK2;
+    float* k3 = system->solverK3;
+    float* k4 = system->solverK4;
+    float* temp_state = system->solverTempState;
 
     PackStateVector(system, state);
 
@@ -721,9 +727,9 @@ class MechanicalSolver {
     }
     UpdateForceVector(system);
 
-    static float Kq[kMaxMechanicalDof];  // K * q
-    static float Cqdot[kMaxMechanicalDof];  // C * q?
-    static float rhs[kMaxMechanicalDof];
+    float* Kq = system->solverKq;  // K * q
+    float* Cqdot = system->solverCqdot;  // C * q?
+    float* rhs = system->solverRhs;
     MathUtils::MatrixVectorMultiply(system->stiffnessMatrix, state, Kq, dof,
                                     dof);
 

@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <utility>
+#include <vector>
 
 namespace plc {
 
@@ -44,6 +46,8 @@ bool EventDispatcher_Subscribe(EventDispatcher* dispatcher, EventType type,
     return false;
   }
 
+  std::lock_guard<std::mutex> lock(dispatcher->listenersMutex);
+
   // Create a new listener node.
   EventListener* newListener = new EventListener();
   newListener->callback = callback;
@@ -66,6 +70,8 @@ bool EventDispatcher_Unsubscribe(EventDispatcher* dispatcher, EventType type,
   if (!dispatcher || !callback || type < 0 || type >= EVENT_TYPE_COUNT) {
     return false;
   }
+
+  std::lock_guard<std::mutex> lock(dispatcher->listenersMutex);
 
   EventListener* current = dispatcher->listeners[type];
   EventListener* prev = nullptr;
@@ -100,13 +106,21 @@ void EventDispatcher_Dispatch(EventDispatcher* dispatcher,
     return;
   }
 
-  // Dispatch to all listeners for this type.
-  EventListener* current = dispatcher->listeners[type];
-  while (current) {
-    if (current->callback) {
-      current->callback(eventData, current->userData);
+  std::vector<std::pair<EventCallback, void*>> listeners_snapshot;
+  {
+    std::lock_guard<std::mutex> lock(dispatcher->listenersMutex);
+    EventListener* current = dispatcher->listeners[type];
+    while (current) {
+      listeners_snapshot.emplace_back(current->callback, current->userData);
+      current = current->next;
     }
-    current = current->next;
+  }
+
+  // Invoke callbacks outside lock to avoid deadlock/re-entrancy hazards.
+  for (const auto& listener : listeners_snapshot) {
+    if (listener.first) {
+      listener.first(eventData, listener.second);
+    }
   }
 }
 
@@ -114,6 +128,8 @@ void EventDispatcher_Clear(EventDispatcher* dispatcher) {
   if (!dispatcher) {
     return;
   }
+
+  std::lock_guard<std::mutex> lock(dispatcher->listenersMutex);
 
   // Clear listeners for all event types.
   for (int i = 0; i < EVENT_TYPE_COUNT; i++) {

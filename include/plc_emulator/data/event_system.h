@@ -11,6 +11,8 @@
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_DATA_EVENT_SYSTEM_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_DATA_EVENT_SYSTEM_H_
 
+#include <mutex>
+
 namespace plc {
 
 /*
@@ -95,6 +97,7 @@ typedef struct EventListener {
  */
 typedef struct EventDispatcher {
   EventListener* listeners[EVENT_TYPE_COUNT];
+  std::mutex listenersMutex;
   bool (*Subscribe)(struct EventDispatcher* dispatcher, EventType type,
                     EventCallback callback, void* userData);
   bool (*Unsubscribe)(struct EventDispatcher* dispatcher, EventType type,

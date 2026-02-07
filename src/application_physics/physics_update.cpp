@@ -6,8 +6,11 @@
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/application_physics/physics_helpers.h"
 
+#include <cmath>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <cstddef>
 #include <iostream>
@@ -46,6 +49,52 @@ uint64_t ComputeAdvancedTopologyHash(
     HashCombine(&seed, wire.isElectric ? 1U : 0U);
   }
   return seed;
+}
+
+bool IsFiniteBuffer(const float* values, int count) {
+  if (!values || count < 0) {
+    return false;
+  }
+  for (int i = 0; i < count; ++i) {
+    if (!std::isfinite(values[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HasNonFiniteAdvancedState(const plc::PhysicsEngine* engine) {
+  if (!engine) {
+    return true;
+  }
+
+  const plc::ElectricalNetwork* electrical = engine->electricalNetwork;
+  if (electrical && electrical->nodeCount > 0) {
+    if (!IsFiniteBuffer(electrical->voltageVector, electrical->nodeCount) ||
+        !IsFiniteBuffer(electrical->currentVector, electrical->nodeCount)) {
+      return true;
+    }
+  }
+
+  const plc::PneumaticNetwork* pneumatic = engine->pneumaticNetwork;
+  if (pneumatic && (pneumatic->nodeCount > 0 || pneumatic->edgeCount > 0)) {
+    if (!IsFiniteBuffer(pneumatic->pressureVector, pneumatic->nodeCount) ||
+        !IsFiniteBuffer(pneumatic->massFlowVector, pneumatic->edgeCount)) {
+      return true;
+    }
+  }
+
+  const plc::MechanicalSystem* mechanical = engine->mechanicalSystem;
+  if (mechanical && mechanical->nodeCount > 0) {
+    int dof = 6 * mechanical->nodeCount;
+    if (!IsFiniteBuffer(mechanical->displacementVector, dof) ||
+        !IsFiniteBuffer(mechanical->velocityVector, dof) ||
+        !IsFiniteBuffer(mechanical->accelerationVector, dof)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace
@@ -250,36 +299,88 @@ void Application::UpdatePhysicsImpl() {
       advanced_sync_ms += elapsed_ms(sync_start, clock::now());
       physics_engine_->deltaTime = static_cast<float>(kPhysicsStep);
 
+      auto disable_advanced_for_numerical_issue = [&](const char* reason) {
+        const char* base =
+            "Numerical instability detected in advanced physics engine";
+        char warning[256] = {0};
+        if (reason && reason[0] != '\0') {
+          std::snprintf(warning, sizeof(warning), "%s (%s)", base, reason);
+        } else {
+          std::snprintf(warning, sizeof(warning), "%s", base);
+        }
+
+        NotifyPhysicsWarning(warning);
+        if (physics_engine_) {
+          physics_engine_->hasError = true;
+          physics_engine_->lastErrorCode =
+              PHYSICS_ENGINE_ERROR_NUMERICAL_INSTABILITY;
+          std::snprintf(physics_engine_->lastError,
+                        sizeof(physics_engine_->lastError), "%s", warning);
+        }
+        advanced_physics_disabled_ = true;
+        advanced_disable_components_ = network_component_count;
+        advanced_disable_wires_ = wires_.size();
+        advanced_disable_topology_hash_ = topology_hash;
+      };
+
       bool advanced_solved = false;
       try {
+        bool numerical_failure = false;
+        const char* numerical_reason = "";
+
         if (physics_engine_->electricalNetwork &&
             physics_engine_->electricalNetwork->nodeCount > 0) {
           auto solve_start = clock::now();
-          SolveElectricalNetworkC(physics_engine_->electricalNetwork,
-                                  static_cast<float>(kPhysicsStep));
+          int electrical_result = SolveElectricalNetworkC(
+              physics_engine_->electricalNetwork,
+              static_cast<float>(kPhysicsStep));
           double elapsed = elapsed_ms(solve_start, clock::now());
           advanced_electrical_ms += elapsed;
           advanced_solve_ms += elapsed;
+          if (electrical_result != 0) {
+            numerical_failure = true;
+            numerical_reason = "electrical solver failed to converge";
+          }
         }
 
         if (physics_engine_->pneumaticNetwork &&
             physics_engine_->pneumaticNetwork->nodeCount > 0) {
           auto solve_start = clock::now();
-          SolvePneumaticNetworkC(physics_engine_->pneumaticNetwork,
-                                 static_cast<float>(kPhysicsStep));
+          int pneumatic_result = SolvePneumaticNetworkC(
+              physics_engine_->pneumaticNetwork,
+              static_cast<float>(kPhysicsStep));
           double elapsed = elapsed_ms(solve_start, clock::now());
           advanced_pneumatic_ms += elapsed;
           advanced_solve_ms += elapsed;
+          if (pneumatic_result != 0) {
+            numerical_failure = true;
+            numerical_reason = "pneumatic solver failed to converge";
+          }
         }
 
         if (physics_engine_->mechanicalSystem &&
             physics_engine_->mechanicalSystem->nodeCount > 0) {
           auto solve_start = clock::now();
-          SolveMechanicalSystemC(physics_engine_->mechanicalSystem,
-                                 static_cast<float>(kPhysicsStep));
+          int mechanical_result = SolveMechanicalSystemC(
+              physics_engine_->mechanicalSystem,
+              static_cast<float>(kPhysicsStep));
           double elapsed = elapsed_ms(solve_start, clock::now());
           advanced_mechanical_ms += elapsed;
           advanced_solve_ms += elapsed;
+          if (mechanical_result != 0) {
+            numerical_failure = true;
+            numerical_reason = "mechanical solver failed to converge";
+          }
+        }
+
+        if (!numerical_failure && HasNonFiniteAdvancedState(physics_engine_)) {
+          numerical_failure = true;
+          numerical_reason = "non-finite value detected";
+        }
+
+        if (numerical_failure) {
+          disable_advanced_for_numerical_issue(numerical_reason);
+          continue;
         }
 
         sync_start = clock::now();
