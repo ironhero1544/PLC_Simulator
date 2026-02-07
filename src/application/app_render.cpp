@@ -21,6 +21,7 @@
 #endif
 #include <windows.h>
 #include <mmsystem.h>
+#include <shellapi.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <commdlg.h>
@@ -28,6 +29,7 @@
 
 #include <chrono>
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -114,6 +116,33 @@ double GetMonitorRefreshRateForWindow(GLFWwindow* window) {
     return 0.0;
   }
   return static_cast<double>(best_mode->refreshRate);
+}
+
+bool EqualsIgnoreCase(const char* lhs, const char* rhs) {
+  if (!lhs || !rhs) {
+    return false;
+  }
+  while (*lhs && *rhs) {
+    unsigned char l = static_cast<unsigned char>(*lhs);
+    unsigned char r = static_cast<unsigned char>(*rhs);
+    if (std::tolower(l) != std::tolower(r)) {
+      return false;
+    }
+    ++lhs;
+    ++rhs;
+  }
+  return *lhs == '\0' && *rhs == '\0';
+}
+
+void OpenExternalUrl(const char* url) {
+  if (!url) {
+    return;
+  }
+#ifdef _WIN32
+  ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
+#else
+  (void)url;
+#endif
 }
 
 }  // namespace
@@ -223,6 +252,7 @@ void Application::RenderUI() {
     RenderPLCDebugPanel();
   }
   RenderPhysicsWarningDialog();
+  RenderShortcutHelpDialog();
 }
 
 void Application::RenderSplashScreen() {
@@ -810,6 +840,136 @@ void Application::RenderMainArea() {
   ImGui::EndChild();
 
   ImGui::PopStyleColor();
+}
+
+void Application::RenderShortcutHelpDialog() {
+  const char* popup_id = "Shortcut Guide";
+  static std::string secret_buffer;
+  constexpr const char* kSecret = "ironhero";
+  if (show_shortcut_help_popup_) {
+    ImGui::OpenPopup(popup_id);
+    show_shortcut_help_popup_ = false;
+    secret_buffer.clear();
+  }
+
+  bool popup_open = true;
+  if (ImGui::BeginPopupModal(popup_id, &popup_open,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextUnformatted(
+        TR("ui.help.shortcuts.title", "Shortcut Guide"));
+    ImGui::Separator();
+    ImGui::TextUnformatted(
+        TR("ui.help.shortcuts.open_help", "Open this help"));
+    ImGui::BulletText("%s",
+                      TR("ui.help.shortcuts.open_1", "Ctrl + ?"));
+    ImGui::BulletText("%s",
+                      TR("ui.help.shortcuts.open_2", "Ctrl + /"));
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(TR("ui.help.shortcuts.common", "Common"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_run_stop",
+                               "RUN/STOP: Use the header button"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_switch_mode",
+                               "Switch mode: Wiring / Programming buttons"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_save_load",
+                               "Save/Load: Use toolbar buttons in Wiring mode"));
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(
+        TR("ui.help.shortcuts.quick_start", "Quick Start"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_wiring_drag",
+                               "Drag components from the list to the canvas"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_wiring_connect",
+                               "Connect ports by dragging from one port to another"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tools",
+                               "Tool buttons: Select / Pneumatic / Electric / Tag"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_select",
+                               "Select: select/move components and wires"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_pneumatic",
+                               "Pneumatic: create pneumatic wires"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_electric",
+                               "Electric: create electrical wires"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_tag",
+                               "Tag: add/edit wire tags"));
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(
+        TR("ui.help.shortcuts.wiring_mode", "Wiring mode"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_rotate",
+                               "Rotate component: R (Shift+R: reverse)"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_delete",
+                               "Delete selected: Delete"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tool_cycle",
+                               "Q: cycle tools (Select -> Pneumatic -> Electric -> Tag)"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tag",
+                               "Tag tool: click wire to add/edit wire tag"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_zoom",
+                               "Zoom: Mouse wheel"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_pan",
+                               "Pan: Middle drag / Alt + Right drag"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_trackpad_pan",
+                               "Trackpad pan: Ctrl + Scroll"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order",
+                               "Z-order: use component context menu"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order_items",
+                               "Bring to Front / Send to Back / Bring Forward / Send Backward"));
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(
+        TR("ui.help.shortcuts.programming_mode", "Programming mode"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f2_f3",
+                               "F2/F3: Monitor/Edit"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f5_f6_f7",
+                               "F5/F6/F7: XIC/XIO/Coil"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f9",
+                               "F9 / Shift+F9: Add/Remove vertical"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_edit_keys",
+                               "Delete / Insert / Enter"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_undo_redo",
+                               "Ctrl+Z / Ctrl+Y: Undo/Redo"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_ctrl_arrow",
+                               "Ctrl+Arrow: Toggle line path"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_addr_example",
+                               "Address example: Y0, T1 K10, C2 K5, SET M0, RST Y0"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_compile",
+                               "Use Save / Load / Compile buttons on the top bar"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_monitor",
+                               "Monitor mode: inspect X/Y/M/T/C states in real time"));
+
+    // Hidden easter egg: type "ironhero" while this popup is open.
+    ImGuiIO& io = ImGui::GetIO();
+    if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) &&
+        !secret_buffer.empty()) {
+      secret_buffer.pop_back();
+    }
+    for (int i = 0; i < io.InputQueueCharacters.Size; ++i) {
+      ImWchar wc = io.InputQueueCharacters[i];
+      if (wc >= 0 && wc <= 127 &&
+          std::isalpha(static_cast<unsigned char>(wc))) {
+        secret_buffer.push_back(
+            static_cast<char>(std::tolower(static_cast<unsigned char>(wc))));
+      }
+    }
+    if (secret_buffer.size() > 64) {
+      secret_buffer.erase(0, secret_buffer.size() - 64);
+    }
+    if (secret_buffer.size() >= std::strlen(kSecret)) {
+      std::string tail =
+          secret_buffer.substr(secret_buffer.size() - std::strlen(kSecret));
+      if (EqualsIgnoreCase(tail.c_str(), kSecret)) {
+        OpenExternalUrl("https://github.com/ironhero1544");
+        secret_buffer.clear();
+        ImGui::CloseCurrentPopup();
+      }
+    }
+
+    ImGui::Spacing();
+    if (ImGui::Button(TR("ui.help.shortcuts.close", "Close"),
+                      ImVec2(120.0f, 0.0f))) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
 }
 
 }  // namespace plc

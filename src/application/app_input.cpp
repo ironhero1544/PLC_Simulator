@@ -19,6 +19,11 @@ void Application::ProcessInput() {
   if (io.WantCaptureKeyboard)
     return;
 
+  // '?' is typically Shift + '/', and we also accept Ctrl + '/'.
+  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
+    show_shortcut_help_popup_ = true;
+  }
+
   if (current_mode_ == Mode::PROGRAMMING) {
     if (programming_mode_) {
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -57,6 +62,25 @@ void Application::ProcessInput() {
         programming_mode_->HandleKeyboardInput(ImGuiKey_DownArrow);
     }
   } else {
+    if (!io.KeyCtrl && !io.KeyAlt &&
+        ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
+      switch (current_tool_) {
+        case ToolType::SELECT:
+          current_tool_ = ToolType::PNEUMATIC;
+          break;
+        case ToolType::PNEUMATIC:
+          current_tool_ = ToolType::ELECTRIC;
+          break;
+        case ToolType::ELECTRIC:
+          current_tool_ = ToolType::TAG;
+          break;
+        case ToolType::TAG:
+        default:
+          current_tool_ = ToolType::SELECT;
+          break;
+      }
+    }
+
     if (io.KeyCtrl) {
       if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
         if (io.KeyShift) {

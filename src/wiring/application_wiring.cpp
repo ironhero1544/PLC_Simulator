@@ -57,6 +57,7 @@ ImVec2 GetBehaviorWorldPos(const PlacedComponent& comp, ImVec2 world_pos) {
 }
 
 constexpr ImU32 kTagColors[] = {
+    IM_COL32(0, 0, 0, 255),      // black (default)
     IM_COL32(200, 40, 40, 255),   // red
     IM_COL32(220, 110, 20, 255),  // orange
     IM_COL32(190, 140, 0, 255),   // yellow

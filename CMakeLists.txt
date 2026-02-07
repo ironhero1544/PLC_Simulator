@@ -189,6 +189,10 @@ add_executable(${PROJECT_NAME}
     src/core/win32_input.cpp
 )
 
+if(WIN32)
+    target_sources(${PROJECT_NAME} PRIVATE resources/icon/app_icon.rc)
+endif()
+
 set(FONT_FILE ${CMAKE_SOURCE_DIR}/resources/fonts/unifont.ttf)
 if(EXISTS ${FONT_FILE})
     add_custom_command(
@@ -218,6 +222,18 @@ if(EXISTS ${LANG_DIR})
             COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${LANG_DIR}"
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/lang"
+    )
+endif()
+
+set(ICON_DIR ${CMAKE_SOURCE_DIR}/resources/icon)
+if(EXISTS ${ICON_DIR})
+    add_custom_command(
+            TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/icon"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${ICON_DIR}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/icon"
     )
 endif()
 

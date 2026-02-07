@@ -1,4 +1,4 @@
-# Menu
+﻿# Menu
 menu.settings=設定
 menu.language=言語
 menu.ui_settings=UI
@@ -212,3 +212,42 @@ ui.programming.vertical_conn_fmt=垂直接続(X%d から X%d)
 ui.programming.start_rung_fmt=開始ラング: %04d
 ui.programming.vertical_info=垂直接続情報
 ui.programming.end_rung_fmt=終了ラング: %04d
+
+# Global shortcut help popup
+ui.help.shortcuts.title=ショートカットガイド
+ui.help.shortcuts.open_help=このヘルプを開く
+ui.help.shortcuts.open_1=Ctrl + ?
+ui.help.shortcuts.open_2=Ctrl + /
+ui.help.shortcuts.common=共通
+ui.help.shortcuts.common_run_stop=RUN/STOP: ヘッダーボタンを使用
+ui.help.shortcuts.common_switch_mode=モード切替: Wiring / Programming ボタン
+ui.help.shortcuts.common_save_load=保存/読込: 配線モードのツールバーボタンを使用
+ui.help.shortcuts.quick_start=クイックスタート
+ui.help.shortcuts.quick_wiring_drag=部品リストからキャンバスへドラッグして配置
+ui.help.shortcuts.quick_wiring_connect=ポートから別のポートへドラッグして配線接続
+ui.help.shortcuts.quick_tools=ツールボタン: 選択 / 空圧配線 / 電気配線 / 配線タグ
+ui.help.shortcuts.quick_tool_select=選択: 部品/配線を選択して移動
+ui.help.shortcuts.quick_tool_pneumatic=空圧配線: 空圧ラインを作成
+ui.help.shortcuts.quick_tool_electric=電気配線: 電気ラインを作成
+ui.help.shortcuts.quick_tool_tag=配線タグ: 配線タグを追加/編集
+ui.help.shortcuts.wiring_mode=配線モード
+ui.help.shortcuts.wiring_rotate=部品回転: R (Shift+R: 逆方向)
+ui.help.shortcuts.wiring_delete=選択削除: Delete
+ui.help.shortcuts.wiring_tool_cycle=Q: ツール循環切替 (選択 -> 空圧配線 -> 電気配線 -> 配線タグ)
+ui.help.shortcuts.wiring_tag=Tagツール: 配線をクリックしてタグ追加/編集
+ui.help.shortcuts.wiring_zoom=ズーム: マウスホイール
+ui.help.shortcuts.wiring_pan=移動: 中ボタンドラッグ / Alt + 右ドラッグ
+ui.help.shortcuts.wiring_trackpad_pan=トラックパッド移動: Ctrl + スクロール
+ui.help.shortcuts.wiring_z_order=Z-order: 部品をダブルクリックしてコンテキストメニューを開く
+ui.help.shortcuts.wiring_z_order_items=最前面へ / 最背面へ / 一段前へ / 一段後ろへ
+ui.help.shortcuts.programming_mode=プログラミングモード
+ui.help.shortcuts.prog_f2_f3=F2/F3: モニター/編集
+ui.help.shortcuts.prog_f5_f6_f7=F5/F6/F7: XIC/XIO/Coil
+ui.help.shortcuts.prog_f9=F9 / Shift+F9: 垂直追加/削除
+ui.help.shortcuts.prog_edit_keys=Delete / Insert / Enter
+ui.help.shortcuts.prog_undo_redo=Ctrl+Z / Ctrl+Y: 元に戻す/やり直し
+ui.help.shortcuts.prog_ctrl_arrow=Ctrl+Arrow: ライン経路切替
+ui.help.shortcuts.prog_addr_example=アドレス例: Y0, T1 K10, C2 K5, SET M0, RST Y0
+ui.help.shortcuts.prog_compile=上部バーの Save / Load / Compile ボタンを使用
+ui.help.shortcuts.prog_monitor=Monitorモードで X/Y/M/T/C 状態をリアルタイム確認
+ui.help.shortcuts.close=閉じる

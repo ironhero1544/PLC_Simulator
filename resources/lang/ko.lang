@@ -1,10 +1,9 @@
-# Menu
+﻿# Menu
 menu.settings=설정
 menu.language=언어
 lang.english=영어(English)
 lang.korean=한국어
 lang.japanese=일본어(日本語)
-lang.restart_required=재시작후 적용됩니다.
 
 # Header
 ui.header.title=PLC 시뮬레이터
@@ -47,7 +46,7 @@ ui.debug.last_scan_fmt=마지막 스캔: %s
 ui.debug.cycle_time_fmt=사이클 횟수: %d us
 ui.debug.instructions_fmt=명령어 수: %d
 ui.debug.compile_error_fmt=컴파일 에러: %s
-ui.debug.scan_error_fmt=스켄 에러: %s
+ui.debug.scan_error_fmt=스캔 에러: %s
 ui.debug.gx2_norm_fmt=명령어 표준화: %s
 ui.debug.fix_count_fmt=보정 수: %d
 ui.debug.no_fixes=(no fixes)
@@ -55,8 +54,8 @@ ui.debug.fixed_buffer_limit=보정 버퍼가 한계입니다.
 
 # Component list
 ui.component_list.title=부품 리스트
-ui.component_list.tooltip_drag=켄버스에 드래그 하세요.
-ui.component_list.tooltip_place=켄버스에 배치.
+ui.component_list.tooltip_drag=캔버스에 드래그 하세요.
+ui.component_list.tooltip_place=캔버스에 배치.
 
 # Components
 component.plc.name=PLC
@@ -128,7 +127,7 @@ ui.wiring.tooltip_pressure_fmt=작동 압력: %.1f bar
 ui.wiring.tooltip_pressure_hint=마우스 휠로 조절하세요.
 
 # Wiring camera help
-ui.wiring.camera_help.title=켄버스 카매라
+ui.wiring.camera_help.title=캔버스 카메라
 ui.wiring.camera_help.zoom=확대/축소: 마우스 휠 (Ctrl 없이)
 ui.wiring.camera_help.pan_middle=이동: 가운데 버튼 드래그 / Alt+우클릭 드래그
 ui.wiring.camera_help.pan_alt=트랙패드: 핀치하면 줌이 됩니다.
@@ -198,15 +197,8 @@ ui.settings.refresh_rate_fmt=모니터 주사율: %d Hz
 ui.settings.ui_scale=UI 스케일
 ui.settings.font_scale=폰트 스케일
 ui.settings.layout_scale=레이아웃 크기
-ui.settings.reset_defaults=기본값으로
-ui.settings.restart_required=UI 크기는 재시작 후 적용됩니다.
-ui.settings.restart_now=재시작하기...
-ui.settings.reset_defaults=기본값으로
-ui.settings.restart_required=재시작후 UI변경이 적용됩니다.
-ui.settings.restart_now=재시작하기...
-lang.restart_required=재시작후 적용됩니다.
 lang.restart_now=재시작하기...
-lang.restart_prompt=정말로 재시작 하시겠습니까?
+lang.restart_prompt=정말로 재시작하시겠습니까?
 lang.restart_yes=재시작
 lang.restart_no=취소
 ui.toolbar.tool_tag=배선 임베딩
@@ -218,3 +210,48 @@ ui.component_list.view_name=이름 보기
 ui.component_list.empty=이 카테고리에 부품이 없습니다.
 ui.wiring.tag_title=배선 태그
 ui.wiring.tag_color=색상
+
+# Global shortcut help popup
+ui.help.shortcuts.title=단축키 안내
+ui.help.shortcuts.open_help=이 도움말 열기
+ui.help.shortcuts.open_1=Ctrl + ?
+ui.help.shortcuts.open_2=Ctrl + /
+ui.help.shortcuts.common=공통
+ui.help.shortcuts.common_run_stop=RUN/STOP: 상단 헤더 버튼 사용
+ui.help.shortcuts.common_switch_mode=모드 전환: Wiring / Programming 버튼
+ui.help.shortcuts.common_save_load=저장/불러오기: 배선 모드 툴바 버튼 사용
+ui.help.shortcuts.quick_start=빠른 시작
+ui.help.shortcuts.quick_wiring_drag=부품 리스트에서 캔버스로 드래그하여 배치
+ui.help.shortcuts.quick_wiring_connect=포트에서 다른 포트로 드래그해 배선 연결
+ui.help.shortcuts.quick_tools=툴 버튼: 선택도구 / 공압 배선 / 전기 배선 / 배선 임베딩
+ui.help.shortcuts.quick_tool_select=선택도구: 부품/배선 선택 및 이동
+ui.help.shortcuts.quick_tool_pneumatic=공압 배선: 공압 라인 생성
+ui.help.shortcuts.quick_tool_electric=전기 배선: 전기 라인 생성
+ui.help.shortcuts.quick_tool_tag=배선 임베딩: 배선 태그 추가/수정
+ui.help.shortcuts.wiring_mode=배선 모드
+ui.help.shortcuts.wiring_rotate=부품 회전: R (Shift+R: 반대 방향)
+ui.help.shortcuts.wiring_delete=선택 삭제: Delete
+ui.help.shortcuts.wiring_tool_cycle=Q: 툴 순환 전환 (선택도구 -> 공압 배선 -> 전기 배선 -> 배선 임베딩)
+ui.help.shortcuts.wiring_tag=Tag 도구: 배선을 클릭해 태그 추가/수정
+ui.help.shortcuts.wiring_zoom=확대/축소: 마우스 휠
+ui.help.shortcuts.wiring_pan=이동: 가운데 드래그 / Alt + 우클릭 드래그
+ui.help.shortcuts.wiring_trackpad_pan=트랙패드 이동: Ctrl + 스크롤
+ui.help.shortcuts.wiring_z_order=Z-order: 부품 더블클릭으로 컨텍스트 메뉴 열기
+ui.help.shortcuts.wiring_z_order_items=맨 앞으로 / 맨 뒤로 / 앞으로 한 단계 / 뒤로 한 단계
+ui.help.shortcuts.programming_mode=프로그래밍 모드
+ui.help.shortcuts.prog_f2_f3=F2/F3: 모니터/편집
+ui.help.shortcuts.prog_f5_f6_f7=F5/F6/F7: XIC/XIO/Coil
+ui.help.shortcuts.prog_f9=F9 / Shift+F9: 세로 추가/삭제
+ui.help.shortcuts.prog_edit_keys=Delete / Insert / Enter
+ui.help.shortcuts.prog_undo_redo=Ctrl+Z / Ctrl+Y: 실행 취소/다시 실행
+ui.help.shortcuts.prog_ctrl_arrow=Ctrl+화살표: 라인 경로 전환
+ui.help.shortcuts.prog_addr_example=주소 예시: Y0, T1 K10, C2 K5, SET M0, RST Y0
+ui.help.shortcuts.prog_compile=상단 바의 Save / Load / Compile 버튼 사용
+ui.help.shortcuts.prog_monitor=Monitor 모드에서 X/Y/M/T/C 상태를 실시간 확인
+ui.help.shortcuts.close=닫기
+
+# UI settings canonical overrides
+ui.settings.reset_defaults=기본값으로
+ui.settings.restart_required=재시작 후 UI 변경이 적용됩니다.
+ui.settings.restart_now=재시작하기...
+lang.restart_required=재시작 후 적용됩니다.

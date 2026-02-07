@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <string>
 
 namespace plc {
 namespace {
@@ -120,6 +121,100 @@ double GetMonitorRefreshRateForWindow(GLFWwindow* window) {
   }
   return 0.0;
 }
+
+#ifdef _WIN32
+void ApplyWindowsAppIcon(GLFWwindow* window) {
+  if (!window) {
+    return;
+  }
+
+  HWND hwnd = glfwGetWin32Window(window);
+  if (!hwnd) {
+    return;
+  }
+
+  auto file_exists = [](const std::string& path) -> bool {
+    DWORD attrs = GetFileAttributesA(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES &&
+           (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+  };
+
+  auto get_executable_dir = []() -> std::string {
+    char exe_path[MAX_PATH] = {0};
+    DWORD len = GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) {
+      return "";
+    }
+    std::string path(exe_path, len);
+    size_t pos = path.find_last_of("\\/");
+    if (pos == std::string::npos) {
+      return "";
+    }
+    return path.substr(0, pos);
+  };
+
+  auto join_path = [](const std::string& left,
+                      const std::string& right) -> std::string {
+    if (left.empty()) {
+      return right;
+    }
+    if (left.back() == '\\' || left.back() == '/') {
+      return left + right;
+    }
+    return left + "\\" + right;
+  };
+
+  std::string icon_path;
+  std::string exe_dir = get_executable_dir();
+  std::string candidate_runtime =
+      join_path(exe_dir, "resources\\icon\\icon.ico");
+  if (file_exists(candidate_runtime)) {
+    icon_path = candidate_runtime;
+  } else {
+    std::string candidate_local = join_path(exe_dir, "icon.ico");
+    if (file_exists(candidate_local)) {
+      icon_path = candidate_local;
+    } else if (file_exists("resources\\icon\\icon.ico")) {
+      icon_path = "resources\\icon\\icon.ico";
+    } else if (file_exists("icon.ico")) {
+      icon_path = "icon.ico";
+    }
+  }
+
+  HICON large_icon = nullptr;
+  HICON small_icon = nullptr;
+  if (!icon_path.empty()) {
+    large_icon = static_cast<HICON>(LoadImageA(
+        nullptr, icon_path.c_str(), IMAGE_ICON, 0, 0,
+        LR_LOADFROMFILE | LR_DEFAULTSIZE));
+    small_icon = static_cast<HICON>(
+        LoadImageA(nullptr, icon_path.c_str(), IMAGE_ICON, 16, 16,
+                   LR_LOADFROMFILE | LR_DEFAULTSIZE));
+  }
+
+  if (!large_icon || !small_icon) {
+    HINSTANCE instance = GetModuleHandleA(nullptr);
+    if (instance) {
+      if (!large_icon) {
+        large_icon = static_cast<HICON>(LoadImageA(
+            instance, "IDI_APP_ICON", IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
+      }
+      if (!small_icon) {
+        small_icon = static_cast<HICON>(LoadImageA(
+            instance, "IDI_APP_ICON", IMAGE_ICON, 16, 16, LR_DEFAULTSIZE));
+      }
+    }
+  }
+
+  if (large_icon) {
+    SendMessage(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon));
+  }
+  if (small_icon) {
+    SendMessage(hwnd, WM_SETICON, ICON_SMALL,
+                reinterpret_cast<LPARAM>(small_icon));
+  }
+}
+#endif
 
 }  // namespace
 
@@ -217,6 +312,7 @@ Application::Application(bool enable_debug_mode)
       show_physics_warning_dialog_(false),
       physics_warning_message_(""),
       show_restart_popup_(false),
+      show_shortcut_help_popup_(false),
       show_component_context_menu_(false),
       context_menu_component_id_(-1),
       context_menu_pos_(ImVec2(0.0f, 0.0f)) {
@@ -526,6 +622,10 @@ bool Application::InitializeWindow() {
   }
 
   glfwMakeContextCurrent(window_);
+
+#ifdef _WIN32
+  ApplyWindowsAppIcon(window_);
+#endif
 
   glfwSwapInterval(ui_settings_.vsync_enabled ? 1 : 0);
 

@@ -249,6 +249,7 @@ namespace plc {
 
         void RenderPLCDebugPanel();
         void RenderPhysicsWarningDialog();
+        void RenderShortcutHelpDialog();
         ImVec2 WorldToScreen(const ImVec2& world_pos) const;
 
         ImVec2 ScreenToWorld(const ImVec2& screen_pos) const;
@@ -501,6 +502,7 @@ namespace plc {
         bool win32_side_click_;
         bool win32_side_down_;
         bool show_restart_popup_;
+        bool show_shortcut_help_popup_;
         bool show_component_context_menu_;
         int context_menu_component_id_;
         ImVec2 context_menu_pos_;
