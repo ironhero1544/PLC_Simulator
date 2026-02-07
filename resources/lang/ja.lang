@@ -1,0 +1,214 @@
+# Menu
+menu.settings=設定
+menu.language=言語
+menu.ui_settings=UI
+lang.english=英語(English)
+lang.korean=韓国語(한국어)
+lang.japanese=日本語
+lang.restart_required=再起動後に適用されます。
+lang.restart_now=再起動する...
+lang.restart_prompt=今すぐアプリケーションを再起動しますか？
+lang.restart_yes=再起動
+lang.restart_no=キャンセル
+ui.settings.ui_scale=UIスケール
+ui.settings.font_scale=フォントスケール
+ui.settings.layout_scale=レイアウトスケール
+ui.settings.reset_defaults=デフォルトに戻す
+ui.settings.restart_required=UI変更を適用するには再起動が必要です。
+ui.settings.restart_now=再起動する...
+ui.settings.vsync=VSync
+ui.settings.frame_limit=フレーム制限(モニター)
+ui.settings.refresh_rate_fmt=モニターリフレッシュ: %d Hz
+
+# Header
+ui.header.title=PLCシミュレーター
+ui.header.mode_wiring=配線
+ui.header.mode_programming=プログラミング
+ui.header.status_run=[RUN]
+ui.header.status_stop=[STOP]
+ui.header.btn_run=実行
+ui.header.btn_stop=停止
+
+# Toolbar
+ui.toolbar.tool_select=選択ツール
+ui.toolbar.tool_pneumatic=空圧配線
+ui.toolbar.tool_electric=電気配線
+ui.toolbar.tool_tag=タグ
+ui.toolbar.load_project=プロジェクトを読込
+ui.toolbar.save_layout=保存
+ui.toolbar.load_layout=読込
+
+# Status bar
+ui.status.zoom_info=ズーム %.1fx | 位置: (%.0f, %.0f) | 部品: %zu | 配線: %zu
+ui.status.tool_fmt=ツール: %s
+
+# Common
+ui.common.yes=はい
+ui.common.no=いいえ
+ui.common.ok=OK
+ui.common.fail=失敗
+ui.common.enabled=有効
+ui.common.disabled=無効
+ui.common.run=RUN
+ui.common.stop=STOP
+
+# Debug panel
+ui.debug.engine_fmt=エンジン: %s
+ui.debug.compiled_fmt=コンパイル済みコード: %s
+ui.debug.compiled_loaded=ロード済み
+ui.debug.compiled_not_loaded=未ロード
+ui.debug.recompile_fmt=再コンパイル必要: %s
+ui.debug.last_scan_fmt=最終スキャン: %s
+ui.debug.cycle_time_fmt=サイクルタイム: %d us
+ui.debug.instructions_fmt=命令数: %d
+ui.debug.compile_error_fmt=コンパイルエラー: %s
+ui.debug.scan_error_fmt=スキャンエラー: %s
+ui.debug.gx2_norm_fmt=GX2正規化: %s
+ui.debug.fix_count_fmt=修正数: %d
+ui.debug.no_fixes=(修正なし)
+ui.debug.fixed_buffer_limit=修正バッファが上限に達しました。
+
+# Component list
+ui.component_list.title=部品リスト
+ui.component_list.tooltip_drag=キャンバスにドラッグしてください。
+ui.component_list.tooltip_place=ドラッグして配置。
+ui.component_list.filter_all=すべて
+ui.component_list.filter_auto=自動化技術者
+ui.component_list.filter_semi=半導体メンテナンス
+ui.component_list.view_icon=アイコン表示
+ui.component_list.view_name=名前表示
+ui.component_list.empty=このカテゴリに部品がありません。
+
+# Components
+component.plc.name=FX3U-32M PLC
+component.plc.desc=X:16 / Y:16
+component.plc.label=FX3U-32M
+component.frl.name=FRLユニット
+component.frl.desc=エア供給調整器
+component.frl.label=FRL UNIT
+component.manifold.name=マニホールド
+component.manifold.desc=空圧分配器
+component.manifold.label=MANIFOLD
+component.limit_switch.name=リミットスイッチ
+component.limit_switch.desc=機械式接点
+component.limit_switch.label=LIMIT
+component.sensor.name=センサー
+component.sensor.desc=近接センサー
+component.cylinder.name=シリンダー
+component.cylinder.desc=空圧アクチュエータ
+component.valve_single.name=単動バルブ
+component.valve_single.desc=単動ソレノイドバルブ
+component.valve_double.name=複動バルブ
+component.valve_double.desc=複動ソレノイドバルブ
+component.valve.label_5_2=5/2WAY
+component.button_unit.name=ボタンユニット
+component.button_unit.desc=入力/表示パネル
+component.button_unit.label=BUTTON UNIT
+component.power_supply.name=電源
+component.power_supply.desc=24V DC電源
+component.power_supply.label=24V DC
+component.workpiece_metal.name=金属ワーク
+component.workpiece_metal.desc=金属材料部品
+component.workpiece_nonmetal.name=非金属ワーク
+component.workpiece_nonmetal.desc=非金属材料部品
+component.ring_sensor.name=リングセンサー
+component.ring_sensor.desc=リング型ワーク検知センサー
+component.meter_valve.name=メーターイン/アウトバルブ
+component.meter_valve.desc=流量制御バルブ
+component.inductive_sensor.name=誘導型センサー
+component.inductive_sensor.desc=金属ワークを検出
+component.conveyor.name=コンベア
+component.conveyor.desc=ワーク搬送装置
+component.processing_cylinder.name=加工シリンダー
+component.processing_cylinder.desc=モーター付き加工シリンダー
+component.box.name=ボックス
+component.box.desc=ワーク保管ボックス
+component.tower_lamp.name=タワーランプ
+component.tower_lamp.desc=赤/黄/緑表示ランプ
+component.emergency_stop.name=非常停止
+component.emergency_stop.desc=非常停止ボタン
+component.plc.indicator_power=POWER
+component.plc.indicator_run=RUN
+component.plc.indicator_batt=BATT
+component.plc.indicator_error=ERROR
+
+
+# Wiring tooltips
+ui.wiring.tooltip_port_ids=部品ID: %d、ポートID: %d
+ui.wiring.tooltip_type_fmt=タイプ: %s
+ui.wiring.port_type_electric=電気
+ui.wiring.port_type_pneumatic=空圧
+ui.wiring.tooltip_role_fmt=役割: %s
+ui.wiring.tooltip_direction_fmt=方向: %s
+ui.wiring.direction_input=入力
+ui.wiring.direction_output=出力
+ui.wiring.tooltip_state_fmt=状態: %s
+ui.wiring.state_pressed=押下
+ui.wiring.state_released=解放
+ui.wiring.tooltip_pressure_fmt=現在の圧力: %.1f bar
+ui.wiring.tooltip_pressure_hint=マウスホイールで調整してください。
+ui.wiring.tag_title=配線タグ
+ui.wiring.tag_color=色
+
+# Wiring camera help
+ui.wiring.camera_help.title=キャンバスカメラ
+ui.wiring.camera_help.zoom=ズーム: マウスホイール(Ctrlなし)
+ui.wiring.camera_help.pan_middle=パン: 中ボタンドラッグ / Alt + 右ドラッグ
+ui.wiring.camera_help.pan_alt=トラックパッド: ピンチでズーム
+ui.wiring.camera_help.trackpad=トラックパッド: Ctrl + スクロール(パン)
+ui.wiring.camera_help.touch=タッチ: ピンチでズーム、ドラッグでパン
+
+# Wiring context menu
+ui.wiring.context.bring_front=最前面へ
+ui.wiring.context.send_back=最背面へ
+ui.wiring.context.bring_forward=前面へ
+ui.wiring.context.send_backward=背面へ
+ui.wiring.context.rotate_cw=90度回転
+ui.wiring.context.rotate_ccw=-90度回転
+ui.wiring.context.flip_horizontal=水平反転
+ui.wiring.context.flip_vertical=垂直反転
+
+# Programming UI
+ui.programming.toolbar_edit=編集 (F3)
+ui.programming.toolbar_monitor=モニター (F2)
+ui.programming.toolbar_save=保存
+ui.programming.toolbar_compile=コンパイル
+ui.programming.shortcut_f5=F5: XIC (NO)
+ui.programming.shortcut_f6=F6: XIO (NC)
+ui.programming.shortcut_f7=F7: Coil (OUT)
+ui.programming.shortcut_f9=F9: 垂直追加
+ui.programming.shortcut_shift_f9=Shift+F9: 垂直削除
+ui.programming.shortcut_del=Del: 削除
+ui.programming.shortcut_insert=Insert: 追加
+ui.programming.shortcut_ctrl_arrow=Ctrl+矢印: ライン経路切替
+ui.programming.shortcut_ctrl_z=Ctrl+Z: 元に戻す
+ui.programming.shortcut_ctrl_y=Ctrl+Y / Ctrl+Shift+Z: やり直し
+ui.programming.timers_counters=タイマー/カウンター
+ui.programming.load=ロード
+ui.programming.timer_value_fmt=%s  K%d/%d
+ui.programming.counter_value_fmt=%s  K%d/%d
+ui.programming.memory_m=メモリ(M)
+ui.programming.shortcuts=キーボードショートカット
+ui.programming.cursor_info=カーソル情報
+ui.programming.cursor_pos_fmt=ラング %04d、セル: %d
+ui.programming.input_controls=入力制御
+ui.programming.inputs_label=入力(X0-X15)
+ui.programming.outputs_label=出力(Y0-Y15)
+ui.programming.mode_fmt=モード: %s
+ui.programming.mode_monitor=モニター
+ui.programming.mode_edit=編集
+ui.programming.cursor_fmt=カーソル: %04d: X%d
+ui.programming.steps_fmt=ステップ: %zu
+ui.programming.vertical_prefix=垂直: 
+ui.programming.vertical_sep=、
+ui.programming.vertical_item_fmt=X%d (R%04d-%04d)
+ui.programming.no_vertical=垂直接続なし
+ui.programming.compile_fail=コンパイル: 失敗
+ui.programming.compile_ok=コンパイル: OK
+ui.programming.plc_status_fmt=PLC: %s
+ui.programming.enter_device_fmt=%sのデバイスアドレスを入力:
+ui.programming.device_example=例: Y0, T1 K10, C2 K5, SET M0, RST Y0
+ui.programming.vertical_conn_fmt=垂直接続(X%d から X%d)
+ui.programming.start_rung_fmt=開始ラング: %04d
+ui.programming.vertical_info=垂直接続情報
+ui.programming.end_rung_fmt=終了ラング: %04d
