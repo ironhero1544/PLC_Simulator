@@ -1,4 +1,8 @@
-# PLC_Simulator
+﻿# PLC_Simulator
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://isocpp.org/)
+[![CMake](https://img.shields.io/badge/CMake-3.20%2B-064F8C?logo=cmake)](https://cmake.org/)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)]()
 ![plcsimulator_lockup_whitebg.svg](docs_img/plcsimulator_lockup_whitebg.svg)
 
 통합 물리 시뮬레이션과 OpenPLC 호환 레더 실행 경로를 포함한 실시간 PLC 배선/프로그래밍 시뮬레이터입니다.
@@ -54,6 +58,19 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 - miniz
 - Box2D
 - NanoSVG
+
+## 기술 스택
+
+| 영역 | 스택 |
+|---|---|
+| 언어 | C++20 |
+| 빌드 | CMake |
+| 렌더링/UI | OpenGL, GLFW, GLAD, Dear ImGui |
+| 물리 | 자체(in-house) 멀티 도메인 물리 엔진(전기/공압/기계) + Box2D |
+| PLC/레더 | OpenPLC 호환 LD 변환/실행 파이프라인 |
+| 데이터/입출력 | nlohmann/json, miniz, XML serializer |
+
+이 프로젝트는 범용 외부 게임 엔진이 아니라, 자체 시뮬레이션 엔진을 코어로 사용합니다.
 
 ## 빌드
 

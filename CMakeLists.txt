@@ -193,23 +193,15 @@ if(WIN32)
     target_sources(${PROJECT_NAME} PRIVATE resources/icon/app_icon.rc)
 endif()
 
-set(FONT_FILE ${CMAKE_SOURCE_DIR}/resources/fonts/unifont.ttf)
-if(EXISTS ${FONT_FILE})
+set(FONT_DIR ${CMAKE_SOURCE_DIR}/resources/fonts)
+if(EXISTS ${FONT_DIR})
     add_custom_command(
             TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${FONT_FILE}"
-            "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-    )
-endif()
-
-set(JP_FONT_FILE ${CMAKE_SOURCE_DIR}/resources/fonts/JP.ttf)
-if(EXISTS ${JP_FONT_FILE})
-    add_custom_command(
-            TARGET ${PROJECT_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${JP_FONT_FILE}"
-            "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/fonts"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${FONT_DIR}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/fonts"
     )
 endif()
 
@@ -525,3 +517,93 @@ if(BUILD_TESTING)
 endif()
 
 # =============================================================================
+
+# =============================================================================
+# Install and Packaging (CPack / NSIS)
+# =============================================================================
+
+install(TARGETS ${PROJECT_NAME}
+        RUNTIME DESTINATION .)
+
+# Bundle required MinGW runtime DLLs for portable install/installer output.
+if(MINGW)
+    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(REQUIRED_MINGW_DLLS
+            libgcc_s_seh-1.dll
+            libstdc++-6.dll
+            libwinpthread-1.dll
+    )
+
+    foreach(RUNTIME_DLL IN LISTS REQUIRED_MINGW_DLLS)
+        set(RUNTIME_DLL_PATH "${MINGW_BIN_DIR}/${RUNTIME_DLL}")
+        if(EXISTS "${RUNTIME_DLL_PATH}")
+            install(FILES "${RUNTIME_DLL_PATH}"
+                    DESTINATION ".")
+        else()
+            message(WARNING "Required MinGW runtime DLL not found: ${RUNTIME_DLL_PATH}")
+        endif()
+    endforeach()
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/resources")
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/"
+            DESTINATION "resources")
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/README.md")
+    install(FILES "${CMAKE_SOURCE_DIR}/README.md"
+            DESTINATION ".")
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/README_kr.md")
+    install(FILES "${CMAKE_SOURCE_DIR}/README_kr.md"
+            DESTINATION ".")
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/README_ja.md")
+    install(FILES "${CMAKE_SOURCE_DIR}/README_ja.md"
+            DESTINATION ".")
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt"
+            DESTINATION ".")
+endif()
+
+set(CPACK_PACKAGE_NAME "PLCSimulator")
+set(CPACK_PACKAGE_VENDOR "ironhero")
+set(CPACK_PACKAGE_CONTACT "ironhero1544@users.noreply.github.com")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "PLC wiring/programming simulator with custom physics engine")
+set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "PLCSimulator")
+set(CPACK_MONOLITHIC_INSTALL ON)
+set(CPACK_RESOURCE_FILE_LICENSE
+    "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
+
+if(WIN32)
+    # Try NSIS installer first, and provide ZIP as fallback output.
+    set(CPACK_GENERATOR "NSIS;ZIP")
+    set(CPACK_PACKAGE_EXECUTABLES "PLCSimulator" "PLCSimulator")
+    set(CPACK_CREATE_DESKTOP_LINKS "PLCSimulator")
+    set(CPACK_NSIS_DISPLAY_NAME "PLCSimulator")
+    set(CPACK_NSIS_PACKAGE_NAME "PLCSimulator")
+    set(CPACK_NSIS_CONTACT "${CPACK_PACKAGE_CONTACT}")
+    set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/ironhero1544")
+    set(CPACK_NSIS_HELP_LINK "https://github.com/ironhero1544")
+    set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
+    set(CPACK_NSIS_MUI_ICON
+        "${CMAKE_SOURCE_DIR}/resources/icon/icon.ico")
+    set(CPACK_NSIS_MUI_UNIICON
+        "${CMAKE_SOURCE_DIR}/resources/icon/icon.ico")
+    set(CPACK_NSIS_INSTALLED_ICON_NAME "PLCSimulator.exe")
+    set(CPACK_NSIS_MUI_FINISHPAGE_RUN "PLCSimulator.exe")
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA [=[
+  CreateShortCut $DESKTOP\\PLCSimulator.lnk $INSTDIR\\.\\PLCSimulator.exe
+]=])
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA [=[
+  Delete $DESKTOP\\PLCSimulator.lnk
+]=])
+endif()
+
+include(CPack)

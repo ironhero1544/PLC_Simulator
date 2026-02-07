@@ -1,4 +1,8 @@
 ﻿# PLC_Simulator
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://isocpp.org/)
+[![CMake](https://img.shields.io/badge/CMake-3.20%2B-064F8C?logo=cmake)](https://cmake.org/)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)]()
 ![plcsimulator_lockup_whitebg.svg](docs_img/plcsimulator_lockup_whitebg.svg)
 Real-time PLC wiring/programming simulator with integrated physics and OpenPLC-compatible ladder execution.
 
@@ -53,6 +57,19 @@ This project aims to:
 - miniz
 - Box2D
 - NanoSVG
+
+## Tech Stack
+
+| Area | Stack |
+|---|---|
+| Language | C++20 |
+| Build | CMake |
+| Rendering/UI | OpenGL, GLFW, GLAD, Dear ImGui |
+| Physics | Custom in-house multi-domain physics engine (electrical/pneumatic/mechanical) + Box2D |
+| PLC/Ladder | OpenPLC-compatible LD conversion and execution pipeline |
+| Data/IO | nlohmann/json, miniz, XML serializer |
+
+This project uses a custom in-house simulation engine as its core, not a general-purpose external game engine.
 
 ## Build
 

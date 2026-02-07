@@ -677,12 +677,14 @@ bool Application::InitializeImGui() {
 
   };
 
-  io.Fonts->AddFontFromFileTTF("unifont.ttf", font_size, &font_config,
+  io.Fonts->AddFontFromFileTTF("resources/fonts/unifont.ttf", font_size,
+                               &font_config,
                                korean_ranges);
   ImFontConfig merge_config = font_config;
   merge_config.MergeMode = true;
   const ImWchar* jp_ranges = io.Fonts->GetGlyphRangesJapanese();
-  io.Fonts->AddFontFromFileTTF("JP.ttf", font_size, &merge_config, jp_ranges);
+  io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
+                               &merge_config, jp_ranges);
 
 
 
