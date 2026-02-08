@@ -327,6 +327,24 @@ std::string NormalizePreset(const std::string& preset) {
   return preset;
 }
 
+std::string BuildRungMemoNote(const std::string& memo) {
+  if (memo.empty()) {
+    return "";
+  }
+  return "RUNG_MEMO=" + memo;
+}
+
+bool ParseRungMemoNote(const std::string& note, std::string* memo) {
+  static const std::string kMemoPrefix = "RUNG_MEMO=";
+  if (note.rfind(kMemoPrefix, 0) != 0) {
+    return false;
+  }
+  if (memo) {
+    *memo = note.substr(kMemoPrefix.size());
+  }
+  return true;
+}
+
 std::string BuildGX2CSV(const plc::LadderProgram& program,
                         const std::string& projectName) {
   std::vector<std::string> lines;
@@ -406,9 +424,16 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
   }
 
   auto emit_contacts = [&](const std::vector<plc::LadderInstruction>& contacts,
-                           bool isFirstRung) {
+                           bool isFirstRung,
+                           const std::string& rungMemo) {
+    std::string memoNote = BuildRungMemoNote(rungMemo);
     if (contacts.empty()) {
-      add_instruction(isFirstRung ? "LD" : "OR", "M8000");
+      if (memoNote.empty()) {
+        add_instruction(isFirstRung ? "LD" : "OR", "M8000");
+      } else {
+        add_instruction_with_note(isFirstRung ? "LD" : "OR", "M8000",
+                                  memoNote);
+      }
       return;
     }
 
@@ -416,12 +441,17 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
       const auto& contact = contacts[i];
       bool negated = (contact.type == plc::LadderInstructionType::XIO);
       if (i == 0) {
+        std::string firstInstruction = "";
         if (isFirstRung) {
-          add_instruction(negated ? "LDI" : "LD",
-                          FormatDeviceAddress(contact.address));
+          firstInstruction = negated ? "LDI" : "LD";
         } else {
-          add_instruction(negated ? "ORI" : "OR",
-                          FormatDeviceAddress(contact.address));
+          firstInstruction = negated ? "ORI" : "OR";
+        }
+        std::string firstDevice = FormatDeviceAddress(contact.address);
+        if (memoNote.empty()) {
+          add_instruction(firstInstruction, firstDevice);
+        } else {
+          add_instruction_with_note(firstInstruction, firstDevice, memoNote);
         }
       } else {
         add_instruction(negated ? "ANI" : "AND",
@@ -498,7 +528,7 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
         hasOutput = true;
       }
 
-      emit_contacts(contacts, firstRung);
+      emit_contacts(contacts, firstRung, rung.memo);
       firstRung = false;
     }
 
@@ -532,7 +562,7 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
       continue;
     }
 
-    emit_contacts(contacts, true);
+    emit_contacts(contacts, true, rung.memo);
     emit_output(output);
   }
 
@@ -558,16 +588,20 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
   bool dataSection = false;
 
   std::vector<std::vector<plc::LadderInstruction>> branches;
+  std::vector<std::string> branchMemos;
   std::vector<plc::LadderInstruction> current;
+  std::string currentBranchMemo;
   std::vector<plc::LadderInstruction*> pendingPresetTargets;
   int pending_or_x = -1;
 
   auto flush_output = [&](const plc::LadderInstruction& output, int xHint) {
-    if (!current.empty()) {
+    if (!current.empty() || !currentBranchMemo.empty()) {
       branches.push_back(current);
+      branchMemos.push_back(currentBranchMemo);
     }
     if (branches.empty()) {
       branches.push_back({});
+      branchMemos.push_back("");
     }
 
     int outputCol = 11;
@@ -590,6 +624,9 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
       int rungIndex = static_cast<int>(program.rungs.size());
       rung.number = rungIndex;
       rung.cells.assign(12, plc::LadderInstruction());
+      if (branchIndex < branchMemos.size()) {
+        rung.memo = branchMemos[branchIndex];
+      }
 
       int cellIndex = 0;
       for (const auto& contact : branch) {
@@ -629,7 +666,9 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
     }
 
     branches.clear();
+    branchMemos.clear();
     current.clear();
+    currentBranchMemo.clear();
     pending_or_x = -1;
   };
 
@@ -652,6 +691,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
 
     std::string instr = TrimField(fields[2]);
     std::string device = TrimField(fields[3]);
+    std::string note = (fields.size() > 6) ? TrimField(fields[6]) : "";
 
     if (instr.empty()) {
       if (!device.empty() && (device[0] == 'K' || device[0] == 'k') &&
@@ -680,11 +720,20 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
               : plc::LadderInstructionType::XIC;
       contact.address = device;
 
+      std::string parsedMemo;
+      bool hasMemo = ParseRungMemoNote(note, &parsedMemo);
+
       if (instr == "OR" || instr == "ORI") {
         if (!current.empty()) {
           branches.push_back(current);
+          branchMemos.push_back(currentBranchMemo);
           current.clear();
+          currentBranchMemo.clear();
         }
+      }
+
+      if (current.empty() && hasMemo) {
+        currentBranchMemo = parsedMemo;
       }
 
       current.push_back(contact);
@@ -693,8 +742,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
 
     if (instr == "ORB") {
       pending_or_x = -1;
-      if (fields.size() > 6) {
-        std::string note = TrimField(fields[6]);
+      if (!note.empty()) {
         const std::string prefix = "VCX=";
         if (note.rfind(prefix, 0) == 0) {
           int value = 0;

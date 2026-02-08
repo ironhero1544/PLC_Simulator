@@ -95,6 +95,11 @@ void RenderCylinder(ImDrawList* draw_list,
 
   float text_scale = zoom / 1.3f;
   float font_size = 16.0f * text_scale;
+  const float max_font_size =
+      ImGui::GetFontSize() * std::max(1.0f, zoom * 0.75f);
+  if (font_size > max_font_size) {
+    font_size = max_font_size;
+  }
   for (const auto& port : kPorts) {
     ImVec2 port_pos = {screen_pos.x + port.rel_pos.x * zoom,
                        screen_pos.y + port.rel_pos.y * zoom};

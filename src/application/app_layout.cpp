@@ -6,10 +6,49 @@
 #include "plc_emulator/components/component_registry.h"
 #include "plc_emulator/core/component_transform.h"
 
+#include <algorithm>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+
 namespace plc {
+namespace {
+
+constexpr float kReferenceDisplayWidth = 1920.0f;
+constexpr float kReferenceDisplayHeight = 1080.0f;
+constexpr float kMinResolutionScale = 0.5f;
+constexpr float kMaxResolutionScale = 3.0f;
+
+}  // namespace
+
+float Application::GetResolutionScale() const {
+  if (!ImGui::GetCurrentContext()) {
+    if (window_) {
+      int width = 0;
+      int height = 0;
+      glfwGetWindowSize(window_, &width, &height);
+      if (width > 0 && height > 0) {
+        const float scale_x = static_cast<float>(width) / kReferenceDisplayWidth;
+        const float scale_y =
+            static_cast<float>(height) / kReferenceDisplayHeight;
+        const float auto_scale = std::min(scale_x, scale_y);
+        return std::clamp(auto_scale, kMinResolutionScale, kMaxResolutionScale);
+      }
+    }
+    return 1.0f;
+  }
+  const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+  if (display_size.x <= 0.0f || display_size.y <= 0.0f) {
+    return 1.0f;
+  }
+
+  const float scale_x = display_size.x / kReferenceDisplayWidth;
+  const float scale_y = display_size.y / kReferenceDisplayHeight;
+  const float auto_scale = std::min(scale_x, scale_y);
+  return std::clamp(auto_scale, kMinResolutionScale, kMaxResolutionScale);
+}
 
 float Application::GetLayoutScale() const {
-  return ui_settings_.layout_scale;
+  return ui_settings_.layout_scale * GetResolutionScale();
 }
 
 void Application::UpdatePortPositions() {

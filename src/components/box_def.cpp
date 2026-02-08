@@ -36,6 +36,11 @@ void RenderBox(ImDrawList* draw_list,
   const char* text = "BOX";
   float text_scale = zoom / 1.3f;
   float font_size = 16.0f * text_scale;
+  const float max_font_size =
+      ImGui::GetFontSize() * std::max(1.0f, zoom * 0.75f);
+  if (font_size > max_font_size) {
+    font_size = max_font_size;
+  }
   ImVec2 txt_size =
       ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, text);
   ImVec2 text_pos = {pos.x + (size.x - txt_size.x) * 0.5f,

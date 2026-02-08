@@ -6,20 +6,159 @@
 #include "plc_emulator/lang/lang_manager.h"
 #include "plc_emulator/programming/programming_mode.h"
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#endif
+
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <string>
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <windows.h>
 #include <commdlg.h>
 #endif
 
 namespace plc {
+namespace {
+
+constexpr float kLadderRungHeight = 50.0f;
+constexpr float kLadderCellHeight = 50.0f;
+constexpr int kLadderColumnCount = 12;
+constexpr float kRailSeamOverlap = 1.0f;
+
+ImU32 GetLadderRailColor(bool is_monitor_mode) {
+  return is_monitor_mode ? IM_COL32(58, 64, 76, 255)
+                         : IM_COL32(72, 72, 72, 255);
+}
+
+ImU32 GetVerticalConnectionColor(bool is_monitor_mode) {
+  (void)is_monitor_mode;
+  return IM_COL32(50, 50, 50, 255);
+}
+
+ImU32 GetLadderGridColor(bool is_monitor_mode) {
+  return is_monitor_mode ? IM_COL32(124, 132, 146, 255)
+                         : IM_COL32(146, 146, 146, 255);
+}
+
+void DrawContinuousGrid(ImDrawList* draw_list, float start_x, float top_y,
+                        float cell_width, float cell_height, int columns,
+                        ImU32 color, float thickness) {
+  if (!draw_list || columns <= 0 || cell_width <= 0.0f || cell_height <= 0.0f) {
+    return;
+  }
+  const float end_x = start_x + cell_width * static_cast<float>(columns);
+  const float bottom_y = top_y + cell_height;
+  draw_list->AddLine(ImVec2(start_x, top_y), ImVec2(end_x, top_y), color,
+                     thickness);
+  draw_list->AddLine(ImVec2(start_x, bottom_y), ImVec2(end_x, bottom_y), color,
+                     thickness);
+  for (int i = 0; i <= columns; ++i) {
+    const float x = start_x + cell_width * static_cast<float>(i);
+    draw_list->AddLine(ImVec2(x, top_y), ImVec2(x, bottom_y), color,
+                       thickness);
+  }
+}
+
+void DrawVerticalRailLine(ImDrawList* draw_list, float x, float top_y,
+                          float bottom_y, ImU32 color, float thickness) {
+  if (!draw_list || bottom_y <= top_y || thickness <= 0.0f) {
+    return;
+  }
+  draw_list->AddLine(ImVec2(x, top_y), ImVec2(x, bottom_y), color, thickness);
+}
+
+void DrawLadderContactSymbol(ImDrawList* draw_list,
+                             ImVec2 p_min,
+                             ImVec2 p_max,
+                             LadderInstructionType type,
+                             ImU32 color,
+                             ImU32 slash_color,
+                             float thickness) {
+  if (!draw_list || (type != LadderInstructionType::XIC &&
+                     type != LadderInstructionType::XIO)) {
+    return;
+  }
+  const float w = p_max.x - p_min.x;
+  const float h = p_max.y - p_min.y;
+  if (w <= 1.0f || h <= 1.0f || thickness <= 0.0f) {
+    return;
+  }
+
+  const float center_y = p_min.y + h * 0.5f;
+  const float left_bar_x = p_min.x + w * 0.44f;
+  const float right_bar_x = p_min.x + w * 0.56f;
+  const float bar_half_h = h * 0.20f;
+  const float top_y = center_y - bar_half_h;
+  const float bottom_y = center_y + bar_half_h;
+
+  draw_list->AddLine(ImVec2(p_min.x, center_y), ImVec2(left_bar_x, center_y),
+                     color, thickness);
+  draw_list->AddLine(ImVec2(right_bar_x, center_y), ImVec2(p_max.x, center_y),
+                     color, thickness);
+  draw_list->AddLine(ImVec2(left_bar_x, top_y), ImVec2(left_bar_x, bottom_y),
+                     color, thickness);
+  draw_list->AddLine(ImVec2(right_bar_x, top_y), ImVec2(right_bar_x, bottom_y),
+                     color, thickness);
+
+  if (type == LadderInstructionType::XIO) {
+    const float slash_pad = w * 0.09f;
+    draw_list->AddLine(ImVec2(left_bar_x - slash_pad, bottom_y),
+                       ImVec2(right_bar_x + slash_pad, top_y), slash_color,
+                       thickness);
+  }
+}
+
+void DrawOutputCoilSymbol(ImDrawList* draw_list,
+                          ImVec2 p_min,
+                          ImVec2 p_max,
+                          ImU32 color,
+                          float thickness) {
+  if (!draw_list || thickness <= 0.0f) {
+    return;
+  }
+
+  const float w = p_max.x - p_min.x;
+  const float h = p_max.y - p_min.y;
+  if (w <= 1.0f || h <= 1.0f) {
+    return;
+  }
+
+  const float cy = p_min.y + h * 0.5f;
+  const float coil_h = h * 0.44f;
+  const float coil_top = cy - coil_h * 0.5f;
+  const float coil_bottom = cy + coil_h * 0.5f;
+  const float left_paren_x = p_min.x + w * 0.40f;
+  const float right_paren_x = p_min.x + w * 0.60f;
+  const float curve_dx = w * 0.07f;
+  const float wire_gap = std::max(thickness * 0.9f, w * 0.01f);
+  const float wire_left_end = left_paren_x - curve_dx * 0.85f - wire_gap;
+  const float wire_right_start = right_paren_x + curve_dx * 0.85f + wire_gap;
+
+  draw_list->AddLine(ImVec2(p_min.x, cy), ImVec2(wire_left_end, cy), color,
+                     thickness);
+  draw_list->AddLine(ImVec2(wire_right_start, cy), ImVec2(p_max.x, cy), color,
+                     thickness);
+
+  draw_list->AddBezierCubic(
+      ImVec2(left_paren_x, coil_top), ImVec2(left_paren_x - curve_dx, coil_top),
+      ImVec2(left_paren_x - curve_dx, coil_bottom),
+      ImVec2(left_paren_x, coil_bottom), color, thickness);
+  draw_list->AddBezierCubic(
+      ImVec2(right_paren_x, coil_top),
+      ImVec2(right_paren_x + curve_dx, coil_top),
+      ImVec2(right_paren_x + curve_dx, coil_bottom),
+      ImVec2(right_paren_x, coil_bottom), color, thickness);
+}
+
+}  // namespace
 
 void ProgrammingMode::RenderProgrammingModeUI(bool isPlcRunning) {
   RenderProgrammingToolbar(isPlcRunning);
@@ -27,11 +166,12 @@ void ProgrammingMode::RenderProgrammingModeUI(bool isPlcRunning) {
   RenderStatusBar(isPlcRunning);
 
   RenderAddressPopup();
+  RenderRungMemoPopup();
   RenderVerticalDialog();
 }
 
 void ProgrammingMode::RenderProgrammingHeader() {
-  // Application ???????????????????????????????????????????????????????????????????????????????????
+  // Header UI is rendered by the parent application.
 }
 
 void ProgrammingMode::RenderProgrammingToolbar(bool isPlcRunning) {
@@ -276,38 +416,49 @@ void ProgrammingMode::RenderColumnHeader() {
         is_monitor_mode_ ? 0.0f : 40.0f * layout_scale;
     float cellAreaWidth =
         availableWidth - rungNumberWidth - (railWidth * 2) - deleteButtonWidth;
-    float cellWidth = cellAreaWidth / 12.0f;
+    float cellWidth = cellAreaWidth / static_cast<float>(kLadderColumnCount);
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 p_min = ImGui::GetWindowPos();
+    const float rail_top = p_min.y +
+                           (kLadderRungHeight - kLadderCellHeight) * 0.5f *
+                               layout_scale;
 
     ImGui::Dummy(ImVec2(rungNumberWidth, 0));
     ImGui::SameLine(0, 0);
     ImGui::Dummy(ImVec2(railWidth, 0));
     ImGui::SameLine(0, 0);
 
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < kLadderColumnCount; i++) {
       ImGui::BeginGroup();
-      ImGui::Dummy(ImVec2(cellWidth, 35 * layout_scale));
+      ImGui::Dummy(ImVec2(cellWidth, kLadderCellHeight * layout_scale));
       ImVec2 cellMin = ImGui::GetItemRectMin();
       char numStr[3];
       snprintf(numStr, 3, "%d", i);
       ImVec2 textSize = ImGui::CalcTextSize(numStr);
       ImGui::GetWindowDrawList()->AddText(
           ImVec2(cellMin.x + (cellWidth - textSize.x) * 0.5f,
-                 cellMin.y + (35 - textSize.y) * 0.5f),
+                 cellMin.y + (kLadderCellHeight * layout_scale - textSize.y) *
+                                 0.5f),
           IM_COL32(80, 80, 80, 255), numStr);
       ImGui::EndGroup();
 
-      if (i < 11) {
-        ImGui::SameLine(0, 1);
+      if (i < kLadderColumnCount - 1) {
+        ImGui::SameLine(0, 0);
       }
     }
 
-    ImGui::SameLine(0, 5);
+    ImGui::SameLine(0, 0);
     ImGui::Dummy(ImVec2(railWidth, 0));
 
     if (!is_monitor_mode_) {
       ImGui::SameLine(0, 0);
       ImGui::Dummy(ImVec2(deleteButtonWidth, 0));
     }
+
+    DrawContinuousGrid(
+        draw_list, p_min.x + rungNumberWidth + railWidth, rail_top, cellWidth,
+        kLadderCellHeight * layout_scale, kLadderColumnCount,
+        GetLadderGridColor(is_monitor_mode_), std::max(1.0f, layout_scale));
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
@@ -315,6 +466,7 @@ void ProgrammingMode::RenderColumnHeader() {
 }
 
 void ProgrammingMode::RenderLadderDiagram() {
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
   for (size_t i = 0; i < ladder_program_.rungs.size(); ++i) {
     if (ladder_program_.rungs[i].isEndRung) {
       RenderEndRung(i);
@@ -322,6 +474,7 @@ void ProgrammingMode::RenderLadderDiagram() {
       RenderRung(i);
     }
   }
+  ImGui::PopStyleVar();
 }
 
 void ProgrammingMode::RenderVerticalConnections() {
@@ -337,12 +490,13 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
   if (ladder_program_.verticalConnections.empty())
     return;
 
+  const float layout_scale = GetLayoutScale();
   ImDrawList* draw_list = ImGui::GetWindowDrawList();
   ImVec2 windowPos = ImGui::GetWindowPos();
   ImVec2 contentMin = ImGui::GetWindowContentRegionMin();
 
-  float rungNumberWidth = 80.0f;
-  float railWidth = 22.0f;
+  float rungNumberWidth = 80.0f * layout_scale;
+  float railWidth = 22.0f * layout_scale;
 
   // [PPT: ????????????????????????????? for????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
   for (const auto& connection : ladder_program_.verticalConnections) {
@@ -361,14 +515,11 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
     // [PPT: ????????????????????????2 - React ???????????????????????????????????????????????????? ???????????????????????????????
     // ??????????? ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
     float lineX = windowPos.x + contentMin.x + rungNumberWidth + railWidth +
-                  (connection.x / 12.0f) * cellAreaWidth;
+                  (connection.x / static_cast<float>(kLadderColumnCount)) *
+                      cellAreaWidth;
 
-    float rungCenterY = windowPos.y + contentMin.y + 25.0f;  // ?????????????????????Y ?????????????
-
-    // [PPT: ????????????????????????????? if-else ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
-    ImU32 lineColor = is_monitor_mode_ ? IM_COL32(107, 114, 128, 255)
-                                      :                  // React??#6B7280
-                          IM_COL32(156, 163, 175, 255);  // React??#9CA3AF
+    float rungCenterY = windowPos.y + contentMin.y + 25.0f * layout_scale;
+    ImU32 lineColor = GetVerticalConnectionColor(is_monitor_mode_);
 
     // ?????????????????????????????????????????????????????????????????????????????????????????????????????
     // ????????????????????????????????????????????????????????????????????????????? ??????????????
@@ -383,21 +534,22 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
 
     // ????????????????????????????????????????????????????????? ??????????????
     if (rungIndex > minRung) {
-      lineStartY = windowPos.y + contentMin.y - 2.5f;  // ??????????????????????????
+      lineStartY = windowPos.y + contentMin.y - 2.5f * layout_scale;
     }
 
     // ????????????????????????????????????????????????????????????? ??????????????
     if (rungIndex < maxRung) {
-      lineEndY =
-          windowPos.y + contentMin.y + 52.5f;  // ??????????????????????????(50px + 2.5px)
+      lineEndY = windowPos.y + contentMin.y + 52.5f * layout_scale;
     }
 
     // ???????????????????????????????????????????????
+    const float line_thickness = std::max(1.5f, 2.0f * layout_scale);
     draw_list->AddLine(ImVec2(lineX, lineStartY), ImVec2(lineX, lineEndY),
-                       lineColor, 2.0f);
+                       lineColor, line_thickness);
 
-    // ?????????????????????????????????????????????????????????????????????
-    draw_list->AddCircleFilled(ImVec2(lineX, rungCenterY), 2.0f, lineColor);
+    const float node_radius = std::max(1.8f, 2.2f * layout_scale);
+    draw_list->AddCircleFilled(ImVec2(lineX, rungCenterY), node_radius,
+                               lineColor);
   }
 }
 
@@ -416,7 +568,8 @@ void ProgrammingMode::RenderRung(int rungIndex) {
   }
   ImGui::PushStyleColor(ImGuiCol_ChildBg, bgColor);
 
-  if (ImGui::BeginChild("Rung", ImVec2(0, 50 * layout_scale), false,
+  if (ImGui::BeginChild("Rung", ImVec2(0, kLadderRungHeight * layout_scale),
+                        false,
                         ImGuiWindowFlags_NoScrollbar)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float rungNumberWidth = 80.0f * layout_scale;
@@ -425,9 +578,18 @@ void ProgrammingMode::RenderRung(int rungIndex) {
         is_monitor_mode_ ? 0.0f : 40.0f * layout_scale;
     float cellAreaWidth =
         availableWidth - rungNumberWidth - (railWidth * 2) - deleteButtonWidth;
-    float cellWidth = cellAreaWidth / 12.0f;
-
-    RenderVerticalConnectionsForRung(rungIndex, cellAreaWidth);
+    float cellWidth = cellAreaWidth / static_cast<float>(kLadderColumnCount);
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    ImVec2 p_min = ImGui::GetWindowPos();
+    const float rail_top = p_min.y +
+                           (kLadderRungHeight - kLadderCellHeight) * 0.5f *
+                               layout_scale;
+    const float rail_bottom = rail_top + kLadderCellHeight * layout_scale;
+    const float left_rail_x = p_min.x + rungNumberWidth + railWidth;
+    const float right_rail_x = left_rail_x + cellAreaWidth;
+    const float rail_thickness = std::max(2.0f, 2.4f * layout_scale);
+    const float rail_overlap = std::max(0.5f, kRailSeamOverlap * layout_scale);
+    const ImU32 rail_color = GetLadderRailColor(is_monitor_mode_);
 
     ImGui::SetCursorPos(ImVec2(10 * layout_scale, 15 * layout_scale));
     char num[5];
@@ -437,21 +599,36 @@ void ProgrammingMode::RenderRung(int rungIndex) {
       ImGui::SameLine();
       ImGui::TextColored(ImVec4(0.8f, 0.1f, 0.1f, 1.0f), "!");
     }
-    ImGui::SameLine(80 * layout_scale);
-    ImGui::TextUnformatted("|");
-    ImGui::SameLine(102 * layout_scale);
+    ImGui::SetCursorPos(
+        ImVec2((80.0f + 22.0f) * layout_scale,
+               (kLadderRungHeight - kLadderCellHeight) * 0.5f * layout_scale));
 
-    for (int i = 0; i < 12; ++i) {
+    for (int i = 0; i < kLadderColumnCount; ++i) {
       RenderLadderCell(rungIndex, i, cellWidth);
-      if (i < 11)
-        ImGui::SameLine(0, 1 * layout_scale);
+      if (i < kLadderColumnCount - 1)
+        ImGui::SameLine(0, 0);
     }
-    ImGui::SameLine(0, 5 * layout_scale);
-    ImGui::TextUnformatted("|");
+
+    DrawContinuousGrid(
+        draw_list, p_min.x + rungNumberWidth + railWidth, rail_top, cellWidth,
+        kLadderCellHeight * layout_scale, kLadderColumnCount,
+        GetLadderGridColor(is_monitor_mode_), std::max(1.0f, layout_scale));
+
+    RenderVerticalConnectionsForRung(rungIndex, cellAreaWidth);
+    DrawVerticalRailLine(draw_list, left_rail_x, rail_top - rail_overlap,
+                         rail_bottom + rail_overlap, rail_color,
+                         rail_thickness);
+    DrawVerticalRailLine(draw_list, right_rail_x, rail_top - rail_overlap,
+                         rail_bottom + rail_overlap, rail_color,
+                         rail_thickness);
+
+    ImGui::SameLine(0, 0);
+    ImGui::Dummy(ImVec2(railWidth, 0));
     if (!is_monitor_mode_) {
-      ImGui::SameLine();
+      ImGui::SameLine(0, 0);
       if (ImGui::Button("X",
-                        ImVec2(28 * layout_scale, 35 * layout_scale))) {
+                        ImVec2(28 * layout_scale,
+                               kLadderCellHeight * layout_scale))) {
         pending_action_.type = PendingActionType::DELETE_RUNG;
         pending_action_.rungIndex = rungIndex;
       }
@@ -459,7 +636,6 @@ void ProgrammingMode::RenderRung(int rungIndex) {
   }
   ImGui::EndChild();
   ImGui::PopStyleColor();
-  ImGui::Separator();
   ImGui::PopID();
 }
 
@@ -471,7 +647,8 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
                             ? ImVec4(1.0f, 1.0f, 0.8f, 1.0f)
                             : ImVec4(0.92f, 0.92f, 0.92f, 1.0f));
 
-  if (ImGui::BeginChild("EndRung", ImVec2(0, 50 * layout_scale), false,
+  if (ImGui::BeginChild("EndRung",
+                        ImVec2(0, kLadderRungHeight * layout_scale), false,
                         ImGuiWindowFlags_NoScrollbar)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float rungNumberWidth = 80.0f * layout_scale;
@@ -483,6 +660,21 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImVec2 p_min = ImGui::GetWindowPos();
+    const float rail_top = p_min.y +
+                           (kLadderRungHeight - kLadderCellHeight) * 0.5f *
+                               layout_scale;
+    const float rail_bottom = rail_top + kLadderCellHeight * layout_scale;
+    const float left_rail_x = p_min.x + rungNumberWidth + railWidth;
+    const float right_rail_x = left_rail_x + cellAreaWidth;
+    const float rail_thickness = std::max(2.0f, 2.4f * layout_scale);
+    const float rail_overlap = std::max(0.5f, kRailSeamOverlap * layout_scale);
+    const ImU32 rail_color = GetLadderRailColor(is_monitor_mode_);
+    DrawVerticalRailLine(draw_list, left_rail_x, rail_top - rail_overlap,
+                         rail_bottom + rail_overlap, rail_color,
+                         rail_thickness);
+    DrawVerticalRailLine(draw_list, right_rail_x, rail_top - rail_overlap,
+                         rail_bottom + rail_overlap, rail_color,
+                         rail_thickness);
 
     if (ImGui::InvisibleButton("##EndSelect", ImVec2(-1, -1))) {
       selected_rung_ = rungIndex;
@@ -492,14 +684,12 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
     ImGui::SetCursorPos(ImVec2(10 * layout_scale, 15 * layout_scale));
     ImGui::TextUnformatted("END");
 
-    ImGui::SetCursorPos(ImVec2(80 * layout_scale, 15 * layout_scale));
-    ImGui::TextUnformatted("|");
-
     float line_y = p_min.y + 25.0f * layout_scale;
-    float line_start_x = p_min.x + 102.0f * layout_scale;
+    float line_start_x = p_min.x + rungNumberWidth + railWidth;
     float line_end_x = line_start_x + cellAreaWidth;
     draw_list->AddLine(ImVec2(line_start_x, line_y), ImVec2(line_end_x, line_y),
-                       IM_COL32(100, 100, 100, 255), 2.0f);
+                       IM_COL32(88, 88, 88, 255),
+                       std::max(1.5f, 2.0f * layout_scale));
 
     const char* endText = "[END]";
     ImVec2 endTextSize = ImGui::CalcTextSize(endText);
@@ -512,14 +702,13 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
         ImGui::GetColorU32(ImGuiCol_ChildBg));
     draw_list->AddText(textPos, IM_COL32_BLACK, endText);
 
-    ImGui::SetCursorPos(ImVec2(line_end_x + 5 * layout_scale,
-                               15 * layout_scale));
-    ImGui::TextUnformatted("|");
-
     if (!is_monitor_mode_) {
-      ImGui::SameLine();
+      ImGui::SetCursorPos(ImVec2(rungNumberWidth + railWidth + cellAreaWidth +
+                                     railWidth,
+                                 (kLadderRungHeight - kLadderCellHeight) * 0.5f *
+                                     layout_scale));
       ImGui::Dummy(
-          ImVec2(deleteButtonWidth, 35 * layout_scale));
+          ImVec2(deleteButtonWidth, kLadderCellHeight * layout_scale));
     }
   }
   ImGui::EndChild();
@@ -539,7 +728,7 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
                         GetInstructionColor(isSelected, instruction.isActive));
 
   if (ImGui::Button("##cell",
-                    ImVec2(cellWidth, 35 * layout_scale))) {
+                    ImVec2(cellWidth, kLadderCellHeight * layout_scale))) {
     selected_rung_ = rungIndex;
     selected_cell_ = cellIndex;
   }
@@ -548,24 +737,31 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
     ImVec2 p_min = ImGui::GetItemRectMin();
     ImVec2 p_max = ImGui::GetItemRectMax();
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    const float wire_thickness = std::max(1.0f, 2.0f * layout_scale);
+    if (isSelected) {
+      draw_list->AddRect(p_min, p_max, IM_COL32(130, 118, 62, 255), 0.0f, 0,
+                         2.0f);
+    }
     bool isTimerCounter = (instruction.type == LadderInstructionType::TON ||
                            instruction.type == LadderInstructionType::CTU ||
                            instruction.type == LadderInstructionType::RST_TMR_CTR);
     bool isBkrst = (instruction.type == LadderInstructionType::BKRST);
 
     if (instruction.type == LadderInstructionType::HLINE) {
-      float centerY = p_min.y + 17.5f * layout_scale;
+      float centerY = p_min.y + (kLadderCellHeight * 0.5f) * layout_scale;
       ImU32 lineColor = instruction.isActive ? IM_COL32(100, 100, 100, 255)
                                              : IM_COL32(50, 50, 50, 255);
       draw_list->AddLine(ImVec2(p_min.x, centerY), ImVec2(p_max.x, centerY),
-                         lineColor, 2.0f);
+                         lineColor, wire_thickness);
     } else if (isTimerCounter) {
       const char* symbol = GetInstructionSymbol(instruction.type);
       float fontSize = ImGui::GetFontSize();
       float topY = p_min.y + 1.0f * layout_scale;
-      float midY = p_min.y + (35.0f * layout_scale - fontSize) * 0.5f;
+      float midY =
+          p_min.y + (kLadderCellHeight * layout_scale - fontSize) * 0.5f;
       float bottomY =
-          p_min.y + 35.0f * layout_scale - fontSize - 1.0f * layout_scale;
+          p_min.y + kLadderCellHeight * layout_scale - fontSize -
+          1.0f * layout_scale;
 
       draw_list->AddText(ImVec2(p_min.x + 2.0f, topY), IM_COL32_BLACK, symbol);
 
@@ -596,18 +792,38 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
       if (!instruction.preset.empty()) {
         ImVec2 preset_size = ImGui::CalcTextSize(instruction.preset.c_str());
         float bottomY =
-            p_min.y + 35.0f * layout_scale - preset_size.y - 1.0f * layout_scale;
+            p_min.y + kLadderCellHeight * layout_scale - preset_size.y -
+            1.0f * layout_scale;
         draw_list->AddText(
             ImVec2(p_min.x + (cellWidth - preset_size.x) * 0.5f, bottomY),
             IM_COL32(20, 20, 200, 255), instruction.preset.c_str());
       }
     } else {
-      const char* symbol = GetInstructionSymbol(instruction.type);
-      ImVec2 text_size = ImGui::CalcTextSize(symbol);
-      draw_list->AddText(
-          ImVec2(p_min.x + (cellWidth - text_size.x) * 0.5f,
-                 p_min.y + (35 * layout_scale - text_size.y) * 0.5f),
-                         IM_COL32_BLACK, symbol);
+      bool renderedSymbol = false;
+      if (instruction.type == LadderInstructionType::XIC ||
+          instruction.type == LadderInstructionType::XIO) {
+        ImU32 lineColor = instruction.isActive ? IM_COL32(100, 100, 100, 255)
+                                               : IM_COL32(50, 50, 50, 255);
+        ImU32 slashColor = lineColor;
+        DrawLadderContactSymbol(draw_list, p_min, p_max, instruction.type,
+                                lineColor, slashColor, wire_thickness);
+        renderedSymbol = true;
+      } else if (instruction.type == LadderInstructionType::OTE) {
+        ImU32 lineColor = instruction.isActive ? IM_COL32(100, 100, 100, 255)
+                                               : IM_COL32(50, 50, 50, 255);
+        DrawOutputCoilSymbol(draw_list, p_min, p_max, lineColor,
+                             wire_thickness);
+        renderedSymbol = true;
+      }
+      if (!renderedSymbol) {
+        const char* symbol = GetInstructionSymbol(instruction.type);
+        ImVec2 text_size = ImGui::CalcTextSize(symbol);
+        draw_list->AddText(
+            ImVec2(p_min.x + (cellWidth - text_size.x) * 0.5f,
+                   p_min.y + (kLadderCellHeight * layout_scale - text_size.y) *
+                                 0.5f),
+            IM_COL32_BLACK, symbol);
+      }
     }
 
     if (!isTimerCounter && !isBkrst) {
@@ -641,6 +857,7 @@ void ProgrammingMode::RenderDeviceMonitor() {
       RenderKeyboardHelp();
       ImGui::Separator();
       RenderCursorInfo();
+      RenderRungMemoEditor();
     } else {
       std::vector<std::string> usedM, usedT, usedC;
       GetUsedDevices(usedM, usedT, usedC);
@@ -765,6 +982,9 @@ void ProgrammingMode::RenderKeyboardHelp() {
   ImGui::BulletText(
       "%s", TR("ui.programming.shortcut_ctrl_y",
                "Ctrl+Y / Ctrl+Shift+Z: Redo"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_memo_popup",
+               "`: Open memo popup"));
 }
 
 void ProgrammingMode::RenderCursorInfo() {
@@ -774,6 +994,129 @@ void ProgrammingMode::RenderCursorInfo() {
                "ui.programming.cursor_pos_fmt", "Rung %04d, Cell: %d",
                selected_rung_, selected_cell_);
   ImGui::TextUnformatted(cursor_buf);
+}
+
+void ProgrammingMode::RenderRungMemoEditor() {
+  const float layout_scale = GetLayoutScale();
+  ImGui::Separator();
+  ImGui::Spacing();
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.985f, 0.985f, 0.99f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.75f, 0.75f, 0.80f, 1.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f * layout_scale);
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
+
+  if (!ImGui::BeginChild("RungMemoCard",
+                         ImVec2(0, 110.0f * layout_scale), true,
+                         ImGuiWindowFlags_NoScrollbar)) {
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+    return;
+  }
+
+  ImGui::Text("%s", TR("ui.programming.rung_memo", "Rung Memo"));
+
+  if (selected_rung_ < 0 ||
+      selected_rung_ >= static_cast<int>(ladder_program_.rungs.size())) {
+    ImGui::TextDisabled("%s", TR("ui.programming.rung_memo_none",
+                                 "No rung selected."));
+    memo_edit_rung_ = -1;
+    rung_memo_buffer_[0] = '\0';
+    memo_edit_session_active_ = false;
+    focus_rung_memo_next_frame_ = false;
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+    return;
+  }
+
+  Rung& rung = ladder_program_.rungs[static_cast<size_t>(selected_rung_)];
+  if (rung.isEndRung) {
+    ImGui::TextDisabled("%s", TR("ui.programming.rung_memo_end",
+                                 "END rung memo is disabled."));
+    memo_edit_rung_ = -1;
+    rung_memo_buffer_[0] = '\0';
+    memo_edit_session_active_ = false;
+    focus_rung_memo_next_frame_ = false;
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+    return;
+  }
+
+  if (memo_edit_rung_ != selected_rung_ ||
+      (!memo_edit_session_active_ &&
+       std::string(rung_memo_buffer_) != rung.memo)) {
+    memo_edit_rung_ = selected_rung_;
+    std::strncpy(rung_memo_buffer_, rung.memo.c_str(),
+                 sizeof(rung_memo_buffer_) - 1);
+    rung_memo_buffer_[sizeof(rung_memo_buffer_) - 1] = '\0';
+    memo_edit_session_active_ = false;
+  }
+
+  char memo_label[64] = {0};
+  FormatString(memo_label, sizeof(memo_label), "ui.programming.rung_memo_label",
+               "Rung %04d memo", selected_rung_);
+  ImGui::TextUnformatted(memo_label);
+  ImGui::SameLine();
+  char memo_count[32] = {0};
+  FormatString(memo_count, sizeof(memo_count), "ui.programming.rung_memo_count",
+               "%d/255", static_cast<int>(std::strlen(rung_memo_buffer_)));
+  float countWidth = ImGui::CalcTextSize(memo_count).x;
+  float sameLinePos =
+      ImGui::GetCursorPosX() + ImGui::GetColumnWidth() - countWidth - 12.0f;
+  if (sameLinePos > ImGui::GetCursorPosX()) {
+    ImGui::SameLine(sameLinePos);
+  } else {
+    ImGui::SameLine();
+  }
+  ImGui::TextDisabled("%s", memo_count);
+
+  if (focus_rung_memo_next_frame_) {
+    ImGui::SetKeyboardFocusHere();
+    focus_rung_memo_next_frame_ = false;
+  }
+  ImGui::SetNextItemWidth(-1.0f);
+  bool edited = ImGui::InputTextWithHint(
+      "##RungMemoInput",
+      TR("ui.programming.rung_memo_placeholder",
+         "Type memo for this rung..."),
+      rung_memo_buffer_, sizeof(rung_memo_buffer_),
+      ImGuiInputTextFlags_AutoSelectAll);
+  if (edited) {
+    std::string newMemo = rung_memo_buffer_;
+    if (newMemo != rung.memo) {
+      if (!memo_edit_session_active_) {
+        PushProgrammingUndoState();
+        memo_edit_session_active_ = true;
+      }
+      rung.memo = newMemo;
+    }
+  }
+
+  if (!ImGui::IsItemActive()) {
+    if (!focus_rung_memo_next_frame_) {
+      memo_edit_session_active_ = false;
+    }
+  }
+
+  ImGui::Spacing();
+  if (ImGui::Button(TR("ui.programming.rung_memo_clear", "Clear"),
+                    ImVec2(70.0f * layout_scale, 0))) {
+    if (!rung.memo.empty()) {
+      PushProgrammingUndoState();
+      rung.memo.clear();
+      rung_memo_buffer_[0] = '\0';
+      memo_edit_session_active_ = false;
+    }
+  }
+  ImGui::SameLine();
+  ImGui::TextDisabled("%s", TR("ui.programming.rung_memo_hint",
+                               "Saved with project file"));
+  ImGui::Dummy(ImVec2(0.0f, 6.0f * layout_scale));
+  ImGui::EndChild();
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor(2);
 }
 
 void ProgrammingMode::RenderSimulationControl() {
@@ -908,11 +1251,17 @@ void ProgrammingMode::RenderStatusBar(bool isPlcRunning) {
 }
 
 void ProgrammingMode::RenderAddressPopup() {
-  if (show_address_popup_ && !ImGui::IsPopupOpen("Address Input")) {
-    ImGui::OpenPopup("Address Input");
+  const std::string popup_name =
+      std::string(TR("ui.programming.address_popup_title", "Address Input")) +
+      "###AddressInputPopup";
+  const char* popup_id = popup_name.c_str();
+  const char* address_label = TR("ui.programming.address_label", "Address");
+
+  if (show_address_popup_ && !ImGui::IsPopupOpen(popup_id)) {
+    ImGui::OpenPopup(popup_id);
   }
 
-  if (ImGui::BeginPopupModal("Address Input", &show_address_popup_,
+  if (ImGui::BeginPopupModal(popup_id, &show_address_popup_,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     const float layout_scale = GetLayoutScale();
     char prompt_buf[128] = {0};
@@ -927,7 +1276,7 @@ void ProgrammingMode::RenderAddressPopup() {
       ImGui::SetKeyboardFocusHere();
     }
 
-    if (ImGui::InputText("Address", temp_address_buffer_,
+    if (ImGui::InputText(address_label, temp_address_buffer_,
                          sizeof(temp_address_buffer_),
                          ImGuiInputTextFlags_EnterReturnsTrue)) {
       ConfirmInstruction();
@@ -944,25 +1293,152 @@ void ProgrammingMode::RenderAddressPopup() {
     }
 
     ImGui::Spacing();
-    if (ImGui::Button("OK", ImVec2(120 * layout_scale, 0))) {
+    if (ImGui::Button(TR("ui.common.ok", "OK"), ImVec2(120 * layout_scale, 0))) {
       ConfirmInstruction();
       ImGui::CloseCurrentPopup();
       show_address_popup_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120 * layout_scale, 0))) {
+    if (ImGui::Button(TR("ui.common.cancel", "Cancel"),
+                      ImVec2(120 * layout_scale, 0))) {
       ImGui::CloseCurrentPopup();
       show_address_popup_ = false;
     }
     ImGui::EndPopup();
   }
 }
-void ProgrammingMode::RenderVerticalDialog() {
-  if (show_vertical_dialog_ && !ImGui::IsPopupOpen("Vertical Connection")) {
-    ImGui::OpenPopup("Vertical Connection");
+
+void ProgrammingMode::RenderRungMemoPopup() {
+  const std::string popup_name =
+      std::string(TR("ui.programming.rung_memo_popup_window",
+                     "Rung Memo Input")) +
+      "###RungMemoInputPopup";
+  const char* popup_id = popup_name.c_str();
+
+  if (show_rung_memo_popup_ && !ImGui::IsPopupOpen(popup_id)) {
+    ImGui::OpenPopup(popup_id);
   }
 
-  if (ImGui::BeginPopupModal("Vertical Connection", &show_vertical_dialog_,
+  if (ImGui::BeginPopupModal(popup_id, &show_rung_memo_popup_,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    const float layout_scale = GetLayoutScale();
+
+    bool valid_target =
+        rung_memo_popup_target_rung_ >= 0 &&
+        rung_memo_popup_target_rung_ <
+            static_cast<int>(ladder_program_.rungs.size()) &&
+        !ladder_program_.rungs[static_cast<size_t>(rung_memo_popup_target_rung_)]
+             .isEndRung;
+
+    if (!valid_target) {
+      ImGui::TextDisabled("%s", TR("ui.programming.rung_memo_none",
+                                   "No rung selected."));
+      if (ImGui::Button(TR("ui.common.close", "Close"),
+                        ImVec2(120 * layout_scale, 0))) {
+        show_rung_memo_popup_ = false;
+        rung_memo_popup_buffer_[0] = '\0';
+        rung_memo_popup_target_rung_ = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        show_rung_memo_popup_ = false;
+        rung_memo_popup_buffer_[0] = '\0';
+        rung_memo_popup_target_rung_ = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+      return;
+    }
+
+    char title_buf[96] = {0};
+    FormatString(title_buf, sizeof(title_buf),
+                 "ui.programming.rung_memo_popup_title",
+                 "Rung %04d memo", rung_memo_popup_target_rung_);
+    ImGui::TextUnformatted(title_buf);
+    ImGui::Spacing();
+
+    if (ImGui::IsWindowAppearing()) {
+      ImGui::SetKeyboardFocusHere();
+    }
+
+    ImGui::SetNextItemWidth(380.0f * layout_scale);
+    bool submitted = ImGui::InputTextWithHint(
+        "##RungMemoPopupInput",
+        TR("ui.programming.rung_memo_placeholder",
+           "Type memo for this rung..."),
+        rung_memo_popup_buffer_, sizeof(rung_memo_popup_buffer_),
+        ImGuiInputTextFlags_EnterReturnsTrue);
+
+    char memo_count[32] = {0};
+    FormatString(memo_count, sizeof(memo_count), "ui.programming.rung_memo_count",
+                 "%d/255",
+                 static_cast<int>(std::strlen(rung_memo_popup_buffer_)));
+    ImGui::TextDisabled("%s", memo_count);
+
+    auto apply_popup_memo = [&]() {
+      Rung& rung = ladder_program_.rungs[static_cast<size_t>(
+          rung_memo_popup_target_rung_)];
+      std::string newMemo = rung_memo_popup_buffer_;
+      if (newMemo != rung.memo) {
+        PushProgrammingUndoState();
+        rung.memo = newMemo;
+      }
+      if (selected_rung_ == rung_memo_popup_target_rung_) {
+        std::strncpy(rung_memo_buffer_, newMemo.c_str(),
+                     sizeof(rung_memo_buffer_) - 1);
+        rung_memo_buffer_[sizeof(rung_memo_buffer_) - 1] = '\0';
+      }
+      memo_edit_rung_ = -1;
+      memo_edit_session_active_ = false;
+      focus_rung_memo_next_frame_ = false;
+      show_rung_memo_popup_ = false;
+      rung_memo_popup_buffer_[0] = '\0';
+      rung_memo_popup_target_rung_ = -1;
+      ImGui::CloseCurrentPopup();
+    };
+
+    if (submitted || ImGui::Button(TR("ui.common.apply", "Apply"),
+                                   ImVec2(120 * layout_scale, 0))) {
+      apply_popup_memo();
+      ImGui::EndPopup();
+      return;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button(TR("ui.common.cancel", "Cancel"),
+                      ImVec2(120 * layout_scale, 0))) {
+      show_rung_memo_popup_ = false;
+      rung_memo_popup_buffer_[0] = '\0';
+      rung_memo_popup_target_rung_ = -1;
+      ImGui::CloseCurrentPopup();
+      ImGui::EndPopup();
+      return;
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+      show_rung_memo_popup_ = false;
+      rung_memo_popup_buffer_[0] = '\0';
+      rung_memo_popup_target_rung_ = -1;
+      ImGui::CloseCurrentPopup();
+      ImGui::EndPopup();
+      return;
+    }
+
+    ImGui::EndPopup();
+  }
+}
+void ProgrammingMode::RenderVerticalDialog() {
+  const std::string popup_name =
+      std::string(TR("ui.programming.vertical_popup_title",
+                     "Vertical Connection")) +
+      "###VerticalConnectionPopup";
+  const char* popup_id = popup_name.c_str();
+
+  if (show_vertical_dialog_ && !ImGui::IsPopupOpen(popup_id)) {
+    ImGui::OpenPopup(popup_id);
+  }
+
+  if (ImGui::BeginPopupModal(popup_id, &show_vertical_dialog_,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     const float layout_scale = GetLayoutScale();
     char vertical_buf[128] = {0};
@@ -1019,13 +1495,15 @@ void ProgrammingMode::RenderVerticalDialog() {
     ImGui::TextUnformatted(vertical_buf);
 
     ImGui::Spacing();
-    if (ImGui::Button("Confirm", ImVec2(120 * layout_scale, 0))) {
+    if (ImGui::Button(TR("ui.common.confirm", "Confirm"),
+                      ImVec2(120 * layout_scale, 0))) {
       ConfirmVerticalConnection();
       ImGui::CloseCurrentPopup();
       show_vertical_dialog_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120 * layout_scale, 0))) {
+    if (ImGui::Button(TR("ui.common.cancel", "Cancel"),
+                      ImVec2(120 * layout_scale, 0))) {
       ImGui::CloseCurrentPopup();
       show_vertical_dialog_ = false;
     }
@@ -1068,11 +1546,14 @@ const char* ProgrammingMode::GetInstructionSymbol(
 }
 ImVec4 ProgrammingMode::GetInstructionColor(bool isSelected,
                                             bool isActive) const {
-  if (isSelected && !is_monitor_mode_)
-    return ImVec4(1.0f, 1.0f, 0.6f, 1.0f);
-  if (is_monitor_mode_ && isActive)
-    return ImVec4(0.4f, 0.8f, 1.0f, 1.0f);
-  return ImVec4(1.0f, 1.0f, 1.0f, 0.0f);
+  if (is_monitor_mode_) {
+    return isActive ? ImVec4(0.75f, 0.88f, 1.0f, 1.0f)
+                    : ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+  }
+  if (isSelected) {
+    return ImVec4(1.0f, 1.0f, 0.78f, 1.0f);
+  }
+  return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
 }  // namespace plc

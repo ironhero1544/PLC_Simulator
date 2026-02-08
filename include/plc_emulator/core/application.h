@@ -234,6 +234,7 @@ namespace plc {
         void Cleanup();
 
         void UpdatePortPositions();
+        float GetResolutionScale() const;
 
         void RenderUI();
 

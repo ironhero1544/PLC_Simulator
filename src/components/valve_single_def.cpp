@@ -62,6 +62,11 @@ void RenderValveSingle(ImDrawList* draw_list,
   if (zoom > 0.5f) {
     float text_scale = zoom / 1.3f;
     float font_size = 16.0f * text_scale;
+    const float max_font_size =
+        ImGui::GetFontSize() * std::max(1.0f, zoom * 0.75f);
+    if (font_size > max_font_size) {
+      font_size = max_font_size;
+    }
     const char* label = TR("component.valve.label_5_2", "5/2WAY");
     ImFont* font = ImGui::GetFont();
     ImVec2 text_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, label);

@@ -439,6 +439,12 @@ void Application::RenderUiSettingsMenu() {
                  static_cast<int>(monitor_refresh_rate_ + 0.5));
     ImGui::TextDisabled("%s", refresh_buf);
   }
+  char resolution_buf[96] = {0};
+  FormatString(resolution_buf, sizeof(resolution_buf),
+               "ui.settings.auto_resolution_scale_fmt",
+               "Auto Resolution Scale: %.2fx (1920x1080 base)",
+               GetResolutionScale());
+  ImGui::TextDisabled("%s", resolution_buf);
 
   if (ImGui::Button(TR("ui.settings.reset_defaults", "Reset Defaults"))) {
     SetDefaultUiSettings(&ui_settings_);

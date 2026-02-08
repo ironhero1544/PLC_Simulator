@@ -274,6 +274,10 @@ void DrawMeterSymbol(ImDrawList* draw_list,
     if (font_size < 8.0f) {
       font_size = 8.0f;
     }
+    const float max_font_size = ImGui::GetFontSize() * 2.0f;
+    if (font_size > max_font_size) {
+      font_size = max_font_size;
+    }
     ImVec2 top_size =
         ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, top_label);
     ImVec2 bot_size =

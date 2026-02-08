@@ -127,6 +127,7 @@ struct SimulatorState {
 struct Rung {
   int number = 0;
   std::vector<LadderInstruction> cells;
+  std::string memo;
   bool isEndRung = false;
   Rung() : cells(12) {}
 };
@@ -258,9 +259,11 @@ class ProgrammingMode {
   void RenderDeviceMonitor();
   void RenderKeyboardHelp();
   void RenderCursorInfo();
+  void RenderRungMemoEditor();
   void RenderSimulationControl();
   void RenderStatusBar(bool isPlcRunning);
   void RenderAddressPopup();
+  void RenderRungMemoPopup();
   void RenderVerticalDialog();
 
   float GetLayoutScale() const;
@@ -348,9 +351,16 @@ class ProgrammingMode {
   bool scan_time_initialized_ = false;
 
   bool show_address_popup_;
+  bool show_rung_memo_popup_ = false;
   bool show_vertical_dialog_;
   LadderInstructionType pending_instruction_type_;
   char temp_address_buffer_[64];
+  char rung_memo_buffer_[256] = {0};
+  char rung_memo_popup_buffer_[256] = {0};
+  int rung_memo_popup_target_rung_ = -1;
+  int memo_edit_rung_ = -1;
+  bool memo_edit_session_active_ = false;
+  bool focus_rung_memo_next_frame_ = false;
   int vertical_line_count_;
 
   bool is_dirty_ = false;

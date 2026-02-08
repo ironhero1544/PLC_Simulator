@@ -44,6 +44,8 @@ void Application::ProcessInput() {
         programming_mode_->HandleKeyboardInput(ImGuiKey_Delete);
       if (ImGui::IsKeyPressed(ImGuiKey_Insert, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_Insert);
+      if (ImGui::IsKeyPressed(ImGuiKey_GraveAccent, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_GraveAccent);
       if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
         programming_mode_->HandleKeyboardInput(ImGuiKey_Enter);

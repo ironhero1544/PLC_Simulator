@@ -5,6 +5,7 @@
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cstdlib>
 #include <limits>
 #include <map>
@@ -193,14 +194,57 @@ void to_upper(char* str) {
 }
 
 void ProgrammingMode::HandleKeyboardInput(int key) {
-  if (show_address_popup_ || show_vertical_dialog_)
+  const bool any_popup_open =
+      show_address_popup_ || show_rung_memo_popup_ || show_vertical_dialog_;
+  const bool is_f5_f6_f7 =
+      (key == ImGuiKey_F5 || key == ImGuiKey_F6 || key == ImGuiKey_F7);
+  if (any_popup_open) {
+    if (!is_monitor_mode_ && show_address_popup_ && is_f5_f6_f7) {
+      pending_instruction_type_ =
+          (key == ImGuiKey_F5)   ? LadderInstructionType::XIC
+          : (key == ImGuiKey_F6) ? LadderInstructionType::XIO
+                                 : LadderInstructionType::OTE;
+    }
     return;
+  }
 
   bool onEndRung =
       (selected_rung_ == static_cast<int>(ladder_program_.rungs.size()) - 1);
   ImGuiIO& io = ImGui::GetIO();
   bool shiftPressed = io.KeyShift;
   bool ctrlPressed = io.KeyCtrl;
+
+  if (!is_monitor_mode_ && key == ImGuiKey_GraveAccent) {
+    if (!ladder_program_.rungs.empty()) {
+      int targetRung = selected_rung_;
+      if (targetRung < 0 ||
+          targetRung >= static_cast<int>(ladder_program_.rungs.size())) {
+        targetRung = 0;
+      }
+      if (ladder_program_.rungs[static_cast<size_t>(targetRung)].isEndRung &&
+          ladder_program_.rungs.size() > 1) {
+        targetRung = static_cast<int>(ladder_program_.rungs.size()) - 2;
+      }
+      if (targetRung >= 0 &&
+          targetRung < static_cast<int>(ladder_program_.rungs.size()) &&
+          !ladder_program_.rungs[static_cast<size_t>(targetRung)].isEndRung) {
+        selected_rung_ = targetRung;
+        rung_memo_popup_target_rung_ = targetRung;
+        std::strncpy(rung_memo_popup_buffer_,
+                     ladder_program_.rungs[static_cast<size_t>(targetRung)]
+                         .memo.c_str(),
+                     sizeof(rung_memo_popup_buffer_) - 1);
+        rung_memo_popup_buffer_[sizeof(rung_memo_popup_buffer_) - 1] = '\0';
+        show_rung_memo_popup_ = true;
+        memo_edit_session_active_ = false;
+      }
+    }
+    return;
+  }
+
+  if (io.WantTextInput) {
+    return;
+  }
 
   if (ctrlPressed) {
     if (key == ImGuiKey_Z) {

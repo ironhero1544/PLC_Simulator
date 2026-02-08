@@ -565,8 +565,15 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/README_ja.md")
             DESTINATION ".")
 endif()
 
+set(PLC_LICENSE_FILE "")
 if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
-    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt"
+    set(PLC_LICENSE_FILE "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE")
+    set(PLC_LICENSE_FILE "${CMAKE_SOURCE_DIR}/LICENSE")
+endif()
+
+if(PLC_LICENSE_FILE)
+    install(FILES "${PLC_LICENSE_FILE}"
             DESTINATION ".")
 endif()
 
@@ -575,11 +582,12 @@ set(CPACK_PACKAGE_VENDOR "ironhero")
 set(CPACK_PACKAGE_CONTACT "ironhero1544@users.noreply.github.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "PLC wiring/programming simulator with custom physics engine")
-set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_VERSION "1.0.1")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "PLCSimulator")
 set(CPACK_MONOLITHIC_INSTALL ON)
-set(CPACK_RESOURCE_FILE_LICENSE
-    "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
+if(PLC_LICENSE_FILE)
+    set(CPACK_RESOURCE_FILE_LICENSE "${PLC_LICENSE_FILE}")
+endif()
 
 if(WIN32)
     # Try NSIS installer first, and provide ZIP as fallback output.

@@ -37,6 +37,7 @@ ProgrammingMode::ProgrammingMode(plc::Application* app)
       has_compile_attempted_(false),
 
       show_address_popup_(false),
+      show_rung_memo_popup_(false),
 
       show_vertical_dialog_(false),
 
@@ -45,6 +46,12 @@ ProgrammingMode::ProgrammingMode(plc::Application* app)
       vertical_line_count_(1) {
 
   temp_address_buffer_[0] = '\0';
+  rung_memo_buffer_[0] = '\0';
+  rung_memo_popup_buffer_[0] = '\0';
+  rung_memo_popup_target_rung_ = -1;
+  memo_edit_rung_ = -1;
+  memo_edit_session_active_ = false;
+  focus_rung_memo_next_frame_ = false;
 
 
 
@@ -702,11 +709,18 @@ void ProgrammingMode::SetLadderProgram(const LadderProgram& program) {
   selected_rung_ = 0;
 
   selected_cell_ = 0;
+  memo_edit_rung_ = -1;
+  memo_edit_session_active_ = false;
+  rung_memo_buffer_[0] = '\0';
+  focus_rung_memo_next_frame_ = false;
 
 
 
 
   pending_action_.type = PendingActionType::NONE;
+  show_rung_memo_popup_ = false;
+  rung_memo_popup_buffer_[0] = '\0';
+  rung_memo_popup_target_rung_ = -1;
 
 
 
@@ -958,6 +972,7 @@ LadderProgram ProgrammingMode::DeepCopyLadderProgram(
     Rung copyRung;
 
     copyRung.number = rung.number;
+    copyRung.memo = rung.memo;
 
     copyRung.isEndRung = rung.isEndRung;
 
@@ -1224,6 +1239,13 @@ void ProgrammingMode::UndoProgrammingState() {
       0, std::min(state.selected_rung,
                   static_cast<int>(ladder_program_.rungs.size()) - 1));
   selected_cell_ = std::max(0, std::min(state.selected_cell, 11));
+  memo_edit_rung_ = -1;
+  memo_edit_session_active_ = false;
+  rung_memo_buffer_[0] = '\0';
+  focus_rung_memo_next_frame_ = false;
+  show_rung_memo_popup_ = false;
+  rung_memo_popup_buffer_[0] = '\0';
+  rung_memo_popup_target_rung_ = -1;
   InitializeTimersAndCountersFromProgram();
   MarkDirty();
 }
@@ -1245,6 +1267,13 @@ void ProgrammingMode::RedoProgrammingState() {
       0, std::min(state.selected_rung,
                   static_cast<int>(ladder_program_.rungs.size()) - 1));
   selected_cell_ = std::max(0, std::min(state.selected_cell, 11));
+  memo_edit_rung_ = -1;
+  memo_edit_session_active_ = false;
+  rung_memo_buffer_[0] = '\0';
+  focus_rung_memo_next_frame_ = false;
+  show_rung_memo_popup_ = false;
+  rung_memo_popup_buffer_[0] = '\0';
+  rung_memo_popup_target_rung_ = -1;
   InitializeTimersAndCountersFromProgram();
   MarkDirty();
 }

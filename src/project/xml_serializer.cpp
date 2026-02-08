@@ -190,6 +190,7 @@ std::string XMLSerializer::SerializeRung(const Rung& rung, int index) const {
   std::stringstream xml;
   xml << "    <Rung index=\"" << index << "\" number=\"" << rung.number
       << "\" isEndRung=\"" << (rung.isEndRung ? "true" : "false") << "\">\n";
+  xml << "      <Memo>" << EscapeXMLString(rung.memo) << "</Memo>\n";
   xml << "      <Cells count=\"" << rung.cells.size() << "\">\n";
 
   for (size_t i = 0; i < rung.cells.size(); ++i) {
@@ -308,6 +309,12 @@ bool XMLSerializer::ParseRungs(const std::string& xmlContent,
 bool XMLSerializer::ParseRung(const std::string& rungXML, Rung& rung) {
   rung.number = std::stoi(GetXMLAttribute(rungXML, "number"));
   rung.isEndRung = (GetXMLAttribute(rungXML, "isEndRung") == "true");
+  std::string memoXML = ExtractXMLTag(rungXML, "Memo");
+  if (!memoXML.empty()) {
+    rung.memo = UnescapeXMLString(GetXMLContent(memoXML));
+  } else {
+    rung.memo.clear();
+  }
 
   std::string cellsSection = ExtractXMLTag(rungXML, "Cells");
   if (cellsSection.empty()) {

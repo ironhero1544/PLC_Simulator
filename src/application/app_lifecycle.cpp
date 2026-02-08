@@ -667,7 +667,7 @@ bool Application::InitializeImGui() {
   ImFontConfig font_config;
 
   font_config.PixelSnapH = true;
-  float font_size = 16.0f * ui_settings_.font_scale;
+  float font_size = 16.0f * ui_settings_.font_scale * GetResolutionScale();
 
   static const ImWchar korean_ranges[] = {
 
