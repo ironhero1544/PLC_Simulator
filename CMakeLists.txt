@@ -582,7 +582,7 @@ set(CPACK_PACKAGE_VENDOR "ironhero")
 set(CPACK_PACKAGE_CONTACT "ironhero1544@users.noreply.github.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "PLC wiring/programming simulator with custom physics engine")
-set(CPACK_PACKAGE_VERSION "1.0.1")
+set(CPACK_PACKAGE_VERSION "1.0.2")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "PLCSimulator")
 set(CPACK_MONOLITHIC_INSTALL ON)
 if(PLC_LICENSE_FILE)

@@ -337,6 +337,55 @@ void RenderMeterValve(ImDrawList* draw_list,
     meter_in = comp.internalStates.at(state_keys::kMeterMode) < 0.5f;
   }
 
+  ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+  ImVec2 mouse_unrotated =
+      UndoComponentTransform(comp, mouse_pos, display_center);
+
+  const char* indicator_label = meter_in ? "IN" : "OUT";
+  float text_scale = zoom / 1.3f;
+  float indicator_font_size = 10.0f * text_scale;
+  const float max_indicator_font =
+      ImGui::GetFontSize() * std::max(1.0f, zoom * 0.75f);
+  if (indicator_font_size > max_indicator_font) {
+    indicator_font_size = max_indicator_font;
+  }
+  ImVec2 indicator_text_size = ImGui::GetFont()->CalcTextSizeA(
+      indicator_font_size, FLT_MAX, 0.0f, indicator_label);
+
+  ImVec2 indicator_anchor = {pos.x + 39.0f * zoom, pos.y + 18.0f * zoom};
+  float indicator_width = 16.0f * zoom;
+  float indicator_height = 9.0f * zoom;
+  if (indicator_width < 7.0f) {
+    indicator_width = 7.0f;
+  }
+  if (indicator_height < 8.0f) {
+    indicator_height = 6.0f;
+  }
+  ImVec2 indicator_min = {indicator_anchor.x - indicator_width * 0.5f,
+                          indicator_anchor.y - indicator_height * 0.5f};
+  ImVec2 indicator_max = {indicator_anchor.x + indicator_width * 0.5f,
+                          indicator_anchor.y + indicator_height * 0.5f};
+  float indicator_rounding = 1.5f * zoom;
+  if (indicator_rounding < 2.0f) {
+    indicator_rounding = 2.0f;
+  }
+  bool indicator_hover =
+      IsPointInsideRect(mouse_unrotated, indicator_min, indicator_max);
+
+  ImU32 indicator_fill = IM_COL32(255, 255, 255, 255);
+  ImU32 indicator_border =
+      indicator_hover ? IM_COL32(20, 20, 20, 255) : IM_COL32(0, 0, 0, 255);
+  draw_list->AddRectFilled(indicator_min, indicator_max, indicator_fill,
+                           indicator_rounding);
+  draw_list->AddRect(indicator_min, indicator_max, indicator_border,
+                     indicator_rounding, 0, 1.0f);
+
+  ImVec2 indicator_text_pos = {
+      (indicator_min.x + indicator_max.x) * 0.5f - indicator_text_size.x * 0.5f,
+      (indicator_min.y + indicator_max.y) * 0.5f - indicator_text_size.y * 0.5f};
+  draw_list->AddText(ImGui::GetFont(), indicator_font_size, indicator_text_pos,
+                     indicator_border, indicator_label);
+
   float arrow_size = 7.0f * zoom;
   float arrow_padding = 2.0f * zoom;
   ImVec2 arrow_min = {pos.x + size.x - arrow_padding - arrow_size,
@@ -344,9 +393,6 @@ void RenderMeterValve(ImDrawList* draw_list,
   ImVec2 arrow_max = {arrow_min.x + arrow_size, arrow_min.y + arrow_size};
 
   float arrow_rounding = 2.0f * zoom;
-  ImVec2 mouse_pos = ImGui::GetIO().MousePos;
-  ImVec2 mouse_unrotated =
-      UndoComponentTransform(comp, mouse_pos, display_center);
   bool arrow_hover = IsPointInsideRect(mouse_unrotated, arrow_min, arrow_max);
   ImU32 arrow_fill =
       arrow_hover ? IM_COL32(230, 230, 230, 255) : IM_COL32(245, 245, 245, 255);
@@ -365,6 +411,16 @@ void RenderMeterValve(ImDrawList* draw_list,
 
   ImGui::PushID(comp.instanceId);
   auto& mutable_comp = const_cast<PlacedComponent&>(comp);
+  bool indicator_toggle_request =
+      ImGui::IsMouseClicked(ImGuiMouseButton_Left) && indicator_hover;
+  if (indicator_toggle_request) {
+    meter_in = !meter_in;
+    mutable_comp.internalStates[state_keys::kMeterMode] = meter_in ? 0.0f : 1.0f;
+    mutable_comp.internalStates[state_keys::kMeterMenuOpen] = 0.0f;
+    if (g_active_meter_menu_id == comp.instanceId) {
+      g_active_meter_menu_id = -1;
+    }
+  }
   bool menu_open =
       comp.internalStates.count(state_keys::kMeterMenuOpen) &&
       comp.internalStates.at(state_keys::kMeterMenuOpen) > 0.5f;

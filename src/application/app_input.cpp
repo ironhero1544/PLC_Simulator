@@ -100,10 +100,10 @@ void Application::ProcessInput() {
     bool deleteKeyDown = (glfwGetKey(window_, GLFW_KEY_DELETE) == GLFW_PRESS);
 
     if (deleteKeyDown && !deleteKeyPressed) {
-      if (selected_component_id_ != -1)
+      if (selected_component_id_ != -1 || HasSelectedComponents())
         DeleteSelectedComponent();
-      if (selected_wire_id_ != -1)
-        DeleteWire(selected_wire_id_);
+      if (selected_wire_id_ != -1 || HasSelectedWires())
+        DeleteSelectedWires();
     }
 
     deleteKeyPressed = deleteKeyDown;

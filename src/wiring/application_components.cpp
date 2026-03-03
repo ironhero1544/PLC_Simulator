@@ -262,9 +262,8 @@ void Application::HandleComponentDrag() {
   }
 }
 
-// src/Application_Components.cpp
-
-// ????? ???????? ?????? ??????????
+// Drop a palette component onto the canvas. Placement is stored as a top-left
+// anchor even though the cursor initially points at the component center.
 void Application::HandleComponentDrop(Position position) {
   std::cout << "DROP: isDrag=" << is_dragging_
             << " index=" << dragged_component_index_ << std::endl;
@@ -309,67 +308,154 @@ void Application::HandleComponentDrop(Position position) {
 }
 
 void Application::HandleComponentSelection(int instanceId) {
-  // ????? ??? ???
-  selected_wire_id_ = -1;
+  // Exclusive component selection clears any wire selection/edit state first.
+  ClearWireSelection();
   wire_edit_mode_ = WireEditMode::NONE;
   editing_wire_id_ = -1;
   editing_point_index_ = -1;
 
-  // [PPT: ??? ???] for??? ?????? ??? ??????????? ?????
-  // ???????????
+  ClearComponentSelection();
   for (auto& comp : placed_components_) {
-    comp.selected = (comp.instanceId == instanceId);
+    if (comp.instanceId == instanceId) {
+      comp.selected = true;
+      selected_component_id_ = instanceId;
+      break;
+    }
   }
-  selected_component_id_ = instanceId;
+}
+
+void Application::ToggleComponentSelection(int instanceId) {
+  wire_edit_mode_ = WireEditMode::NONE;
+  editing_wire_id_ = -1;
+  editing_point_index_ = -1;
+
+  for (auto& comp : placed_components_) {
+    if (comp.instanceId != instanceId) {
+      continue;
+    }
+    comp.selected = !comp.selected;
+    if (comp.selected) {
+      selected_component_id_ = instanceId;
+    } else if (selected_component_id_ == instanceId) {
+      selected_component_id_ = -1;
+    }
+    break;
+  }
+  RepairPrimarySelection();
+}
+
+void Application::ClearComponentSelection() {
+  for (auto& comp : placed_components_) {
+    comp.selected = false;
+  }
+  selected_component_id_ = -1;
+}
+
+void Application::RepairPrimarySelection() {
+  if (selected_component_id_ != -1) {
+    for (const auto& comp : placed_components_) {
+      if (comp.instanceId == selected_component_id_ && comp.selected) {
+        return;
+      }
+    }
+  }
+
+  selected_component_id_ = -1;
+  for (const auto& comp : placed_components_) {
+    if (comp.selected) {
+      selected_component_id_ = comp.instanceId;
+      return;
+    }
+  }
+}
+
+bool Application::HasSelectedComponents() const {
+  for (const auto& comp : placed_components_) {
+    if (comp.selected) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Application::DeleteSelectedComponent() {
-  if (selected_component_id_ >= 0) {
-    PushWiringUndoState();
-    // ????????????? ???????? ????? ???
-    wires_.erase(
-        std::remove_if(wires_.begin(), wires_.end(),
-                       [this](const Wire& wire) {
-                         return wire.fromComponentId == selected_component_id_ ||
-                                wire.toComponentId == selected_component_id_;
-                       }),
-        wires_.end());
-
-    // ?????? ???
-    for (auto it = placed_components_.begin(); it != placed_components_.end();
-         ++it) {
-      if (it->instanceId == selected_component_id_) {
-        placed_components_.erase(it);
-        selected_component_id_ = -1;
-        break;
-      }
+  std::vector<int> selected_ids;
+  for (const auto& comp : placed_components_) {
+    if (comp.selected) {
+      selected_ids.push_back(comp.instanceId);
     }
   }
+  if (selected_ids.empty() && selected_component_id_ >= 0) {
+    selected_ids.push_back(selected_component_id_);
+  }
+  if (selected_ids.empty()) {
+    return;
+  }
+
+  PushWiringUndoState();
+  auto is_selected_id = [&](int instance_id) {
+    return std::find(selected_ids.begin(), selected_ids.end(), instance_id) !=
+           selected_ids.end();
+  };
+
+  wires_.erase(
+      std::remove_if(wires_.begin(), wires_.end(),
+                     [&](const Wire& wire) {
+                       return is_selected_id(wire.fromComponentId) ||
+                              is_selected_id(wire.toComponentId);
+                     }),
+      wires_.end());
+
+  placed_components_.erase(
+      std::remove_if(placed_components_.begin(), placed_components_.end(),
+                     [&](const PlacedComponent& comp) {
+                       return is_selected_id(comp.instanceId);
+                     }),
+      placed_components_.end());
+
+  ClearComponentSelection();
+  RepairPrimaryWireSelection();
 }
 
 void Application::HandleComponentMoveStart(int instanceId, ImVec2 mousePos) {
-  // [PPT: ??? ???] for??? ?????? ???????????????????.
+  const bool move_selected_group = HasSelectedComponents();
+  PushWiringUndoState();
+  is_moving_component_ = true;
+  moving_component_id_ = instanceId;
+  moving_component_offsets_.clear();
+
   for (auto& comp : placed_components_) {
+    const bool should_move =
+        move_selected_group ? comp.selected : (comp.instanceId == instanceId);
+    if (!should_move) {
+      continue;
+    }
+
     if (comp.instanceId == instanceId) {
-      PushWiringUndoState();
-      is_moving_component_ = true;
-      moving_component_id_ = instanceId;
       drag_start_offset_.x = mousePos.x - comp.position.x;
       drag_start_offset_.y = mousePos.y - comp.position.y;
-      if (IsWorkpieceType(comp.type)) {
-        comp.internalStates[state_keys::kIsManualDrag] = 1.0f;
-        comp.internalStates[state_keys::kVelX] = 0.0f;
-        comp.internalStates[state_keys::kVelY] = 0.0f;
-        comp.internalStates[state_keys::kIsStuckBox] = 0.0f;
-      }
-      break;
     }
+    moving_component_offsets_.push_back(
+        {comp.instanceId,
+         ImVec2(mousePos.x - comp.position.x, mousePos.y - comp.position.y)});
+    if (IsWorkpieceType(comp.type)) {
+      comp.internalStates[state_keys::kIsManualDrag] = 1.0f;
+      comp.internalStates[state_keys::kVelX] = 0.0f;
+      comp.internalStates[state_keys::kVelY] = 0.0f;
+      comp.internalStates[state_keys::kIsStuckBox] = 0.0f;
+    }
+  }
+
+  if (moving_component_offsets_.empty()) {
+    is_moving_component_ = false;
+    moving_component_id_ = -1;
   }
 }
 
 void Application::HandleComponentMoveEnd() {
   is_moving_component_ = false;
   moving_component_id_ = -1;
+  moving_component_offsets_.clear();
   for (auto& comp : placed_components_) {
     if (IsWorkpieceType(comp.type)) {
       comp.internalStates[state_keys::kIsManualDrag] = 0.0f;
@@ -394,7 +480,7 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
             });
 
   const ImGuiIO& io = ImGui::GetIO();
-  const bool ghost_mode = io.KeyShift && selected_component_id_ != -1;
+  const bool ghost_mode = io.KeyShift && HasSelectedComponents();
   const float ghost_alpha = 0.35f;
   const float cull_margin = 120.0f;
   ImVec2 view_top_left = ScreenToWorld(canvas_top_left_);

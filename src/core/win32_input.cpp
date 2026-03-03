@@ -64,6 +64,32 @@ POINT g_last_touch_client = {0, 0};
 bool g_has_last_touch = false;
 std::unordered_map<UINT32, bool> g_pen_side_down;
 
+struct InputMessageSourceCompat {
+  DWORD deviceType;
+  DWORD originId;
+};
+
+using GetCurrentInputMessageSourceFn =
+    BOOL(WINAPI*)(InputMessageSourceCompat*);
+
+bool IsTouchpadInputMessage() {
+  static HMODULE user32_module = GetModuleHandleA("user32.dll");
+  static GetCurrentInputMessageSourceFn get_input_source =
+      user32_module
+          ? reinterpret_cast<GetCurrentInputMessageSourceFn>(
+                GetProcAddress(user32_module, "GetCurrentInputMessageSource"))
+          : nullptr;
+  if (!get_input_source) {
+    return false;
+  }
+
+  InputMessageSourceCompat source = {};
+  if (!get_input_source(&source)) {
+    return false;
+  }
+  return source.deviceType == 0x00000010u;  // IMDT_TOUCHPAD
+}
+
 void UpdateTouchGestureFromPoints() {
   if (!g_app_instance) {
     return;
@@ -292,6 +318,31 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       g_app_instance->RegisterWin32SideClick();
       if (g_app_instance->IsDebugEnabled()) {
         g_app_instance->DebugLog("[INPUT] WM_XBUTTONDOWN XBUTTON1");
+      }
+    }
+  }
+
+  if ((msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) && IsTouchpadInputMessage()) {
+    POINT client_pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+    if (g_hwnd) {
+      ScreenToClient(g_hwnd, &client_pt);
+    }
+    ImVec2 screen_pos(static_cast<float>(client_pt.x),
+                      static_cast<float>(client_pt.y));
+    const bool over_canvas = g_app_instance->IsPointInCanvas(screen_pos);
+    const bool ctrl_modified = (GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) != 0;
+    if (msg == WM_MOUSEWHEEL && over_canvas && ctrl_modified) {
+      float zoom_delta =
+          static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
+          static_cast<float>(WHEEL_DELTA);
+      zoom_delta *= 0.08f;
+      if (zoom_delta > 0.10f) {
+        zoom_delta = 0.10f;
+      } else if (zoom_delta < -0.10f) {
+        zoom_delta = -0.10f;
+      }
+      if (zoom_delta != 0.0f) {
+        g_app_instance->QueueTouchpadZoom(zoom_delta, screen_pos);
       }
     }
   }

@@ -63,6 +63,7 @@ namespace plc {
                                 bool active);
         void SetPanInputActive(bool active);
         void SetTouchAnchor(ImVec2 screen_pos);
+        void QueueTouchpadZoom(float zoom_delta, ImVec2 screen_pos);
         void RegisterWin32RightClick();
         void RegisterWin32SideClick();
         void RegisterWin32SideDown(bool is_down);
@@ -266,6 +267,15 @@ namespace plc {
         void HandleComponentDrop(Position position);
 
         void HandleComponentSelection(int instanceId);
+        void ToggleComponentSelection(int instanceId);
+        void ClearComponentSelection();
+        void RepairPrimarySelection();
+        bool HasSelectedComponents() const;
+        void ToggleWireSelection(int wireId);
+        void ClearWireSelection();
+        void RepairPrimaryWireSelection();
+        bool HasSelectedWires() const;
+        void DeleteSelectedWires();
 
         void DeleteSelectedComponent();
 
@@ -397,6 +407,15 @@ namespace plc {
         bool is_moving_component_;
         int moving_component_id_;
         ImVec2 drag_start_offset_;
+        std::vector<std::pair<int, ImVec2>> moving_component_offsets_;
+        bool box_select_pending_;
+        bool is_box_selecting_;
+        bool box_select_additive_;
+        ImVec2 box_select_start_world_;
+        ImVec2 box_select_current_world_;
+        ImVec2 box_select_press_screen_;
+        std::vector<int> box_select_base_selection_ids_;
+        std::vector<int> box_select_base_wire_ids_;
         ComponentListViewMode component_list_view_mode_;
         ComponentListFilter component_list_filter_;
 
@@ -497,6 +516,9 @@ namespace plc {
         ImVec2 touch_pan_delta_;
         bool last_pointer_is_pan_input_;
         ImVec2 touch_anchor_screen_pos_;
+        bool touchpad_zoom_pending_;
+        float touchpad_zoom_delta_;
+        ImVec2 touchpad_zoom_anchor_screen_pos_;
         bool prev_right_button_down_;
         bool prev_side_button_down_;
         bool win32_right_click_;

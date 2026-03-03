@@ -318,6 +318,15 @@ Application::Application(bool enable_debug_mode)
       context_menu_pos_(ImVec2(0.0f, 0.0f)) {
 
   drag_start_offset_ = {0, 0};
+  moving_component_offsets_.clear();
+  box_select_pending_ = false;
+  is_box_selecting_ = false;
+  box_select_additive_ = false;
+  box_select_start_world_ = {0.0f, 0.0f};
+  box_select_current_world_ = {0.0f, 0.0f};
+  box_select_press_screen_ = {0.0f, 0.0f};
+  box_select_base_selection_ids_.clear();
+  box_select_base_wire_ids_.clear();
 
   wire_start_pos_ = {0, 0};
 
@@ -333,6 +342,9 @@ Application::Application(bool enable_debug_mode)
   touch_pan_delta_ = {0.0f, 0.0f};
   last_pointer_is_pan_input_ = false;
   touch_anchor_screen_pos_ = {0.0f, 0.0f};
+  touchpad_zoom_pending_ = false;
+  touchpad_zoom_delta_ = 0.0f;
+  touchpad_zoom_anchor_screen_pos_ = {0.0f, 0.0f};
   prev_right_button_down_ = false;
   prev_side_button_down_ = false;
       win32_right_click_ = false;

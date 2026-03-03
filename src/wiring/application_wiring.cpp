@@ -56,6 +56,101 @@ ImVec2 GetBehaviorWorldPos(const PlacedComponent& comp, ImVec2 world_pos) {
   return ImVec2(comp.position.x + local.x, comp.position.y + local.y);
 }
 
+bool IsPointInsideSelectionRect(ImVec2 point,
+                                float min_x,
+                                float min_y,
+                                float max_x,
+                                float max_y) {
+  return point.x >= min_x && point.x <= max_x && point.y >= min_y &&
+         point.y <= max_y;
+}
+
+float Cross2D(ImVec2 a, ImVec2 b, ImVec2 c) {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+bool IsPointOnSegment(ImVec2 a, ImVec2 b, ImVec2 point) {
+  constexpr float kEpsilon = 0.0001f;
+  if (std::fabs(Cross2D(a, b, point)) > kEpsilon) {
+    return false;
+  }
+  return point.x >= std::min(a.x, b.x) - kEpsilon &&
+         point.x <= std::max(a.x, b.x) + kEpsilon &&
+         point.y >= std::min(a.y, b.y) - kEpsilon &&
+         point.y <= std::max(a.y, b.y) + kEpsilon;
+}
+
+bool DoSegmentsIntersect(ImVec2 a1, ImVec2 a2, ImVec2 b1, ImVec2 b2) {
+  const float cross1 = Cross2D(a1, a2, b1);
+  const float cross2 = Cross2D(a1, a2, b2);
+  const float cross3 = Cross2D(b1, b2, a1);
+  const float cross4 = Cross2D(b1, b2, a2);
+
+  const bool a_straddles =
+      (cross1 > 0.0f && cross2 < 0.0f) || (cross1 < 0.0f && cross2 > 0.0f);
+  const bool b_straddles =
+      (cross3 > 0.0f && cross4 < 0.0f) || (cross3 < 0.0f && cross4 > 0.0f);
+  if (a_straddles && b_straddles) {
+    return true;
+  }
+
+  return IsPointOnSegment(a1, a2, b1) || IsPointOnSegment(a1, a2, b2) ||
+         IsPointOnSegment(b1, b2, a1) || IsPointOnSegment(b1, b2, a2);
+}
+
+bool DoesSegmentIntersectSelectionRect(ImVec2 p1,
+                                       ImVec2 p2,
+                                       float min_x,
+                                       float min_y,
+                                       float max_x,
+                                       float max_y) {
+  if (IsPointInsideSelectionRect(p1, min_x, min_y, max_x, max_y) ||
+      IsPointInsideSelectionRect(p2, min_x, min_y, max_x, max_y)) {
+    return true;
+  }
+
+  if (std::max(p1.x, p2.x) < min_x || std::min(p1.x, p2.x) > max_x ||
+      std::max(p1.y, p2.y) < min_y || std::min(p1.y, p2.y) > max_y) {
+    return false;
+  }
+
+  const ImVec2 top_left(min_x, min_y);
+  const ImVec2 top_right(max_x, min_y);
+  const ImVec2 bottom_right(max_x, max_y);
+  const ImVec2 bottom_left(min_x, max_y);
+  return DoSegmentsIntersect(p1, p2, top_left, top_right) ||
+         DoSegmentsIntersect(p1, p2, top_right, bottom_right) ||
+         DoSegmentsIntersect(p1, p2, bottom_right, bottom_left) ||
+         DoSegmentsIntersect(p1, p2, bottom_left, top_left);
+}
+
+bool DoesWireIntersectSelectionRect(const Wire& wire,
+                                    const std::map<PortRef, Position>& ports,
+                                    float min_x,
+                                    float min_y,
+                                    float max_x,
+                                    float max_y) {
+  auto start_it = ports.find({wire.fromComponentId, wire.fromPortId});
+  auto end_it = ports.find({wire.toComponentId, wire.toPortId});
+  if (start_it == ports.end() || end_it == ports.end()) {
+    return false;
+  }
+
+  ImVec2 previous(start_it->second.x, start_it->second.y);
+  for (const auto& waypoint : wire.wayPoints) {
+    ImVec2 current(waypoint.x, waypoint.y);
+    if (DoesSegmentIntersectSelectionRect(previous, current, min_x, min_y,
+                                          max_x, max_y)) {
+      return true;
+    }
+    previous = current;
+  }
+
+  ImVec2 end_point(end_it->second.x, end_it->second.y);
+  return DoesSegmentIntersectSelectionRect(previous, end_point, min_x, min_y,
+                                           max_x, max_y);
+}
+
 constexpr ImU32 kTagColors[] = {
     IM_COL32(0, 0, 0, 255),      // black (default)
     IM_COL32(200, 40, 40, 255),   // red
@@ -312,11 +407,6 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
 
 }  // namespace
 
-// ?????FIX: ??????????? ??? ??????????????. ?????
-// ??????? Application.h????? ??????, ???????? ?????????? ??????.
-// Position GetPortRelativePositionById(const PlacedComponent& comp, int
-// portId);
-
 void Application::StartWireConnection(int componentId, int portId,
                                       ImVec2 portWorldPos) {
   if (!is_connecting_) {
@@ -514,7 +604,7 @@ void Application::RenderWires(ImDrawList* draw_list) {
     }
     draw_list->AddLine(current_pos, end_screen_pos, wire_color, wire_thickness);
 
-    if (wire.id == selected_wire_id_) {
+    if (wire.selected || wire.id == selected_wire_id_) {
       ImU32 highlight_color = IM_COL32(255, 255, 0, 150);
       ImVec2 p1 = start_screen_pos;
       for (const auto& p2 : waypoints_screen) {
@@ -525,7 +615,7 @@ void Application::RenderWires(ImDrawList* draw_list) {
                          wire_thickness + 3.0f);
     }
 
-    if (wire.id == selected_wire_id_ ||
+    if (wire.selected || wire.id == selected_wire_id_ ||
         (editing_wire_id_ == wire.id &&
          wire_edit_mode_ == WireEditMode::MOVING_POINT)) {
       for (size_t i = 0; i < waypoints_screen.size(); ++i) {
@@ -581,6 +671,12 @@ void Application::ApplyWiringState(const WiringUndoState& state) {
   dragged_component_index_ = -1;
   is_moving_component_ = false;
   moving_component_id_ = -1;
+  moving_component_offsets_.clear();
+  box_select_pending_ = false;
+  is_box_selecting_ = false;
+  box_select_additive_ = false;
+  box_select_base_selection_ids_.clear();
+  box_select_base_wire_ids_.clear();
   is_connecting_ = false;
   current_way_points_.clear();
   wire_edit_mode_ = WireEditMode::NONE;
@@ -616,13 +712,103 @@ void Application::RedoWiringState() {
   wiring_redo_stack_.pop_back();
 }
 
+void Application::ToggleWireSelection(int wireId) {
+  wire_edit_mode_ = WireEditMode::NONE;
+  editing_wire_id_ = -1;
+  editing_point_index_ = -1;
+
+  for (auto& wire : wires_) {
+    if (wire.id != wireId) {
+      continue;
+    }
+    wire.selected = !wire.selected;
+    if (wire.selected) {
+      selected_wire_id_ = wireId;
+    } else if (selected_wire_id_ == wireId) {
+      selected_wire_id_ = -1;
+    }
+    break;
+  }
+  RepairPrimaryWireSelection();
+}
+
+void Application::ClearWireSelection() {
+  for (auto& wire : wires_) {
+    wire.selected = false;
+  }
+  selected_wire_id_ = -1;
+}
+
+void Application::RepairPrimaryWireSelection() {
+  if (selected_wire_id_ != -1) {
+    for (const auto& wire : wires_) {
+      if (wire.id == selected_wire_id_ && wire.selected) {
+        return;
+      }
+    }
+  }
+
+  selected_wire_id_ = -1;
+  for (const auto& wire : wires_) {
+    if (wire.selected) {
+      selected_wire_id_ = wire.id;
+      return;
+    }
+  }
+}
+
+bool Application::HasSelectedWires() const {
+  for (const auto& wire : wires_) {
+    if (wire.selected) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void Application::DeleteWire(int wireId) {
   PushWiringUndoState();
   wires_.erase(
       std::remove_if(wires_.begin(), wires_.end(),
                      [wireId](const Wire& wire) { return wire.id == wireId; }),
       wires_.end());
-  selected_wire_id_ = -1;
+  if (selected_wire_id_ == wireId) {
+    selected_wire_id_ = -1;
+  }
+  if (editing_wire_id_ == wireId) {
+    wire_edit_mode_ = WireEditMode::NONE;
+    editing_wire_id_ = -1;
+    editing_point_index_ = -1;
+  }
+  RepairPrimaryWireSelection();
+}
+
+void Application::DeleteSelectedWires() {
+  std::vector<int> selected_ids;
+  for (const auto& wire : wires_) {
+    if (wire.selected) {
+      selected_ids.push_back(wire.id);
+    }
+  }
+  if (selected_ids.empty() && selected_wire_id_ >= 0) {
+    selected_ids.push_back(selected_wire_id_);
+  }
+  if (selected_ids.empty()) {
+    return;
+  }
+
+  PushWiringUndoState();
+  wires_.erase(
+      std::remove_if(wires_.begin(), wires_.end(),
+                     [&](const Wire& wire) {
+                       return std::find(selected_ids.begin(), selected_ids.end(),
+                                        wire.id) != selected_ids.end();
+                     }),
+      wires_.end());
+  ClearWireSelection();
+  wire_edit_mode_ = WireEditMode::NONE;
+  editing_wire_id_ = -1;
+  editing_point_index_ = -1;
 }
 
 void Application::RenderWiringCanvas() {
@@ -673,7 +859,8 @@ void Application::RenderWiringCanvas() {
       frl_interaction_handled =
           HandleFRLPressureAdjustment(mouse_world_pos, io);
 
-      // Handle zoom and pan
+      // Centralize all canvas navigation input here so FRL wheel usage can
+      // short-circuit before camera gestures consume the same frame.
       HandleZoomAndPan(allow_pan_zoom, io, frl_interaction_handled,
                        wheel_handled);
 
@@ -690,10 +877,7 @@ void Application::RenderWiringCanvas() {
       HandleComponentDropAndWireDelete(is_canvas_hovered, mouse_world_pos, io);
 
       auto clear_component_selection = [&]() {
-        for (auto& comp : placed_components_) {
-          comp.selected = false;
-        }
-        selected_component_id_ = -1;
+        ClearComponentSelection();
       };
 
       auto try_begin_wire_edit = [&](ImVec2 world_pos) {
@@ -703,6 +887,8 @@ void Application::RenderWiringCanvas() {
           if (idx >= 0) {
             PushWiringUndoState();
             clear_component_selection();
+            ClearWireSelection();
+            wire.selected = true;
             selected_wire_id_ = wire.id;
             wire_edit_mode_ = WireEditMode::MOVING_POINT;
             editing_wire_id_ = wire.id;
@@ -711,6 +897,125 @@ void Application::RenderWiringCanvas() {
           }
         }
         return false;
+      };
+
+      auto cancel_box_selection = [&]() {
+        box_select_pending_ = false;
+        is_box_selecting_ = false;
+        box_select_additive_ = false;
+        box_select_base_selection_ids_.clear();
+        box_select_base_wire_ids_.clear();
+      };
+
+      auto snapshot_box_selection = [&]() {
+        box_select_base_selection_ids_.clear();
+        box_select_base_wire_ids_.clear();
+        for (const auto& comp : placed_components_) {
+          if (comp.selected) {
+            box_select_base_selection_ids_.push_back(comp.instanceId);
+          }
+        }
+        for (const auto& wire : wires_) {
+          if (wire.selected || wire.id == selected_wire_id_) {
+            box_select_base_wire_ids_.push_back(wire.id);
+          }
+        }
+      };
+
+      auto apply_box_selection = [&]() {
+        const float min_x =
+            std::min(box_select_start_world_.x, box_select_current_world_.x);
+        const float max_x =
+            std::max(box_select_start_world_.x, box_select_current_world_.x);
+        const float min_y =
+            std::min(box_select_start_world_.y, box_select_current_world_.y);
+        const float max_y =
+            std::max(box_select_start_world_.y, box_select_current_world_.y);
+
+        wire_edit_mode_ = WireEditMode::NONE;
+        editing_wire_id_ = -1;
+        editing_point_index_ = -1;
+
+        int topmost_hit_id = -1;
+        int topmost_hit_z = std::numeric_limits<int>::min();
+        int topmost_hit_instance = -1;
+        int topmost_added_id = -1;
+        int topmost_added_z = std::numeric_limits<int>::min();
+        int topmost_added_instance = -1;
+        int topmost_hit_wire_id = -1;
+        int topmost_added_wire_id = -1;
+
+        // Marquee selection uses the same replace/XOR rule for components and
+        // wires so mixed selections stay predictable.
+        for (auto& comp : placed_components_) {
+          const Size display = GetComponentDisplaySize(comp);
+          const bool hit =
+              !(comp.position.x + display.width < min_x ||
+                comp.position.x > max_x ||
+                comp.position.y + display.height < min_y ||
+                comp.position.y > max_y);
+          const bool base_selected =
+              std::find(box_select_base_selection_ids_.begin(),
+                        box_select_base_selection_ids_.end(),
+                        comp.instanceId) != box_select_base_selection_ids_.end();
+          const bool new_selected =
+              box_select_additive_ ? (base_selected != hit) : hit;
+          comp.selected = new_selected;
+
+          if (hit &&
+              (comp.z_order > topmost_hit_z ||
+               (comp.z_order == topmost_hit_z &&
+                comp.instanceId > topmost_hit_instance))) {
+            topmost_hit_id = comp.instanceId;
+            topmost_hit_z = comp.z_order;
+            topmost_hit_instance = comp.instanceId;
+          }
+
+          if (box_select_additive_ && hit && !base_selected && new_selected &&
+              (comp.z_order > topmost_added_z ||
+               (comp.z_order == topmost_added_z &&
+                comp.instanceId > topmost_added_instance))) {
+            topmost_added_id = comp.instanceId;
+            topmost_added_z = comp.z_order;
+            topmost_added_instance = comp.instanceId;
+          }
+        }
+
+        for (auto& wire : wires_) {
+          const bool hit =
+              DoesWireIntersectSelectionRect(wire, port_positions_, min_x,
+                                             min_y, max_x, max_y);
+          const bool base_selected =
+              std::find(box_select_base_wire_ids_.begin(),
+                        box_select_base_wire_ids_.end(),
+                        wire.id) != box_select_base_wire_ids_.end();
+          const bool new_selected =
+              box_select_additive_ ? (base_selected != hit) : hit;
+          wire.selected = new_selected;
+
+          if (hit && wire.id > topmost_hit_wire_id) {
+            topmost_hit_wire_id = wire.id;
+          }
+
+          if (box_select_additive_ && hit && !base_selected && new_selected &&
+              wire.id > topmost_added_wire_id) {
+            topmost_added_wire_id = wire.id;
+          }
+        }
+
+        if (box_select_additive_) {
+          if (topmost_added_id != -1) {
+            selected_component_id_ = topmost_added_id;
+          }
+          if (topmost_added_wire_id != -1) {
+            selected_wire_id_ = topmost_added_wire_id;
+          }
+        } else {
+          selected_component_id_ = topmost_hit_id;
+          selected_wire_id_ = topmost_hit_wire_id;
+        }
+        RepairPrimarySelection();
+        RepairPrimaryWireSelection();
       };
 
       bool wire_edit_active = (wire_edit_mode_ == WireEditMode::MOVING_POINT);
@@ -750,17 +1055,56 @@ void Application::RenderWiringCanvas() {
         }
       }
 
+      if (!wire_edit_active && current_tool_ == ToolType::SELECT) {
+        if (box_select_pending_ && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+          box_select_current_world_ = mouse_world_pos;
+          const ImVec2 box_drag_delta(
+              mouse_screen_pos.x - box_select_press_screen_.x,
+              mouse_screen_pos.y - box_select_press_screen_.y);
+          const float box_drag_threshold = 6.0f;
+          if (box_drag_delta.x * box_drag_delta.x +
+                  box_drag_delta.y * box_drag_delta.y >=
+              box_drag_threshold * box_drag_threshold) {
+            box_select_pending_ = false;
+            is_box_selecting_ = true;
+            apply_box_selection();
+          }
+        }
+
+        if (is_box_selecting_) {
+          if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            box_select_current_world_ = mouse_world_pos;
+            apply_box_selection();
+          } else {
+            box_select_current_world_ = mouse_world_pos;
+            apply_box_selection();
+            cancel_box_selection();
+          }
+        } else if (box_select_pending_ &&
+                   ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+          if (!box_select_additive_) {
+            ClearComponentSelection();
+            ClearWireSelection();
+            wire_edit_mode_ = WireEditMode::NONE;
+            editing_wire_id_ = -1;
+            editing_point_index_ = -1;
+          }
+          cancel_box_selection();
+        }
+      }
+
       if (!wire_edit_active &&
           (current_tool_ == ToolType::SELECT ||
            current_tool_ == ToolType::TAG)) {
         if (is_moving_component_) {
           if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            for (auto& comp : placed_components_) {
-              if (comp.instanceId == moving_component_id_) {
-                comp.position.x = mouse_world_pos.x - drag_start_offset_.x;
-                comp.position.y = mouse_world_pos.y - drag_start_offset_.y;
-                break;
+            for (const auto& moving_entry : moving_component_offsets_) {
+              PlacedComponent* comp = FindComponentById(moving_entry.first);
+              if (!comp) {
+                continue;
               }
+              comp->position.x = mouse_world_pos.x - moving_entry.second.x;
+              comp->position.y = mouse_world_pos.y - moving_entry.second.y;
             }
           }
           if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -794,6 +1138,8 @@ void Application::RenderWiringCanvas() {
               Wire* tagged_wire =
                   FindTaggedWireAtScreenPos(mouse_screen_pos);
               if (tagged_wire && tagged_wire->isTagged) {
+                ClearWireSelection();
+                tagged_wire->selected = true;
                 selected_wire_id_ = tagged_wire->id;
                 interaction_handled = true;
               } else {
@@ -809,15 +1155,57 @@ void Application::RenderWiringCanvas() {
                   FindTopmostComponentIndexAtPosition(placed_components_,
                                                       mouse_world_pos);
               if (top_index != -1) {
-                HandleComponentSelection(
+                const bool already_selected =
+                    placed_components_[static_cast<size_t>(top_index)].selected;
+                const int clicked_id =
                     placed_components_[static_cast<size_t>(top_index)]
-                        .instanceId);
+                        .instanceId;
+                if (current_tool_ == ToolType::SELECT && io.KeyCtrl) {
+                  ToggleComponentSelection(clicked_id);
+                } else if (current_tool_ == ToolType::SELECT &&
+                           already_selected) {
+                  ClearWireSelection();
+                  wire_edit_mode_ = WireEditMode::NONE;
+                  editing_wire_id_ = -1;
+                  editing_point_index_ = -1;
+                  selected_component_id_ = clicked_id;
+                } else {
+                  HandleComponentSelection(clicked_id);
+                }
                 interaction_handled = true;
               }
             }
             if (!interaction_handled) {
               if (!try_begin_wire_edit(mouse_world_pos)) {
-                HandleWireSelection(mouse_world_pos);
+                if (current_tool_ == ToolType::SELECT) {
+                  Wire* wire = FindWireAtPosition(mouse_world_pos);
+                  if (wire) {
+                    if (io.KeyCtrl) {
+                      ToggleWireSelection(wire->id);
+                    } else if (wire->selected) {
+                      ClearComponentSelection();
+                      wire_edit_mode_ = WireEditMode::NONE;
+                      editing_wire_id_ = -1;
+                      editing_point_index_ = -1;
+                      selected_wire_id_ = wire->id;
+                    } else {
+                      HandleWireSelection(mouse_world_pos);
+                    }
+                  } else {
+                    box_select_pending_ = true;
+                    is_box_selecting_ = false;
+                    box_select_additive_ = io.KeyCtrl;
+                    box_select_start_world_ = mouse_world_pos;
+                    box_select_current_world_ = mouse_world_pos;
+                    box_select_press_screen_ = mouse_screen_pos;
+                    snapshot_box_selection();
+                  }
+                  interaction_handled = true;
+                } else {
+                  HandleWireSelection(mouse_world_pos);
+                }
+              } else {
+                interaction_handled = true;
               }
             }
           }
@@ -865,7 +1253,9 @@ void Application::RenderWiringCanvas() {
 
           if (ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
               is_canvas_hovered &&
-              !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+              !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+              !box_select_pending_ && !is_box_selecting_ &&
+              !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
             int top_index =
                 FindTopmostComponentIndexAtPosition(placed_components_,
                                                     mouse_world_pos);
@@ -881,7 +1271,8 @@ void Application::RenderWiringCanvas() {
                                       ImGuiMouseButton_Left);
               }
             }
-          } else {
+          } else if (!box_select_pending_ && !is_box_selecting_ &&
+                     !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
             for (auto& comp : placed_components_) {
               const ComponentBehavior* behavior =
                   GetComponentBehavior(comp.type);
@@ -896,14 +1287,16 @@ void Application::RenderWiringCanvas() {
 
           if (is_canvas_hovered && !is_dragging_ &&
               ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
-              selected_component_id_ != -1 && !is_moving_component_) {
-            for (const auto& comp : placed_components_) {
-              if (comp.instanceId == selected_component_id_) {
-                if (IsPointInsideComponent(comp, mouse_world_pos)) {
-                  HandleComponentMoveStart(selected_component_id_,
-                                           mouse_world_pos);
-                }
-                break;
+              HasSelectedComponents() && !is_moving_component_ &&
+              !box_select_pending_ && !is_box_selecting_ && !io.KeyCtrl) {
+            int top_index =
+                FindTopmostComponentIndexAtPosition(placed_components_,
+                                                    mouse_world_pos);
+            if (top_index != -1) {
+              const auto& comp =
+                  placed_components_[static_cast<size_t>(top_index)];
+              if (comp.selected) {
+                HandleComponentMoveStart(comp.instanceId, mouse_world_pos);
               }
             }
           }
@@ -970,8 +1363,20 @@ void Application::RenderWiringCanvas() {
       RenderTemporaryWire(draw_list);
     }
 
+    if (current_tool_ == ToolType::SELECT && is_box_selecting_) {
+      ImVec2 box_start_screen = WorldToScreen(box_select_start_world_);
+      ImVec2 box_end_screen = WorldToScreen(box_select_current_world_);
+      ImVec2 rect_min(std::min(box_start_screen.x, box_end_screen.x),
+                      std::min(box_start_screen.y, box_end_screen.y));
+      ImVec2 rect_max(std::max(box_start_screen.x, box_end_screen.x),
+                      std::max(box_start_screen.y, box_end_screen.y));
+      draw_list->AddRectFilled(rect_min, rect_max, IM_COL32(0, 123, 255, 35));
+      draw_list->AddRect(rect_min, rect_max, IM_COL32(0, 123, 255, 200), 0.0f,
+                         0, 1.5f);
+    }
+
     if (is_canvas_hovered && !is_dragging_ && !is_moving_component_ &&
-        !is_connecting_) {
+        !is_connecting_ && !is_box_selecting_ && !box_select_pending_) {
       bool tooltip_shown = false;
       int hoveredComponentId = -1;
       Port* hoveredPort =
@@ -1045,7 +1450,7 @@ void Application::RenderWiringCanvas() {
       const float layout_scale = GetLayoutScale();
       ImVec2 help_pos =
           ImVec2(canvas_top_left_.x + canvas_size_.x - 200 * layout_scale,
-                 canvas_top_left_.y + canvas_size_.y - 100 * layout_scale);
+                 canvas_top_left_.y + canvas_size_.y - 118 * layout_scale);
       ImGui::SetCursorScreenPos(help_pos);
 
       ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.6f));
@@ -1054,13 +1459,15 @@ void Application::RenderWiringCanvas() {
                           ImVec2(8 * layout_scale, 6 * layout_scale));
 
       if (ImGui::BeginChild("CameraHelp",
-                            ImVec2(190 * layout_scale, 90 * layout_scale),
+                            ImVec2(190 * layout_scale, 108 * layout_scale),
                             false,
                             ImGuiWindowFlags_NoScrollbar)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
         ImGui::Text("%s", TR("ui.wiring.camera_help.title", "Camera"));
         ImGui::Separator();
         ImGui::Text("%s", TR("ui.wiring.camera_help.zoom", "Zoom: Mouse wheel (no Ctrl)"));
+        ImGui::Text("%s", TR("ui.wiring.camera_help.pan_alt",
+                             "Trackpad: Pinch to zoom"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.pan_middle",
                              "Pan: Middle drag / Alt + Right drag"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.trackpad",
@@ -1227,16 +1634,15 @@ void Application::RenderTemporaryWire(ImDrawList* draw_list) {
 void Application::HandleWireSelection(ImVec2 worldPos) {
   Wire* selectedWire = FindWireAtPosition(worldPos);
   if (selectedWire) {
+    ClearComponentSelection();
+    ClearWireSelection();
+    selectedWire->selected = true;
     selected_wire_id_ = selectedWire->id;
-    for (auto& comp : placed_components_) {
-      comp.selected = false;
-    }
-    selected_component_id_ = -1;
     wire_edit_mode_ = WireEditMode::NONE;
     editing_wire_id_ = -1;
     editing_point_index_ = -1;
   } else {
-    selected_wire_id_ = -1;
+    ClearWireSelection();
     wire_edit_mode_ = WireEditMode::NONE;
     editing_wire_id_ = -1;
     editing_point_index_ = -1;
@@ -1350,17 +1756,36 @@ bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
 
 void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
                                     bool frl_handled, bool& wheel_handled) {
-  if (touch_gesture_active_ && is_canvas_hovered) {
-    ImVec2 anchor = touch_anchor_screen_pos_;
-    ImVec2 mouse_pos_before_zoom = ScreenToWorld(anchor);
-    float zoom_factor = 1.0f + touch_zoom_delta_;
-    if (zoom_factor > 0.01f) {
-      camera_zoom_ *= zoom_factor;
-      camera_zoom_ = std::max(0.05f, std::min(camera_zoom_, 10.0f));
-      ImVec2 mouse_pos_after_zoom = ScreenToWorld(anchor);
-      camera_offset_.x += (mouse_pos_before_zoom.x - mouse_pos_after_zoom.x);
-      camera_offset_.y += (mouse_pos_before_zoom.y - mouse_pos_after_zoom.y);
+  auto apply_zoom_at_anchor = [&](float zoom_factor, ImVec2 screen_anchor)
+      -> bool {
+    if (zoom_factor <= 0.01f) {
+      return false;
     }
+
+    ImVec2 world_before_zoom = ScreenToWorld(screen_anchor);
+    camera_zoom_ *= zoom_factor;
+    camera_zoom_ = std::max(0.05f, std::min(camera_zoom_, 10.0f));
+    ImVec2 world_after_zoom = ScreenToWorld(screen_anchor);
+    camera_offset_.x += (world_after_zoom.x - world_before_zoom.x);
+    camera_offset_.y += (world_after_zoom.y - world_before_zoom.y);
+    return true;
+  };
+
+  if (touchpad_zoom_pending_ && is_canvas_hovered) {
+    float zoom_factor = 1.0f + touchpad_zoom_delta_;
+    if (apply_zoom_at_anchor(zoom_factor, touchpad_zoom_anchor_screen_pos_)) {
+      wheel_handled = true;
+    }
+    touchpad_zoom_pending_ = false;
+    touchpad_zoom_delta_ = 0.0f;
+  } else if (touchpad_zoom_pending_) {
+    touchpad_zoom_pending_ = false;
+    touchpad_zoom_delta_ = 0.0f;
+  }
+
+  if (touch_gesture_active_ && is_canvas_hovered) {
+    float zoom_factor = 1.0f + touch_zoom_delta_;
+    apply_zoom_at_anchor(zoom_factor, touch_anchor_screen_pos_);
 
     camera_offset_.x += touch_pan_delta_.x / camera_zoom_;
     camera_offset_.y += touch_pan_delta_.y / camera_zoom_;
@@ -1370,31 +1795,32 @@ void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
     wheel_handled = true;
   }
 
-  // Zoom with mouse wheel
-  if (is_canvas_hovered && io.MouseWheel != 0 && !io.KeyCtrl && !frl_handled) {
-    ImVec2 mouse_pos_before_zoom = ScreenToWorld(io.MousePos);
-    float zoom_speed = 0.15f;
-    if (io.MouseWheel > 0)
-      camera_zoom_ *= (1.0f + zoom_speed);
-    else
-      camera_zoom_ *= (1.0f - zoom_speed);
-    camera_zoom_ = std::max(0.05f, std::min(camera_zoom_, 10.0f));
-    ImVec2 mouse_pos_after_zoom = ScreenToWorld(io.MousePos);
-    camera_offset_.x += (mouse_pos_before_zoom.x - mouse_pos_after_zoom.x);
-    camera_offset_.y += (mouse_pos_before_zoom.y - mouse_pos_after_zoom.y);
+  // Plain wheel zoom is the default desktop path. Precision touchpad pinch is
+  // consumed earlier through the Win32 queue and sets wheel_handled.
+  if (is_canvas_hovered && io.MouseWheel != 0 && !io.KeyCtrl && !frl_handled &&
+      !wheel_handled) {
+    const float wheel_delta = io.MouseWheel;
+    const float zoom_speed = 0.08f;
+    float zoom_step = 1.0f + zoom_speed * std::fabs(wheel_delta);
+    if (wheel_delta > 0.0f) {
+      apply_zoom_at_anchor(zoom_step, io.MousePos);
+    } else {
+      apply_zoom_at_anchor(1.0f / zoom_step, io.MousePos);
+    }
     wheel_handled = true;
   }
 
-  // Trackpad pan with Ctrl
+  // Keep Ctrl+Scroll as an explicit pan fallback for users who rely on it.
   if (is_canvas_hovered && io.KeyCtrl &&
-      (io.MouseWheelH != 0 || io.MouseWheel != 0) && !frl_handled) {
+      (io.MouseWheelH != 0 || io.MouseWheel != 0) && !frl_handled &&
+      !wheel_handled) {
     float trackpad_sensitivity = 0.8f;
     camera_offset_.x += io.MouseWheelH * 20.0f * trackpad_sensitivity;
     camera_offset_.y += io.MouseWheel * 20.0f * trackpad_sensitivity;
     wheel_handled = true;
   }
   
-  // Pan with middle mouse
+  // Middle-button drag remains the primary mouse pan gesture.
   float pan_sensitivity = 1.0f;
   if (is_canvas_hovered &&
       ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
@@ -1402,7 +1828,7 @@ void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
     camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
   }
   
-  // Pan with Alt+Right
+  // Alt+Right drag mirrors the old CAD-style pan gesture.
   if (is_canvas_hovered && io.KeyAlt &&
       ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
     camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
@@ -1452,6 +1878,12 @@ void Application::SetPanInputActive(bool active) {
 
 void Application::SetTouchAnchor(ImVec2 screen_pos) {
   touch_anchor_screen_pos_ = screen_pos;
+}
+
+void Application::QueueTouchpadZoom(float zoom_delta, ImVec2 screen_pos) {
+  touchpad_zoom_pending_ = true;
+  touchpad_zoom_delta_ = zoom_delta;
+  touchpad_zoom_anchor_screen_pos_ = screen_pos;
 }
 
 void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
@@ -1678,12 +2110,24 @@ void Application::ApplyRotationToComponent(PlacedComponent* comp,
 }
 
 void Application::RotateSelectedComponent(int delta_quadrants) {
-  if (selected_component_id_ == -1) {
+  std::vector<int> selected_ids;
+  for (const auto& comp : placed_components_) {
+    if (comp.selected) {
+      selected_ids.push_back(comp.instanceId);
+    }
+  }
+  if (selected_ids.empty() && selected_component_id_ != -1) {
+    selected_ids.push_back(selected_component_id_);
+  }
+  if (selected_ids.empty()) {
     return;
   }
   PushWiringUndoState();
-  PlacedComponent* comp = FindComponentById(selected_component_id_);
-  ApplyRotationToComponent(comp, delta_quadrants);
+  for (int instance_id : selected_ids) {
+    PlacedComponent* comp = FindComponentById(instance_id);
+    ApplyRotationToComponent(comp, delta_quadrants);
+  }
+  RepairPrimarySelection();
 }
 
 void Application::BringComponentToFront(int component_id) {

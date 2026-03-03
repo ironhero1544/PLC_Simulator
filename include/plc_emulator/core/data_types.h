@@ -96,6 +96,7 @@ struct Wire {
   int toComponentId = 0;
   int toPortId = 0;
   std::vector<Position> wayPoints;
+  bool selected = false;
   bool isElectric;
   Color color;
   float thickness;

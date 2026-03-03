@@ -70,16 +70,30 @@ void Application::UpdatePortPositions() {
 }
 
 ImVec2 Application::WorldToScreen(const ImVec2& world_pos) const {
-  float x = canvas_top_left_.x + (world_pos.x + camera_offset_.x) * camera_zoom_;
-  float y = canvas_top_left_.y + (world_pos.y + camera_offset_.y) * camera_zoom_;
+  const float zoom = camera_zoom_;
+  const float half_w = canvas_size_.x * 0.5f;
+  const float half_h = canvas_size_.y * 0.5f;
+  const float screen_origin_x =
+      canvas_top_left_.x + camera_offset_.x * zoom + half_w * (1.0f - zoom);
+  const float screen_origin_y =
+      canvas_top_left_.y + camera_offset_.y * zoom + half_h * (1.0f - zoom);
+  // TODO: Migrate component positions from top-left anchors to center-based
+  // anchors so camera transforms and render origins can share one model.
+  float x = screen_origin_x + world_pos.x * zoom;
+  float y = screen_origin_y + world_pos.y * zoom;
   return ImVec2(x, y);
 }
 
 ImVec2 Application::ScreenToWorld(const ImVec2& screen_pos) const {
-  float x =
-      (screen_pos.x - canvas_top_left_.x) / camera_zoom_ - camera_offset_.x;
-  float y =
-      (screen_pos.y - canvas_top_left_.y) / camera_zoom_ - camera_offset_.y;
+  const float zoom = camera_zoom_;
+  const float half_w = canvas_size_.x * 0.5f;
+  const float half_h = canvas_size_.y * 0.5f;
+  const float screen_origin_x =
+      canvas_top_left_.x + camera_offset_.x * zoom + half_w * (1.0f - zoom);
+  const float screen_origin_y =
+      canvas_top_left_.y + camera_offset_.y * zoom + half_h * (1.0f - zoom);
+  float x = (screen_pos.x - screen_origin_x) / zoom;
+  float y = (screen_pos.y - screen_origin_y) / zoom;
   return ImVec2(x, y);
 }
 

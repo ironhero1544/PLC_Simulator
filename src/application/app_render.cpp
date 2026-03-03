@@ -905,12 +905,18 @@ void Application::RenderShortcutHelpDialog() {
                                "Rotate component: R (Shift+R: reverse)"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_delete",
                                "Delete selected: Delete"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_select_toggle",
+                               "Select tool: Ctrl+Click toggles components/wires"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_select_box",
+                               "Select tool: Drag empty canvas to box-select"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_select_box_add",
+                               "Select tool: Ctrl+Drag empty canvas adds/removes by box"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tool_cycle",
                                "Q: cycle tools (Select -> Pneumatic -> Electric -> Tag)"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tag",
                                "Tag tool: click wire to add/edit wire tag"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_zoom",
-                               "Zoom: Mouse wheel"));
+                               "Zoom: Mouse wheel / Trackpad pinch"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_pan",
                                "Pan: Middle drag / Alt + Right drag"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_trackpad_pan",
