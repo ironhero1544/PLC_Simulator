@@ -1,6 +1,9 @@
 # Menu
 menu.settings=Settings
 menu.language=Language
+menu.project=Project
+menu.project.save=Save Project...
+menu.project.load=Load Project...
 menu.ui_settings=UI
 lang.english=English
 lang.korean=Korean
@@ -55,6 +58,8 @@ ui.common.enabled=Enabled
 ui.common.disabled=Disabled
 ui.common.run=RUN
 ui.common.stop=STOP
+ui.common.source=Source
+ui.common.sink=Sink
 
 # Debug panel
 ui.debug.engine_fmt=Engine: %s
@@ -171,6 +176,8 @@ ui.wiring.context.rotate_cw=Rotate 90deg
 ui.wiring.context.rotate_ccw=Rotate -90deg
 ui.wiring.context.flip_horizontal=Flip Horizontal
 ui.wiring.context.flip_vertical=Flip Vertical
+ui.wiring.context.plc_input_mode=PLC Input Mode
+ui.wiring.context.plc_output_mode=PLC Output Mode
 
 # Programming UI
 ui.programming.timers_counters=Timers / Counters

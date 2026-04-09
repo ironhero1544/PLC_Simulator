@@ -64,6 +64,7 @@ void RenderInductiveSensor(ImDrawList* draw_list,
                        screen_pos.y + port.rel_pos.y * zoom};
     draw_list->AddCircleFilled(port_pos, 4 * zoom, ToImU32(port.color));
   }
+
 }
 
 void InitInductiveSensorDefaults(PlacedComponent* comp) {

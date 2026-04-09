@@ -49,9 +49,9 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
         ElectricalNode& node = elecNet->nodes[nodeId];
 
         if (yState) {
-          // Y OUTPUT ON: Low voltage (sinking type PLC output)
+          float outputVoltage = GetPlcOutputOnVoltage();
           node.isVoltageSource = true;
-          node.sourceVoltage = 0.0f;
+          node.sourceVoltage = outputVoltage;
           node.sourceResistance = 0.1f;  // 0.1 ohm output resistance
         } else {
           // Y OUTPUT OFF: High impedance (open circuit)
@@ -69,7 +69,8 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
               physics_engine_->componentPhysicsStates[physicsIndex];
           if (physState.type == PHYSICS_STATE_PLC) {
             physState.state.plc.outputStates[y] = yState;
-            physState.state.plc.outputVoltages[y] = yState ? 0.0f : -1.0f;
+            physState.state.plc.outputVoltages[y] =
+                yState ? GetPlcOutputOnVoltage() : -1.0f;
             physState.state.plc.outputCurrents[y] =
                 yState ? 100.0f : 0.0f;  // 100mA when ON
           }
@@ -111,7 +112,8 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
             physState.state.plc.inputVoltages[x] = node.voltage;
             physState.state.plc.inputCurrents[x] =
                 node.current * 1000.0f;  // A -> mA
-            physState.state.plc.inputStates[x] = (node.voltage > 0.0f);
+            physState.state.plc.inputStates[x] =
+                IsPlcInputVoltageActive(node.voltage);
           }
         }
       }
@@ -410,7 +412,7 @@ void Application::SyncPhysicsEngineToApplication() {
         bool x_active = false;
         if (port_voltages_.count(portKey)) {
           float voltage = port_voltages_.at(portKey);
-          bool state = (voltage > 12.0f);  // 12V threshold
+          bool state = IsPlcInputVoltageActive(voltage);
           SetPlcDeviceState(xAddress, state);
           // Forward to ProgrammingMode (single entry point)
           xInputs[xAddress] = state;

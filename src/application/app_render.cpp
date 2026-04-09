@@ -151,6 +151,9 @@ void Application::Render() {
   glClearColor(0.94f, 0.94f, 0.94f, 1.00f);
   glClear(GL_COLOR_BUFFER_BIT);
 
+  RefreshImGuiFontsIfNeeded();
+  ImGui::GetIO().FontGlobalScale = 1.0f;
+
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
@@ -320,6 +323,54 @@ void Application::RenderMainMenuBar(float* out_height) {
 
   if (out_height) {
     *out_height = ImGui::GetFrameHeight();
+  }
+
+  if (ImGui::BeginMenu(TR("menu.project", "Project"))) {
+    if (ImGui::MenuItem(TR("menu.project.save", "Save Project..."))) {
+#ifdef _WIN32
+      OPENFILENAMEA ofn;
+      CHAR szFile[260] = "project.plcproj";
+      ZeroMemory(&ofn, sizeof(ofn));
+      ofn.lStructSize = sizeof(ofn);
+      ofn.hwndOwner = glfwGetWin32Window(window_);
+      ofn.lpstrFile = szFile;
+      ofn.nMaxFile = sizeof(szFile);
+      ofn.lpstrFilter =
+          "PLC Project Package (*.plcproj)\0*.plcproj\0All Files (*.*)\0*.*\0";
+      ofn.nFilterIndex = 1;
+      ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+      if (GetSaveFileNameA(&ofn) == TRUE) {
+        std::string save_path = ofn.lpstrFile;
+        if (save_path.find(".plcproj") == std::string::npos) {
+          save_path += ".plcproj";
+        }
+        SaveProjectPackage(save_path, "PLC_Project");
+      }
+#else
+      SaveProjectPackage("project.plcproj", "PLC_Project");
+#endif
+    }
+    if (ImGui::MenuItem(TR("menu.project.load", "Load Project..."))) {
+#ifdef _WIN32
+      OPENFILENAMEA ofn;
+      CHAR szFile[260] = {0};
+      ZeroMemory(&ofn, sizeof(ofn));
+      ofn.lStructSize = sizeof(ofn);
+      ofn.hwndOwner = glfwGetWin32Window(window_);
+      ofn.lpstrFile = szFile;
+      ofn.nMaxFile = sizeof(szFile);
+      ofn.lpstrFilter =
+          "PLC Project Package (*.plcproj)\0*.plcproj\0All Files (*.*)\0*.*\0";
+      ofn.nFilterIndex = 1;
+      ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+      if (GetOpenFileNameA(&ofn) == TRUE) {
+        LoadProjectPackage(ofn.lpstrFile);
+      }
+#else
+      LoadProjectPackage("project.plcproj");
+#endif
+    }
+    ImGui::EndMenu();
   }
 
   if (ImGui::BeginMenu(TR("menu.settings", "Settings"))) {

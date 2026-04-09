@@ -18,33 +18,41 @@ constexpr float kReferenceDisplayHeight = 1080.0f;
 constexpr float kMinResolutionScale = 0.5f;
 constexpr float kMaxResolutionScale = 3.0f;
 
+float ClampResolutionScale(float width, float height) {
+  if (width <= 0.0f || height <= 0.0f) {
+    return 1.0f;
+  }
+  const float scale_x = width / kReferenceDisplayWidth;
+  const float scale_y = height / kReferenceDisplayHeight;
+  const float auto_scale = std::min(scale_x, scale_y);
+  return std::clamp(auto_scale, kMinResolutionScale, kMaxResolutionScale);
+}
+
 }  // namespace
 
 float Application::GetResolutionScale() const {
-  if (!ImGui::GetCurrentContext()) {
-    if (window_) {
-      int width = 0;
-      int height = 0;
-      glfwGetWindowSize(window_, &width, &height);
-      if (width > 0 && height > 0) {
-        const float scale_x = static_cast<float>(width) / kReferenceDisplayWidth;
-        const float scale_y =
-            static_cast<float>(height) / kReferenceDisplayHeight;
-        const float auto_scale = std::min(scale_x, scale_y);
-        return std::clamp(auto_scale, kMinResolutionScale, kMaxResolutionScale);
-      }
+  if (ImGui::GetCurrentContext()) {
+    const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+    if (display_size.x > 0.0f && display_size.y > 0.0f) {
+      return GetResolutionScaleForDisplaySize(display_size.x, display_size.y);
     }
-    return 1.0f;
-  }
-  const ImVec2 display_size = ImGui::GetIO().DisplaySize;
-  if (display_size.x <= 0.0f || display_size.y <= 0.0f) {
-    return 1.0f;
   }
 
-  const float scale_x = display_size.x / kReferenceDisplayWidth;
-  const float scale_y = display_size.y / kReferenceDisplayHeight;
-  const float auto_scale = std::min(scale_x, scale_y);
-  return std::clamp(auto_scale, kMinResolutionScale, kMaxResolutionScale);
+  if (window_) {
+    int width = 0;
+    int height = 0;
+    glfwGetWindowSize(window_, &width, &height);
+    if (width > 0 && height > 0) {
+      return GetResolutionScaleForDisplaySize(static_cast<float>(width),
+                                              static_cast<float>(height));
+    }
+  }
+  return 1.0f;
+}
+
+float Application::GetResolutionScaleForDisplaySize(float width,
+                                                    float height) const {
+  return ClampResolutionScale(width, height);
 }
 
 float Application::GetLayoutScale() const {

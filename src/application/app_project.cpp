@@ -170,6 +170,203 @@ std::string BuildTempLadderProgramPath() {
   return path;
 }
 
+bool IsSensorComponentType(ComponentType type) {
+  return type == ComponentType::SENSOR ||
+         type == ComponentType::INDUCTIVE_SENSOR ||
+         type == ComponentType::RING_SENSOR;
+}
+
+const char* PlcInputModeToString(PlcInputMode mode) {
+  return mode == PlcInputMode::SOURCE ? "source" : "sink";
+}
+
+bool PlcInputModeFromString(const std::string& value, PlcInputMode* mode) {
+  if (!mode) {
+    return false;
+  }
+  if (value == "source") {
+    *mode = PlcInputMode::SOURCE;
+    return true;
+  }
+  if (value == "sink") {
+    *mode = PlcInputMode::SINK;
+    return true;
+  }
+  return false;
+}
+
+const char* PlcOutputModeToString(PlcOutputMode mode) {
+  return mode == PlcOutputMode::SOURCE ? "source" : "sink";
+}
+
+bool PlcOutputModeFromString(const std::string& value, PlcOutputMode* mode) {
+  if (!mode) {
+    return false;
+  }
+  if (value == "source") {
+    *mode = PlcOutputMode::SOURCE;
+    return true;
+  }
+  if (value == "sink") {
+    *mode = PlcOutputMode::SINK;
+    return true;
+  }
+  return false;
+}
+
+SensorOutputMode DefaultSensorOutputModeForInput(PlcInputMode mode) {
+  return mode == PlcInputMode::SOURCE ? SensorOutputMode::NPN
+                                      : SensorOutputMode::PNP;
+}
+
+const char* SensorOutputModeToString(SensorOutputMode mode) {
+  return mode == SensorOutputMode::NPN ? "npn" : "pnp";
+}
+
+bool SensorOutputModeFromString(const std::string& value,
+                                SensorOutputMode* mode) {
+  if (!mode) {
+    return false;
+  }
+  if (value == "npn") {
+    *mode = SensorOutputMode::NPN;
+    return true;
+  }
+  if (value == "pnp") {
+    *mode = SensorOutputMode::PNP;
+    return true;
+  }
+  return false;
+}
+
+float SensorOutputModeToStoredValue(SensorOutputMode mode) {
+  return mode == SensorOutputMode::NPN ? 1.0f : 0.0f;
+}
+
+SensorOutputMode SensorOutputModeFromStoredValue(float value) {
+  return value >= 0.5f ? SensorOutputMode::NPN : SensorOutputMode::PNP;
+}
+
+LadderProgram BuildProgramForSave(ProgrammingMode* programming_mode) {
+  LadderProgram current_program;
+  if (!programming_mode) {
+    return current_program;
+  }
+
+  current_program = programming_mode->GetLadderProgram();
+  const auto& timer_states = programming_mode->GetTimerStates();
+  const auto& counter_states = programming_mode->GetCounterStates();
+
+  auto try_parse_preset = [](const std::string& address, char prefix,
+                             int* device_num, int* preset_num) -> bool {
+    if (!device_num || !preset_num) {
+      return false;
+    }
+    for (size_t i = 0; i < address.size(); ++i) {
+      if (address[i] != prefix) {
+        continue;
+      }
+      size_t j = i + 1;
+      while (j < address.size() &&
+             !std::isdigit(static_cast<unsigned char>(address[j]))) {
+        ++j;
+      }
+      if (j >= address.size()) {
+        continue;
+      }
+      size_t device_start = j;
+      while (j < address.size() &&
+             std::isdigit(static_cast<unsigned char>(address[j]))) {
+        ++j;
+      }
+      std::string device_digits = address.substr(device_start, j - device_start);
+      if (device_digits.empty()) {
+        continue;
+      }
+      size_t k_pos = address.find_first_of("Kk", j);
+      if (k_pos == std::string::npos) {
+        continue;
+      }
+      size_t p = k_pos + 1;
+      while (p < address.size() &&
+             !std::isdigit(static_cast<unsigned char>(address[p]))) {
+        ++p;
+      }
+      if (p >= address.size()) {
+        continue;
+      }
+      size_t preset_start = p;
+      while (p < address.size() &&
+             std::isdigit(static_cast<unsigned char>(address[p]))) {
+        ++p;
+      }
+      std::string preset_digits =
+          address.substr(preset_start, p - preset_start);
+      if (preset_digits.empty()) {
+        continue;
+      }
+      try {
+        *device_num = std::stoi(device_digits);
+        *preset_num = std::stoi(preset_digits);
+        return true;
+      } catch (...) {
+        return false;
+      }
+    }
+    return false;
+  };
+
+  for (auto& rung : current_program.rungs) {
+    if (rung.isEndRung) {
+      continue;
+    }
+    for (auto& cell : rung.cells) {
+      if (!cell.preset.empty() || cell.address.empty()) {
+        continue;
+      }
+
+      bool is_timer_output =
+          (cell.type == LadderInstructionType::TON ||
+           (cell.type == LadderInstructionType::OTE &&
+            cell.address[0] == 'T'));
+      bool is_counter_output =
+          (cell.type == LadderInstructionType::CTU ||
+           (cell.type == LadderInstructionType::OTE &&
+            cell.address[0] == 'C'));
+
+      if (is_timer_output) {
+        auto it = timer_states.find(cell.address);
+        if (it != timer_states.end() && it->second.preset > 0) {
+          cell.preset = "K" + std::to_string(it->second.preset);
+          continue;
+        }
+        int device_num = 0;
+        int preset_num = 0;
+        if (try_parse_preset(cell.address, 'T', &device_num, &preset_num) &&
+            preset_num > 0) {
+          cell.address = "T" + std::to_string(device_num);
+          cell.preset = "K" + std::to_string(preset_num);
+        }
+      } else if (is_counter_output) {
+        auto it = counter_states.find(cell.address);
+        if (it != counter_states.end() && it->second.preset > 0) {
+          cell.preset = "K" + std::to_string(it->second.preset);
+          continue;
+        }
+        int device_num = 0;
+        int preset_num = 0;
+        if (try_parse_preset(cell.address, 'C', &device_num, &preset_num) &&
+            preset_num > 0) {
+          cell.address = "C" + std::to_string(device_num);
+          cell.preset = "K" + std::to_string(preset_num);
+        }
+      }
+    }
+  }
+
+  return current_program;
+}
+
 }  // namespace
 
 LadderInstructionType Application::StringToInstructionType(
@@ -273,12 +470,87 @@ void Application::SyncLadderProgramFromProgrammingMode() {
 
 }
 
-bool Application::SaveLayout(const std::string& file_path) {
+void Application::SetPlcInputMode(PlcInputMode mode, bool auto_convert_sensors) {
+  plc_input_mode_ = mode;
+  if (auto_convert_sensors) {
+    AutoConvertSensorsForInputMode();
+  }
+  OnElectricalConfigChanged();
+}
+
+void Application::SetPlcOutputMode(PlcOutputMode mode) {
+  plc_output_mode_ = mode;
+  OnElectricalConfigChanged();
+}
+
+bool Application::IsPlcInputVoltageActive(float voltage) const {
+  if (voltage < -0.5f) {
+    return false;
+  }
+  if (plc_input_mode_ == PlcInputMode::SOURCE) {
+    return voltage >= -0.1f && voltage < 6.0f;
+  }
+  return voltage > 12.0f;
+}
+
+float Application::GetPlcOutputOnVoltage() const {
+  return plc_output_mode_ == PlcOutputMode::SOURCE ? 24.0f : 0.0f;
+}
+
+SensorOutputMode Application::GetSensorOutputMode(
+    const PlacedComponent& comp) const {
+  auto it = comp.internalStates.find(state_keys::kSensorOutputMode);
+  if (it == comp.internalStates.end()) {
+    return DefaultSensorOutputModeForInput(plc_input_mode_);
+  }
+  return SensorOutputModeFromStoredValue(it->second);
+}
+
+void Application::SetSensorOutputMode(PlacedComponent* comp,
+                                      SensorOutputMode mode) {
+  if (!comp) {
+    return;
+  }
+  comp->internalStates[state_keys::kSensorOutputMode] =
+      SensorOutputModeToStoredValue(mode);
+}
+
+void Application::ApplyElectricalDefaults(PlacedComponent* comp) const {
+  if (!comp || !IsSensorComponentType(comp->type)) {
+    return;
+  }
+  comp->internalStates[state_keys::kSensorOutputMode] =
+      SensorOutputModeToStoredValue(
+          DefaultSensorOutputModeForInput(plc_input_mode_));
+}
+
+void Application::AutoConvertSensorsForInputMode() {
+  SensorOutputMode target_mode = DefaultSensorOutputModeForInput(plc_input_mode_);
+  for (auto& comp : placed_components_) {
+    if (!IsSensorComponentType(comp.type)) {
+      continue;
+    }
+    SetSensorOutputMode(&comp, target_mode);
+  }
+}
+
+void Application::OnElectricalConfigChanged() {
+  advanced_last_input_hash_ = 0;
+  advanced_inputs_dirty_ = true;
+  RequestCacheWarmup();
+}
+
+std::string Application::SerializeLayoutJson() const {
   json root;
-  root["version"] = 1;
+  root["version"] = 2;
   root["next_instance_id"] = next_instance_id_;
   root["next_wire_id"] = next_wire_id_;
   root["next_z_order"] = next_z_order_;
+
+  json electrical_config;
+  electrical_config["plc_input_mode"] = PlcInputModeToString(plc_input_mode_);
+  electrical_config["plc_output_mode"] = PlcOutputModeToString(plc_output_mode_);
+  root["electrical_config"] = electrical_config;
 
   json components = json::array();
   for (const auto& comp : placed_components_) {
@@ -291,6 +563,10 @@ bool Application::SaveLayout(const std::string& file_path) {
     item["rotation_quadrants"] = comp.rotation_quadrants;
     item["flip_x"] = comp.flip_x;
     item["flip_y"] = comp.flip_y;
+    if (IsSensorComponentType(comp.type)) {
+      item["sensor_output_mode"] = SensorOutputModeToString(
+          GetSensorOutputMode(comp));
+    }
     components.push_back(item);
   }
   root["components"] = components;
@@ -327,26 +603,27 @@ bool Application::SaveLayout(const std::string& file_path) {
     wires.push_back(item);
   }
   root["wires"] = wires;
-
-  std::ofstream file(file_path, std::ios::binary);
-  if (!file.is_open()) {
-    return false;
-  }
-  file << root.dump(2);
-  return true;
+  return root.dump(2);
 }
 
-bool Application::LoadLayout(const std::string& file_path) {
-  std::ifstream file(file_path, std::ios::binary);
-  if (!file.is_open()) {
+bool Application::DeserializeLayoutJson(const std::string& layout_json) {
+  json root = json::parse(layout_json, nullptr, false);
+  if (root.is_discarded() || !root.is_object()) {
     return false;
   }
 
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  json root = json::parse(buffer.str(), nullptr, false);
-  if (root.is_discarded() || !root.is_object()) {
-    return false;
+  plc_input_mode_ = PlcInputMode::SOURCE;
+  plc_output_mode_ = PlcOutputMode::SINK;
+  auto config_it = root.find("electrical_config");
+  if (config_it != root.end() && config_it->is_object()) {
+    PlcInputMode parsed_input = plc_input_mode_;
+    PlcOutputMode parsed_output = plc_output_mode_;
+    PlcInputModeFromString(config_it->value("plc_input_mode", "source"),
+                           &parsed_input);
+    PlcOutputModeFromString(config_it->value("plc_output_mode", "sink"),
+                            &parsed_output);
+    plc_input_mode_ = parsed_input;
+    plc_output_mode_ = parsed_output;
   }
 
   placed_components_.clear();
@@ -394,6 +671,13 @@ bool Application::LoadLayout(const std::string& file_path) {
       comp.flip_y = item.value("flip_y", false);
       if (def->InitDefaultState) {
         def->InitDefaultState(&comp);
+      }
+      ApplyElectricalDefaults(&comp);
+      if (IsSensorComponentType(comp.type)) {
+        SensorOutputMode sensor_mode = GetSensorOutputMode(comp);
+        SensorOutputModeFromString(item.value("sensor_output_mode", ""),
+                                   &sensor_mode);
+        SetSensorOutputMode(&comp, sensor_mode);
       }
       placed_components_.push_back(comp);
 
@@ -465,7 +749,28 @@ bool Application::LoadLayout(const std::string& file_path) {
     next_z_order_ = max_z_order + 1;
   }
 
+  OnElectricalConfigChanged();
   return true;
+}
+
+bool Application::SaveLayout(const std::string& file_path) {
+  std::ofstream file(file_path, std::ios::binary);
+  if (!file.is_open()) {
+    return false;
+  }
+  file << SerializeLayoutJson();
+  return true;
+}
+
+bool Application::LoadLayout(const std::string& file_path) {
+  std::ifstream file(file_path, std::ios::binary);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  return DeserializeLayoutJson(buffer.str());
 }
 
 void Application::LoadLadderProgramFromLD(const std::string& filepath) {
@@ -964,117 +1269,7 @@ bool Application::SaveProject(const std::string& filePath,
   try {
 
 
-    LadderProgram currentProgram = programming_mode_->GetLadderProgram();
-    const auto& timer_states = programming_mode_->GetTimerStates();
-    const auto& counter_states = programming_mode_->GetCounterStates();
-    auto try_parse_preset = [](const std::string& address,
-                               char prefix,
-                               int* deviceNum,
-                               int* presetNum) -> bool {
-      if (!deviceNum || !presetNum) {
-        return false;
-      }
-      for (size_t i = 0; i < address.size(); ++i) {
-        if (address[i] != prefix) {
-          continue;
-        }
-        size_t j = i + 1;
-        while (j < address.size() &&
-               !std::isdigit(static_cast<unsigned char>(address[j]))) {
-          ++j;
-        }
-        if (j >= address.size()) {
-          continue;
-        }
-        size_t deviceStart = j;
-        while (j < address.size() &&
-               std::isdigit(static_cast<unsigned char>(address[j]))) {
-          ++j;
-        }
-        std::string deviceDigits = address.substr(deviceStart, j - deviceStart);
-        if (deviceDigits.empty()) {
-          continue;
-        }
-        size_t kPos = address.find_first_of("Kk", j);
-        if (kPos == std::string::npos) {
-          continue;
-        }
-        size_t p = kPos + 1;
-        while (p < address.size() &&
-               !std::isdigit(static_cast<unsigned char>(address[p]))) {
-          ++p;
-        }
-        if (p >= address.size()) {
-          continue;
-        }
-        size_t presetStart = p;
-        while (p < address.size() &&
-               std::isdigit(static_cast<unsigned char>(address[p]))) {
-          ++p;
-        }
-        std::string presetDigits =
-            address.substr(presetStart, p - presetStart);
-        if (presetDigits.empty()) {
-          continue;
-        }
-        try {
-          *deviceNum = std::stoi(deviceDigits);
-          *presetNum = std::stoi(presetDigits);
-          return true;
-        } catch (...) {
-          return false;
-        }
-      }
-      return false;
-    };
-    for (auto& rung : currentProgram.rungs) {
-      if (rung.isEndRung) {
-        continue;
-      }
-      for (auto& cell : rung.cells) {
-        if (!cell.preset.empty()) {
-          continue;
-        }
-        if (cell.address.empty()) {
-          continue;
-        }
-        bool isTimerOutput =
-            (cell.type == LadderInstructionType::TON ||
-             (cell.type == LadderInstructionType::OTE &&
-              cell.address[0] == 'T'));
-        bool isCounterOutput =
-            (cell.type == LadderInstructionType::CTU ||
-             (cell.type == LadderInstructionType::OTE &&
-              cell.address[0] == 'C'));
-        if (isTimerOutput) {
-          auto it = timer_states.find(cell.address);
-          if (it != timer_states.end() && it->second.preset > 0) {
-            cell.preset = "K" + std::to_string(it->second.preset);
-            continue;
-          }
-          int deviceNum = 0;
-          int presetNum = 0;
-          if (try_parse_preset(cell.address, 'T', &deviceNum, &presetNum) &&
-              presetNum > 0) {
-            cell.address = "T" + std::to_string(deviceNum);
-            cell.preset = "K" + std::to_string(presetNum);
-          }
-        } else if (isCounterOutput) {
-          auto it = counter_states.find(cell.address);
-          if (it != counter_states.end() && it->second.preset > 0) {
-            cell.preset = "K" + std::to_string(it->second.preset);
-            continue;
-          }
-          int deviceNum = 0;
-          int presetNum = 0;
-          if (try_parse_preset(cell.address, 'C', &deviceNum, &presetNum) &&
-              presetNum > 0) {
-            cell.address = "C" + std::to_string(deviceNum);
-            cell.preset = "K" + std::to_string(presetNum);
-          }
-        }
-      }
-    }
+    LadderProgram currentProgram = BuildProgramForSave(programming_mode_.get());
 
     project_file_manager_->SetDebugMode(enable_debug_logging_);
 
@@ -1128,6 +1323,42 @@ bool Application::SaveProject(const std::string& filePath,
 
   }
 
+}
+
+bool Application::SaveProjectPackage(const std::string& filePath,
+                                     const std::string& projectName) {
+  std::cout << "[INFO] Saving project package to: " << filePath << std::endl;
+
+  if (!programming_mode_ || !project_file_manager_) {
+    std::cerr << "[ERROR] Project package save failed: components not initialized"
+              << std::endl;
+    return false;
+  }
+
+  try {
+    LadderProgram currentProgram = BuildProgramForSave(programming_mode_.get());
+    std::string layoutJson = SerializeLayoutJson();
+
+    project_file_manager_->SetDebugMode(enable_debug_logging_);
+    auto result = project_file_manager_->SaveProjectPackage(
+        currentProgram, layoutJson, filePath, projectName);
+
+    if (!result.success) {
+      std::cerr << "[ERROR] Project package save failed: "
+                << result.errorMessage << std::endl;
+      return false;
+    }
+
+    std::cout << "[INFO] Project package saved successfully!" << std::endl;
+    std::cout << "   - Name: " << result.info.projectName << std::endl;
+    std::cout << "   - Size: " << result.compressedSize << " bytes"
+              << std::endl;
+    return true;
+  } catch (const std::exception& e) {
+    std::cerr << "[ERROR] Project package save exception: " << e.what()
+              << std::endl;
+    return false;
+  }
 }
 
 bool Application::LoadProject(const std::string& filePath) {
@@ -1285,6 +1516,67 @@ bool Application::LoadProject(const std::string& filePath) {
 
   }
 
+}
+
+bool Application::LoadProjectPackage(const std::string& filePath) {
+  std::cout << "[INFO] Loading project package from: " << filePath
+            << std::endl;
+
+  if (!programming_mode_ || !project_file_manager_) {
+    std::cerr << "[ERROR] Project package load failed: components not initialized"
+              << std::endl;
+    return false;
+  }
+
+  try {
+    project_file_manager_->SetDebugMode(enable_debug_logging_);
+    auto result = project_file_manager_->LoadProjectPackage(filePath);
+    if (!result.success) {
+      std::cerr << "[ERROR] Project package load failed: "
+                << result.errorMessage << std::endl;
+      return false;
+    }
+    if (result.layoutJson.empty() ||
+        !DeserializeLayoutJson(result.layoutJson)) {
+      std::cerr << "[ERROR] Project package load failed: invalid layout JSON"
+                << std::endl;
+      return false;
+    }
+
+    loaded_ladder_program_ = result.program;
+    programming_mode_->SetLadderProgram(result.program);
+
+    plc_device_states_.clear();
+    plc_timer_states_.clear();
+    plc_counter_states_.clear();
+
+    for (int i = 0; i <= 15; ++i) {
+      plc_device_states_["X" + std::to_string(i)] = false;
+      plc_device_states_["Y" + std::to_string(i)] = false;
+    }
+    for (int i = 0; i <= 999; ++i) {
+      std::string i_str = std::to_string(i);
+      plc_device_states_["M" + i_str] = false;
+    }
+
+    if (compiled_plc_executor_) {
+      CompileAndLoadLadderProgram();
+    }
+
+    std::cout << "[INFO] Project package loaded successfully!" << std::endl;
+    std::cout << "   - Name: " << result.info.projectName << std::endl;
+    std::cout << "   - Version: " << result.info.version << std::endl;
+    std::cout << "   - Layout checksum: " << result.info.layoutChecksum
+              << std::endl;
+    std::cout << "   - Program checksum: " << result.info.programChecksum
+              << std::endl;
+    RequestCacheWarmup();
+    return true;
+  } catch (const std::exception& e) {
+    std::cerr << "[ERROR] Project package load exception: " << e.what()
+              << std::endl;
+    return false;
+  }
 }
 
 

@@ -207,6 +207,25 @@ void RenderPlc(ImDrawList* draw_list,
         ImVec2(screen_pos.x + 5 * zoom, screen_pos.y + 5 * zoom),
         IM_COL32(50, 50, 50, 255),
         TR("component.plc.label", "FX3U-32M"));
+    if (!run_on) {
+      bool input_source =
+          comp.internalStates.count(state_keys::kPlcInputMode) &&
+          comp.internalStates.at(state_keys::kPlcInputMode) > 0.5f;
+      bool output_source =
+          comp.internalStates.count(state_keys::kPlcOutputMode) &&
+          comp.internalStates.at(state_keys::kPlcOutputMode) > 0.5f;
+      const char* input_label = input_source ? "I:SRC" : "I:SNK";
+      const char* output_label = output_source ? "O:SRC" : "O:SNK";
+      float mode_font_size = font_size * 0.55f;
+      draw_list->AddText(ImGui::GetFont(), mode_font_size,
+                         ImVec2(screen_pos.x + 253.0f * zoom,
+                                screen_pos.y + 147.0f * zoom),
+                         IM_COL32(255, 255, 255, 255), input_label);
+      draw_list->AddText(ImGui::GetFont(), mode_font_size,
+                         ImVec2(screen_pos.x + 253.0f * zoom,
+                                screen_pos.y + 155.0f * zoom),
+                         IM_COL32(255, 255, 255, 255), output_label);
+    }
   }
 }
 

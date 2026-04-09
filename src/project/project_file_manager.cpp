@@ -871,6 +871,68 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProject(
   return result;
 }
 
+ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
+    const LadderProgram& program, const std::string& layoutJson,
+    const std::string& filePath, const std::string& projectName) {
+  SaveResult result;
+  last_error_.clear();
+
+  LogDebug("[PKG] Starting project package save to: " + filePath);
+
+  std::string resolvedName =
+      projectName.empty() ? ExtractFileName(filePath) : projectName;
+  std::string csvContent = BuildGX2CSV(program, resolvedName);
+  if (csvContent.empty()) {
+    result.success = false;
+    result.errorMessage = "Failed to serialize ladder program to CSV";
+    SetError(result.errorMessage);
+    return result;
+  }
+  if (layoutJson.empty()) {
+    result.success = false;
+    result.errorMessage = "Layout JSON is empty";
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  result.info.projectName = resolvedName;
+  result.info.version = "2.0";
+  result.info.createdDate = GetCurrentDateTime();
+  result.info.lastModified = result.info.createdDate;
+  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.schemaVersion = "2.0";
+  result.info.layoutChecksum = CalculateChecksum(layoutJson);
+  result.info.programChecksum = CalculateChecksum(csvContent);
+
+  std::map<std::string, std::string> files;
+  files["program.csv"] = csvContent;
+  files["layout.json"] = layoutJson;
+  files["manifest.json"] = GenerateManifest(result.info);
+
+  if (!CreateZipFile(filePath, files)) {
+    result.success = false;
+    result.errorMessage = GetLastError().empty()
+                              ? "Failed to create project package"
+                              : GetLastError();
+    return result;
+  }
+
+  std::ifstream saved_file(filePath, std::ios::binary | std::ios::ate);
+  size_t saved_size = 0;
+  if (saved_file.is_open()) {
+    std::streampos end_pos = saved_file.tellg();
+    if (end_pos > 0) {
+      saved_size = static_cast<size_t>(end_pos);
+    }
+  }
+
+  result.success = true;
+  result.savedPath = filePath;
+  result.compressedSize = saved_size;
+  LogDebug("[PKG] Project package saved successfully");
+  return result;
+}
+
 ProjectFileManager::LoadResult ProjectFileManager::LoadProject(
     const std::string& filePath) {
   LoadResult result;
@@ -913,6 +975,60 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProject(
   LogDebug("[CSV] Project loaded successfully: " +
            std::to_string(result.program.rungs.size()) + " rungs");
 
+  return result;
+}
+
+ProjectFileManager::LoadResult ProjectFileManager::LoadProjectPackage(
+    const std::string& filePath) {
+  LoadResult result;
+  last_error_.clear();
+
+  LogDebug("[PKG] Starting project package load from: " + filePath);
+
+  std::map<std::string, std::string> files;
+  if (!ExtractZipFile(filePath, files)) {
+    result.success = false;
+    result.errorMessage = GetLastError().empty()
+                              ? "Failed to extract project package"
+                              : GetLastError();
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  auto csv_it = files.find("program.csv");
+  auto layout_it = files.find("layout.json");
+  if (csv_it == files.end() || layout_it == files.end()) {
+    result.success = false;
+    result.errorMessage =
+        "Project package is missing required files: program.csv/layout.json";
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  LadderProgram program;
+  if (!ParseGX2CSV(csv_it->second, program)) {
+    result.success = false;
+    result.errorMessage = "Failed to parse packaged GXWORKS2 CSV content";
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  result.success = true;
+  result.program = program;
+  result.layoutJson = layout_it->second;
+  result.info.projectName = ExtractFileName(filePath);
+  result.info.version = "2.0";
+  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.schemaVersion = "2.0";
+  result.info.layoutChecksum = CalculateChecksum(result.layoutJson);
+  result.info.programChecksum = CalculateChecksum(csv_it->second);
+
+  auto manifest_it = files.find("manifest.json");
+  if (manifest_it != files.end()) {
+    ParseManifest(manifest_it->second, result.info);
+  }
+
+  LogDebug("[PKG] Project package loaded successfully");
   return result;
 }
 

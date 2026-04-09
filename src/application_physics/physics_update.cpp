@@ -455,7 +455,7 @@ void Application::UpdatePhysicsImpl() {
         auto port_key = std::make_pair(comp.instanceId, i);
         auto voltage_it = port_voltages_.find(port_key);
         if (voltage_it != port_voltages_.end()) {
-          x_active = voltage_it->second > 12.0f;
+          x_active = IsPlcInputVoltageActive(voltage_it->second);
         } else {
           x_active = GetPlcDeviceState("X" + std::to_string(i));
         }

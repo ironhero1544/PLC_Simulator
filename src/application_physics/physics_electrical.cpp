@@ -279,15 +279,17 @@ void Application::SimulateElectricalImpl() {
                           : kProcDrillUp;
       bool at_down = pos_val <= (kProcDrillDown + kProcEpsilon);
       bool at_up = pos_val >= (kProcDrillUp - kProcEpsilon);
-      int power24_index = get_index(comp.instanceId, 0);
+      int sensor_drive_index =
+          get_index(comp.instanceId,
+                    plc_input_mode_ == PlcInputMode::SOURCE ? 4 : 0);
       int sensor_fwd_index = get_index(comp.instanceId, 1);
       int sensor_rev_index = get_index(comp.instanceId, 2);
-      if (power24_index >= 0) {
+      if (sensor_drive_index >= 0) {
         if (at_down && sensor_fwd_index >= 0) {
-          unite(power24_index, sensor_fwd_index);
+          unite(sensor_drive_index, sensor_fwd_index);
         }
         if (at_up && sensor_rev_index >= 0) {
-          unite(power24_index, sensor_rev_index);
+          unite(sensor_drive_index, sensor_rev_index);
         }
       }
     } else if (comp.type == ComponentType::BUTTON_UNIT) {
@@ -308,11 +310,17 @@ void Application::SimulateElectricalImpl() {
       bool is_detected = comp.internalStates.count("is_detected") &&
                          comp.internalStates.at("is_detected") > 0.5f;
       if (is_detected) {
-        int p24_index = get_index(comp.instanceId, 0);
+        SensorOutputMode output_mode = GetSensorOutputMode(comp);
+        int drive_port = output_mode == SensorOutputMode::NPN
+                             ? get_index(comp.instanceId,
+                                         comp.type == ComponentType::RING_SENSOR
+                                             ? 2
+                                             : 1)
+                             : get_index(comp.instanceId, 0);
         int signal_port = (comp.type == ComponentType::RING_SENSOR) ? 1 : 2;
         int out_index = get_index(comp.instanceId, signal_port);
-        if (p24_index >= 0 && out_index >= 0) {
-          unite(p24_index, out_index);
+        if (drive_port >= 0 && out_index >= 0) {
+          unite(drive_port, out_index);
         }
       }
     }
@@ -358,7 +366,10 @@ void Application::SimulateElectricalImpl() {
         int y_index = port_id - 16;
         bool y_state = GetPlcDeviceState("Y" + std::to_string(y_index));
         if (y_state) {
-          cache.net_voltage[net_id] = static_cast<int>(VoltageType::V0);
+          cache.net_voltage[net_id] =
+              (GetPlcOutputOnVoltage() > 12.0f)
+                  ? static_cast<int>(VoltageType::V24)
+                  : static_cast<int>(VoltageType::V0);
         }
       }
     }
@@ -395,7 +406,8 @@ void Application::SimulateElectricalImpl() {
       if (port_voltages_.count(key)) {
         voltage = port_voltages_.at(key);
       }
-      SetPlcDeviceState("X" + std::to_string(i), voltage > 0.0f);
+      SetPlcDeviceState("X" + std::to_string(i),
+                        IsPlcInputVoltageActive(voltage));
     }
   }
 }

@@ -97,6 +97,8 @@ namespace plc {
           int next_instance_id = 0;
           int next_wire_id = 0;
           int next_z_order = 0;
+          PlcInputMode plc_input_mode = PlcInputMode::SOURCE;
+          PlcOutputMode plc_output_mode = PlcOutputMode::SINK;
         };
 
         static constexpr size_t kWiringUndoLimit = 50;
@@ -235,7 +237,11 @@ namespace plc {
         void Cleanup();
 
         void UpdatePortPositions();
+        float GetResolutionScaleForDisplaySize(float width, float height) const;
         float GetResolutionScale() const;
+        float GetAutoFontScale() const;
+        bool RebuildImGuiFonts(float auto_font_scale);
+        void RefreshImGuiFontsIfNeeded();
 
         void RenderUI();
 
@@ -389,6 +395,8 @@ namespace plc {
         bool running_;
 
         bool is_plc_running_;
+        PlcInputMode plc_input_mode_;
+        PlcOutputMode plc_output_mode_;
 
         static constexpr int kWindowWidth = 1440;
         static constexpr int kWindowHeight = 1024;
@@ -530,6 +538,10 @@ namespace plc {
         int context_menu_component_id_;
         ImVec2 context_menu_pos_;
         UiSettings ui_settings_;
+        int font_atlas_window_width_;
+        int font_atlas_window_height_;
+        int font_atlas_framebuffer_width_;
+        int font_atlas_framebuffer_height_;
 
         /*
          * 디버그/로그 출력.
@@ -552,8 +564,22 @@ namespace plc {
         void RenderUiSettingsMenu();
 
         void PrintDebugToConsole(const std::string& message);
+        bool SaveProjectPackage(const std::string& file_path,
+                                const std::string& project_name = "");
+        bool LoadProjectPackage(const std::string& file_path);
+        std::string SerializeLayoutJson() const;
+        bool DeserializeLayoutJson(const std::string& layout_json);
         bool SaveLayout(const std::string& file_path);
         bool LoadLayout(const std::string& file_path);
+        void SetPlcInputMode(PlcInputMode mode, bool auto_convert_sensors);
+        void SetPlcOutputMode(PlcOutputMode mode);
+        bool IsPlcInputVoltageActive(float voltage) const;
+        float GetPlcOutputOnVoltage() const;
+        SensorOutputMode GetSensorOutputMode(const PlacedComponent& comp) const;
+        void SetSensorOutputMode(PlacedComponent* comp, SensorOutputMode mode);
+        void ApplyElectricalDefaults(PlacedComponent* comp) const;
+        void AutoConvertSensorsForInputMode();
+        void OnElectricalConfigChanged();
     };
 
 }  /* namespace plc */

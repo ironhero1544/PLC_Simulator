@@ -229,6 +229,8 @@ Application::Application(bool enable_debug_mode)
       running_(false),
 
       is_plc_running_(false),
+      plc_input_mode_(PlcInputMode::SOURCE),
+      plc_output_mode_(PlcOutputMode::SINK),
 
       selected_component_id_(-1),
 
@@ -315,7 +317,11 @@ Application::Application(bool enable_debug_mode)
       show_shortcut_help_popup_(false),
       show_component_context_menu_(false),
       context_menu_component_id_(-1),
-      context_menu_pos_(ImVec2(0.0f, 0.0f)) {
+      context_menu_pos_(ImVec2(0.0f, 0.0f)),
+      font_atlas_window_width_(0),
+      font_atlas_window_height_(0),
+      font_atlas_framebuffer_width_(0),
+      font_atlas_framebuffer_height_(0) {
 
   drag_start_offset_ = {0, 0};
   moving_component_offsets_.clear();
@@ -674,31 +680,7 @@ bool Application::InitializeImGui() {
 
   (void)io;
 
-
-
-  ImFontConfig font_config;
-
-  font_config.PixelSnapH = true;
-  float font_size = 16.0f * ui_settings_.font_scale * GetResolutionScale();
-
-  static const ImWchar korean_ranges[] = {
-
-      0x0020, 0x00FF, 0x2500, 0x257F, 0x3131, 0x3163, 0xAC00,
-
-      0xD7A3, 0x2010, 0x205E, 0xFF01, 0xFF5E, 0,
-
-  };
-
-  io.Fonts->AddFontFromFileTTF("resources/fonts/unifont.ttf", font_size,
-                               &font_config,
-                               korean_ranges);
-  ImFontConfig merge_config = font_config;
-  merge_config.MergeMode = true;
-  const ImWchar* jp_ranges = io.Fonts->GetGlyphRangesJapanese();
-  io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
-                               &merge_config, jp_ranges);
-
-
+  RebuildImGuiFonts(GetAutoFontScale());
 
   SetupCustomStyle();
 
@@ -706,8 +688,104 @@ bool Application::InitializeImGui() {
 
   ImGui_ImplOpenGL3_Init("#version 330");
 
+  if (window_) {
+    glfwGetWindowSize(window_, &font_atlas_window_width_,
+                      &font_atlas_window_height_);
+    glfwGetFramebufferSize(window_, &font_atlas_framebuffer_width_,
+                           &font_atlas_framebuffer_height_);
+  }
+
   return true;
 
+}
+
+float Application::GetAutoFontScale() const {
+  if (window_) {
+    int width = 0;
+    int height = 0;
+    glfwGetWindowSize(window_, &width, &height);
+    if (width > 0 && height > 0) {
+      const float resolution_scale =
+          GetResolutionScaleForDisplaySize(static_cast<float>(width),
+                                           static_cast<float>(height));
+      return resolution_scale >= 1.25f ? resolution_scale : 1.0f;
+    }
+  }
+
+  const float resolution_scale = GetResolutionScale();
+  return resolution_scale >= 1.25f ? resolution_scale : 1.0f;
+}
+
+bool Application::RebuildImGuiFonts(float auto_font_scale) {
+  if (!ImGui::GetCurrentContext()) {
+    return false;
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+  if (!io.Fonts) {
+    return false;
+  }
+
+  io.Fonts->Clear();
+
+  ImFontConfig font_config;
+  font_config.PixelSnapH = true;
+  float font_size = 16.0f * ui_settings_.font_scale * auto_font_scale;
+
+  static const ImWchar korean_ranges[] = {
+      0x0020, 0x00FF, 0x2500, 0x257F, 0x3131, 0x3163, 0xAC00,
+      0xD7A3, 0x2010, 0x205E, 0xFF01, 0xFF5E, 0,
+  };
+
+  io.Fonts->AddFontFromFileTTF("resources/fonts/unifont.ttf", font_size,
+                               &font_config, korean_ranges);
+
+  ImFontConfig merge_config = font_config;
+  merge_config.MergeMode = true;
+  const ImWchar* jp_ranges = io.Fonts->GetGlyphRangesJapanese();
+  io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
+                               &merge_config, jp_ranges);
+  io.Fonts->Build();
+  io.FontGlobalScale = 1.0f;
+  return true;
+}
+
+void Application::RefreshImGuiFontsIfNeeded() {
+  if (!window_ || !ImGui::GetCurrentContext()) {
+    return;
+  }
+
+  int window_width = 0;
+  int window_height = 0;
+  int framebuffer_width = 0;
+  int framebuffer_height = 0;
+  glfwGetWindowSize(window_, &window_width, &window_height);
+  glfwGetFramebufferSize(window_, &framebuffer_width, &framebuffer_height);
+  if (window_width <= 0 || window_height <= 0 ||
+      framebuffer_width <= 0 || framebuffer_height <= 0) {
+    return;
+  }
+
+  const bool resolution_changed =
+      window_width != font_atlas_window_width_ ||
+      window_height != font_atlas_window_height_ ||
+      framebuffer_width != font_atlas_framebuffer_width_ ||
+      framebuffer_height != font_atlas_framebuffer_height_;
+  if (!resolution_changed) {
+    return;
+  }
+
+  if (!RebuildImGuiFonts(GetAutoFontScale())) {
+    return;
+  }
+
+  ImGui_ImplOpenGL3_DestroyFontsTexture();
+  ImGui_ImplOpenGL3_CreateFontsTexture();
+
+  font_atlas_window_width_ = window_width;
+  font_atlas_window_height_ = window_height;
+  font_atlas_framebuffer_width_ = framebuffer_width;
+  font_atlas_framebuffer_height_ = framebuffer_height;
 }
 
 void Application::SetupCustomStyle() {

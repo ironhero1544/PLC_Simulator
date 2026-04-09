@@ -38,6 +38,9 @@ struct Color {
 };
 
 enum class Mode { WIRING, PROGRAMMING };
+enum class PlcInputMode { SINK, SOURCE };
+enum class PlcOutputMode { SINK, SOURCE };
+enum class SensorOutputMode { PNP, NPN };
 
 enum class ComponentType {
   PLC,

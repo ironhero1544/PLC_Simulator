@@ -1,6 +1,9 @@
 ﻿# Menu
 menu.settings=설정
 menu.language=언어
+menu.project=프로젝트
+menu.project.save=프로젝트 저장...
+menu.project.load=프로젝트 불러오기...
 lang.english=영어(English)
 lang.korean=한국어
 lang.japanese=일본어(日本語)
@@ -39,6 +42,8 @@ ui.common.enabled=활성화
 ui.common.disabled=비활성화
 ui.common.run=RUN
 ui.common.stop=STOP
+ui.common.source=소스
+ui.common.sink=싱크
 
 # Debug panel
 ui.debug.engine_fmt=엔진: %s
@@ -147,6 +152,8 @@ ui.wiring.context.rotate_cw=90도 회전
 ui.wiring.context.rotate_ccw=-90도 회전
 ui.wiring.context.flip_horizontal=수평 뒤집기
 ui.wiring.context.flip_vertical=수직 뒤집기
+ui.wiring.context.plc_input_mode=PLC 입력 모드
+ui.wiring.context.plc_output_mode=PLC 출력 모드
 
 # Programming UI
 ui.programming.toolbar_edit=작성 (F3)

@@ -292,6 +292,7 @@ void Application::HandleComponentDrop(Position position) {
     if (def->InitDefaultState) {
       def->InitDefaultState(&newComponent);
     }
+    ApplyElectricalDefaults(&newComponent);
 
     newComponent.position.x -= newComponent.size.width / 2.0f;
     newComponent.position.y -= newComponent.size.height / 2.0f;
@@ -506,6 +507,10 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
     if (comp.type == ComponentType::PLC) {
       comp.internalStates[state_keys::kPlcRunning] =
           is_plc_running_ ? 1.0f : 0.0f;
+      comp.internalStates[state_keys::kPlcInputMode] =
+          plc_input_mode_ == PlcInputMode::SOURCE ? 1.0f : 0.0f;
+      comp.internalStates[state_keys::kPlcOutputMode] =
+          plc_output_mode_ == PlcOutputMode::SOURCE ? 1.0f : 0.0f;
     }
     ImVec2 screen_top_left = WorldToScreen({comp.position.x, comp.position.y});
     ImVec2 render_origin =

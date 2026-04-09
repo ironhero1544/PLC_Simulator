@@ -39,6 +39,9 @@ constexpr const char* kPlcRunning = "is_running";
 constexpr const char* kPlcError = "plc_error";
 constexpr const char* kPlcXPrefix = "plc_x_";
 constexpr const char* kPlcYPrefix = "plc_y_";
+constexpr const char* kPlcInputMode = "plc_input_mode";
+constexpr const char* kPlcOutputMode = "plc_output_mode";
+constexpr const char* kSensorOutputMode = "sensor_output_mode";
 }
 }  /* namespace plc */
 

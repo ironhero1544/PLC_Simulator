@@ -107,10 +107,12 @@ void UpdateProcessingCylinderElectrical(
   bool has_0v = voltages.count(supply_minus) &&
                 voltages.at(supply_minus) > -0.1f &&
                 voltages.at(supply_minus) < 0.1f;
+  bool ctrl_high = voltages.count(motor_ctrl) &&
+                   voltages.at(motor_ctrl) > 23.0f;
   bool ctrl_low = voltages.count(motor_ctrl) &&
                   voltages.at(motor_ctrl) > -0.1f &&
                   voltages.at(motor_ctrl) < 0.1f;
-  bool motor_on = has_24v && has_0v && ctrl_low;
+  bool motor_on = has_24v && has_0v && (ctrl_low || ctrl_high);
   comp->internalStates[state_keys::kMotorOn] = motor_on ? 1.0f : 0.0f;
 }
 
@@ -120,21 +122,34 @@ void UpdateTowerLampElectrical(PlacedComponent* comp,
     return;
   }
   PortRef com_port = std::make_pair(comp->instanceId, 0);
-  bool com_ok = voltages.count(com_port) && voltages.at(com_port) > 23.0f;
+  auto read_voltage = [&](const PortRef& port) -> float {
+    auto it = voltages.find(port);
+    if (it == voltages.end()) {
+      return -1.0f;
+    }
+    return it->second;
+  };
+  auto is_high = [&](float value) { return value > 23.0f; };
+  auto is_low = [&](float value) {
+    return value > -0.1f && value < 0.1f;
+  };
+  float com_voltage = read_voltage(com_port);
   bool red_on = false;
   bool yellow_on = false;
   bool green_on = false;
-  if (com_ok) {
+  if (com_voltage >= -0.1f) {
     PortRef red_port = std::make_pair(comp->instanceId, 1);
     PortRef yellow_port = std::make_pair(comp->instanceId, 2);
     PortRef green_port = std::make_pair(comp->instanceId, 3);
-    red_on = voltages.count(red_port) && voltages.at(red_port) > -0.1f &&
-             voltages.at(red_port) < 0.1f;
-    yellow_on = voltages.count(yellow_port) &&
-                voltages.at(yellow_port) > -0.1f &&
-                voltages.at(yellow_port) < 0.1f;
-    green_on = voltages.count(green_port) && voltages.at(green_port) > -0.1f &&
-               voltages.at(green_port) < 0.1f;
+    float red_voltage = read_voltage(red_port);
+    float yellow_voltage = read_voltage(yellow_port);
+    float green_voltage = read_voltage(green_port);
+    red_on = (is_high(com_voltage) && is_low(red_voltage)) ||
+             (is_low(com_voltage) && is_high(red_voltage));
+    yellow_on = (is_high(com_voltage) && is_low(yellow_voltage)) ||
+                (is_low(com_voltage) && is_high(yellow_voltage));
+    green_on = (is_high(com_voltage) && is_low(green_voltage)) ||
+               (is_low(com_voltage) && is_high(green_voltage));
   }
   comp->internalStates[state_keys::kLampRed] = red_on ? 1.0f : 0.0f;
   comp->internalStates[state_keys::kLampYellow] = yellow_on ? 1.0f : 0.0f;

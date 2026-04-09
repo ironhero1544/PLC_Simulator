@@ -60,6 +60,7 @@ class ProjectFileManager {
     std::string errorMessage;
     LadderProgram program;
     std::string ldProgram;
+    std::string layoutJson;
     ProjectInfo info;
   };
 
@@ -69,8 +70,13 @@ class ProjectFileManager {
   SaveResult SaveProject(const LadderProgram& program,
                          const std::string& filePath,
                          const std::string& projectName = "");
+  SaveResult SaveProjectPackage(const LadderProgram& program,
+                                const std::string& layoutJson,
+                                const std::string& filePath,
+                                const std::string& projectName = "");
 
   LoadResult LoadProject(const std::string& filePath);
+  LoadResult LoadProjectPackage(const std::string& filePath);
 
   ProjectInfo GetProjectInfo(const std::string& filePath);
 

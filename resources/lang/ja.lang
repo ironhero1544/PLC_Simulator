@@ -2,6 +2,9 @@
 menu.settings=設定
 menu.language=言語
 menu.ui_settings=UI
+menu.project=プロジェクト
+menu.project.save=プロジェクトを保存...
+menu.project.load=プロジェクトを読込...
 lang.english=英語(English)
 lang.korean=韓国語(한국어)
 lang.japanese=日本語
@@ -55,6 +58,8 @@ ui.common.enabled=有効
 ui.common.disabled=無効
 ui.common.run=RUN
 ui.common.stop=STOP
+ui.common.source=ソース
+ui.common.sink=シンク
 
 # Debug panel
 ui.debug.engine_fmt=エンジン: %s
@@ -171,6 +176,8 @@ ui.wiring.context.rotate_cw=90度回転
 ui.wiring.context.rotate_ccw=-90度回転
 ui.wiring.context.flip_horizontal=水平反転
 ui.wiring.context.flip_vertical=垂直反転
+ui.wiring.context.plc_input_mode=PLC入力モード
+ui.wiring.context.plc_output_mode=PLC出力モード
 
 # Programming UI
 ui.programming.toolbar_edit=編集 (F3)

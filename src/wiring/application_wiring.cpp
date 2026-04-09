@@ -655,6 +655,8 @@ Application::WiringUndoState Application::CaptureWiringState() const {
   state.next_instance_id = next_instance_id_;
   state.next_wire_id = next_wire_id_;
   state.next_z_order = next_z_order_;
+  state.plc_input_mode = plc_input_mode_;
+  state.plc_output_mode = plc_output_mode_;
   return state;
 }
 
@@ -666,6 +668,8 @@ void Application::ApplyWiringState(const WiringUndoState& state) {
   next_instance_id_ = state.next_instance_id;
   next_wire_id_ = state.next_wire_id;
   next_z_order_ = state.next_z_order;
+  plc_input_mode_ = state.plc_input_mode;
+  plc_output_mode_ = state.plc_output_mode;
 
   is_dragging_ = false;
   dragged_component_index_ = -1;
@@ -684,6 +688,7 @@ void Application::ApplyWiringState(const WiringUndoState& state) {
   editing_point_index_ = -1;
   show_tag_popup_ = false;
   tag_edit_wire_id_ = -1;
+  OnElectricalConfigChanged();
 }
 
 void Application::PushWiringUndoState() {
@@ -2231,6 +2236,7 @@ void Application::RenderComponentContextMenu() {
   if (ImGui::BeginPopup("Component Context")) {
     int component_id = context_menu_component_id_;
     if (component_id != -1) {
+      PlacedComponent* comp = FindComponentById(component_id);
       if (ImGui::MenuItem(
               TR("ui.wiring.context.bring_front", "Bring to Front"))) {
         BringComponentToFront(component_id);
@@ -2250,19 +2256,20 @@ void Application::RenderComponentContextMenu() {
       ImGui::Separator();
       if (ImGui::MenuItem(
               TR("ui.wiring.context.rotate_cw", "Rotate 90deg"))) {
-        PlacedComponent* comp = FindComponentById(component_id);
-        PushWiringUndoState();
-        ApplyRotationToComponent(comp, 1);
+        if (comp) {
+          PushWiringUndoState();
+          ApplyRotationToComponent(comp, 1);
+        }
       }
       if (ImGui::MenuItem(
               TR("ui.wiring.context.rotate_ccw", "Rotate -90deg"))) {
-        PlacedComponent* comp = FindComponentById(component_id);
-        PushWiringUndoState();
-        ApplyRotationToComponent(comp, -1);
+        if (comp) {
+          PushWiringUndoState();
+          ApplyRotationToComponent(comp, -1);
+        }
       }
       if (ImGui::MenuItem(
               TR("ui.wiring.context.flip_horizontal", "Flip Horizontal"))) {
-        PlacedComponent* comp = FindComponentById(component_id);
         if (comp) {
           PushWiringUndoState();
           comp->flip_x = !comp->flip_x;
@@ -2270,10 +2277,48 @@ void Application::RenderComponentContextMenu() {
       }
       if (ImGui::MenuItem(
               TR("ui.wiring.context.flip_vertical", "Flip Vertical"))) {
-        PlacedComponent* comp = FindComponentById(component_id);
         if (comp) {
           PushWiringUndoState();
           comp->flip_y = !comp->flip_y;
+        }
+      }
+      if (comp && comp->type == ComponentType::PLC) {
+        ImGui::Separator();
+        if (ImGui::BeginMenu(
+                TR("ui.wiring.context.plc_input_mode", "PLC Input Mode"))) {
+          bool sink_selected = plc_input_mode_ == PlcInputMode::SINK;
+          bool source_selected = plc_input_mode_ == PlcInputMode::SOURCE;
+          if (ImGui::MenuItem(TR("ui.common.sink", "Sink"), nullptr,
+                              sink_selected) &&
+              !sink_selected) {
+            PushWiringUndoState();
+            SetPlcInputMode(PlcInputMode::SINK, true);
+          }
+          if (ImGui::MenuItem(TR("ui.common.source", "Source"), nullptr,
+                              source_selected) &&
+              !source_selected) {
+            PushWiringUndoState();
+            SetPlcInputMode(PlcInputMode::SOURCE, true);
+          }
+          ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(
+                TR("ui.wiring.context.plc_output_mode", "PLC Output Mode"))) {
+          bool sink_selected = plc_output_mode_ == PlcOutputMode::SINK;
+          bool source_selected = plc_output_mode_ == PlcOutputMode::SOURCE;
+          if (ImGui::MenuItem(TR("ui.common.sink", "Sink"), nullptr,
+                              sink_selected) &&
+              !sink_selected) {
+            PushWiringUndoState();
+            SetPlcOutputMode(PlcOutputMode::SINK);
+          }
+          if (ImGui::MenuItem(TR("ui.common.source", "Source"), nullptr,
+                              source_selected) &&
+              !source_selected) {
+            PushWiringUndoState();
+            SetPlcOutputMode(PlcOutputMode::SOURCE);
+          }
+          ImGui::EndMenu();
         }
       }
     }
