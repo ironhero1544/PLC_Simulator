@@ -63,14 +63,14 @@ void Application::UpdatePortPositions() {
   port_positions_.clear();
 
   for (const auto& comp : placed_components_) {
-    const ComponentDefinition* def = GetComponentDefinition(comp.type);
-    if (!def || !def->ports || def->port_count <= 0) {
+    std::vector<Port> ports = GetRuntimePortsForComponent(comp);
+    if (ports.empty()) {
       continue;
     }
-    for (int i = 0; i < def->port_count; ++i) {
-      const ComponentPortDef& port_def = def->ports[i];
+    for (const auto& port_def : ports) {
       ImVec2 world_pos =
-          LocalToWorld(comp, ImVec2(port_def.rel_pos.x, port_def.rel_pos.y));
+          LocalToWorld(comp,
+                       ImVec2(port_def.relativePos.x, port_def.relativePos.y));
       Position world_pos_data = {world_pos.x, world_pos.y};
       port_positions_[{comp.instanceId, port_def.id}] = world_pos_data;
     }

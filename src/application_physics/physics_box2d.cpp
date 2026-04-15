@@ -6,6 +6,7 @@
 
 #include "box2d/box2d.h"
 #include "plc_emulator/application_physics/physics_helpers.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 
 #include <algorithm>
@@ -739,7 +740,7 @@ bool Application::UpdateWorkpieceInteractionsBox2d(float delta_time,
       }
       case ComponentType::RING_SENSOR:
       case ComponentType::INDUCTIVE_SENSOR: {
-        comp.internalStates[state_keys::kIsDetected] = 0.0f;
+        component_input::SetSensorDetected(&comp, false);
         SensorCache cache;
         cache.index = static_cast<int>(i);
         cache.type = comp.type;
@@ -964,7 +965,7 @@ bool Application::UpdateWorkpieceInteractionsBox2d(float delta_time,
             kRingDetectRadius * kRingDetectRadius) {
           continue;
         }
-        sensor.internalStates[state_keys::kIsDetected] = 1.0f;
+        component_input::SetSensorDetected(&sensor, true);
         if (allow_snap) {
           bool snap_locked =
               workpiece.internalStates.count(snap_key) &&
@@ -1007,7 +1008,7 @@ bool Application::UpdateWorkpieceInteractionsBox2d(float delta_time,
         if (!hit_workpiece) {
           continue;
         }
-        sensor.internalStates[state_keys::kIsDetected] = 1.0f;
+        component_input::SetSensorDetected(&sensor, true);
       }
     }
   };
@@ -1286,14 +1287,10 @@ bool Application::UpdateSensorsBox2d() {
                  beam_half_width, -1, &hit_workpiece, &hit_rod_tip);
 
     if (sensor.type == ComponentType::LIMIT_SWITCH) {
-      bool is_pressed_manual =
-          sensor.internalStates.count(state_keys::kIsPressedManual) &&
-          sensor.internalStates.at(state_keys::kIsPressedManual) > 0.5f;
-      sensor.internalStates[state_keys::kIsPressed] =
-          (hit_workpiece || hit_rod_tip || is_pressed_manual) ? 1.0f : 0.0f;
+      component_input::SetLimitSwitchPhysicalDetected(
+          &sensor, hit_workpiece || hit_rod_tip);
     } else {
-      sensor.internalStates[state_keys::kIsDetected] =
-          (hit_workpiece || hit_rod_tip) ? 1.0f : 0.0f;
+      component_input::SetSensorDetected(&sensor, hit_workpiece || hit_rod_tip);
     }
   }
 

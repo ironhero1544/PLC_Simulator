@@ -41,6 +41,7 @@ enum class Mode { WIRING, PROGRAMMING };
 enum class PlcInputMode { SINK, SOURCE };
 enum class PlcOutputMode { SINK, SOURCE };
 enum class SensorOutputMode { PNP, NPN };
+enum class RtlLogicFamily { INDUSTRIAL_24V, CMOS_5V, TTL_5V };
 
 enum class ComponentType {
   PLC,
@@ -62,12 +63,28 @@ enum class ComponentType {
   PROCESSING_CYLINDER,
   BOX,
   TOWER_LAMP,
-  EMERGENCY_STOP
+  EMERGENCY_STOP,
+  RTL_MODULE
 };
 
 enum class ToolType { SELECT, TAG, PNEUMATIC, ELECTRIC };
 enum class PortType { ELECTRIC, PNEUMATIC };
 enum class WireEditMode { NONE, MOVING_POINT };
+
+struct Port {
+  int id = 0;
+  Position relativePos;
+  Color color;
+  bool isInput = true;
+  PortType type;
+  std::string role;
+};
+
+struct RtlPinBinding {
+  std::string pinName;
+  int portId = -1;
+  bool isInput = true;
+};
 
 struct PlacedComponent {
   int instanceId = 0;
@@ -81,15 +98,22 @@ struct PlacedComponent {
   bool flip_x = false;
   bool flip_y = false;
   std::map<std::string, float> internalStates;
-};
-
-struct Port {
-  int id = 0;
-  Position relativePos;
-  Color color;
-  bool isInput = true;
-  PortType type;
-  std::string role;
+  std::string customLabel;
+  std::string rtlModuleId;
+  std::string rtlSourceMode;
+  std::string rtlOverrideId;
+  std::string rtlClockPinName;
+  std::string rtlResetPinName;
+  std::string rtlPowerPinName;
+  std::string rtlGroundPinName;
+  RtlLogicFamily rtlLogicFamily = RtlLogicFamily::INDUSTRIAL_24V;
+  bool rtlUseInternalClock = false;
+  float rtlClockFrequencyHz = 1.0f;
+  bool rtlUseStartupReset = false;
+  float rtlResetPulseMs = 20.0f;
+  bool rtlResetActiveLow = false;
+  std::vector<Port> runtimePorts;
+  std::vector<RtlPinBinding> rtlPinBindings;
 };
 
 struct Wire {

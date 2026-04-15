@@ -293,8 +293,8 @@ void UpdateCylinderPhysics(PlacedComponent* comp,
 }  // namespace
 
 const ComponentPhysicsAdapter* GetComponentPhysicsAdapter(ComponentType type) {
-  constexpr int kComponentTypeCount = 20;
-  static_assert(static_cast<int>(ComponentType::EMERGENCY_STOP) ==
+  constexpr int kComponentTypeCount = 21;
+  static_assert(static_cast<int>(ComponentType::RTL_MODULE) ==
                     kComponentTypeCount - 1,
                 "Update physics adapter table for new component types.");
 
@@ -338,6 +338,8 @@ const ComponentPhysicsAdapter* GetComponentPhysicsAdapter(ComponentType type) {
       // TOWER_LAMP
       {UpdateTowerLampElectrical, nullptr, nullptr},
       // EMERGENCY_STOP
+      {nullptr, nullptr, nullptr},
+      // RTL_MODULE
       {nullptr, nullptr, nullptr}};
 
   int index = static_cast<int>(type);

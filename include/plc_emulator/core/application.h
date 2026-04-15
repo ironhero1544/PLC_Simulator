@@ -9,16 +9,23 @@
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_APPLICATION_H_
 
 #include "imgui.h"
+#include "plc_emulator/components/component_behavior.h"
 #include "plc_emulator/core/data_types.h"
 #include "plc_emulator/core/plc_simulator_core.h"
 #include "plc_emulator/core/ui_settings.h"
+#include "plc_emulator/input/platform_input_collector.h"
+#include "plc_emulator/input/ui_capture_registry.h"
+#include "plc_emulator/physics/component_physics_adapter.h"
 #include "plc_emulator/physics/physics_engine.h"
 #include "plc_emulator/programming/compiled_plc_executor.h"
 #include "plc_emulator/programming/programming_mode.h"
 #include "plc_emulator/project/project_file_manager.h"
+#include "plc_emulator/rtl/rtl_project_manager.h"
+#include "plc_emulator/rtl/rtl_runtime_manager.h"
 
 #include <chrono>
 #include <cstdint>
+#include <future>
 #include <mutex>
 #include <map>
 #include <memory>
@@ -64,10 +71,30 @@ namespace plc {
         void SetPanInputActive(bool active);
         void SetTouchAnchor(ImVec2 screen_pos);
         void QueueTouchpadZoom(float zoom_delta, ImVec2 screen_pos);
+        void QueueTouchpadPan(ImVec2 pan_delta);
+        void QueueTouchpadWheel(float wheel_delta);
+        void QueueCanvasWheelInput(float vertical_delta, float horizontal_delta,
+                                   ImVec2 screen_pos, bool physical_ctrl_down,
+                                   bool physical_shift_down,
+                                   bool synthetic_pinch,
+                                   bool touchpad_like);
+        void BeginOverlayInputCaptureFrame();
+        void RegisterOverlayInputCaptureRect(ImVec2 min, ImVec2 max,
+                                             bool capturing);
         void RegisterWin32RightClick();
         void RegisterWin32SideClick();
         void RegisterWin32SideDown(bool is_down);
         bool IsPointInCanvas(ImVec2 screen_pos) const;
+        bool IsPointOverComponentAtScreenPos(ImVec2 screen_pos) const;
+        bool HasWheelResponsiveComponentAtScreenPos(ImVec2 screen_pos) const;
+        bool ShouldBlockCanvasNavigationAtScreenPos(
+            ImVec2 screen_pos, bool block_on_component) const;
+        bool IsPointInOverlayCaptureRect(ImVec2 screen_pos) const;
+        std::string DescribeInputTargetAtScreenPos(ImVec2 screen_pos) const;
+        bool IsCanvasDirectlyHovered() const { return canvas_directly_hovered_; }
+        bool IsOverlayWindowCapturingMouse(ImVec2 screen_pos) const {
+          return overlay_input_capture_.IsCapturingMouse(screen_pos);
+        }
         bool IsDebugEnabled() const;
         void DebugLog(const std::string& message);
         void QueuePhysicsWarningDialog(const std::string& message);
@@ -85,6 +112,76 @@ namespace plc {
         bool LoadProject(const std::string& filePath);
 
     private:
+        struct RtlAsyncTaskResult {
+          std::string moduleId;
+          std::string taskKind;
+          bool success = false;
+          RtlLibraryEntry entry;
+          std::string statusMessage;
+        };
+
+        struct DeferredCanvasWheelInput {
+          bool pending = false;
+          float vertical_delta = 0.0f;
+          float horizontal_delta = 0.0f;
+          ImVec2 screen_pos = {0.0f, 0.0f};
+          bool physical_ctrl_down = false;
+          bool physical_shift_down = false;
+          bool synthetic_pinch = false;
+          bool touchpad_like = false;
+        };
+
+        struct CanvasInteractionCommand {
+          enum class Type {
+            None,
+            ApplyComponentInteraction,
+            CancelWireConnection,
+            BeginWirePointEdit,
+            UpdateWirePointEdit,
+            EndWirePointEdit,
+            StartWireConnection,
+            CompleteWireConnection,
+            AddWireWaypoint,
+            StartComponentMove,
+            UpdateComponentMove,
+            EndComponentMove,
+            SelectComponentExclusive,
+            ToggleComponentSelection,
+            SetPrimarySelectedComponent,
+            OpenComponentContextMenu,
+            SelectWireExclusive,
+            ToggleWireSelection,
+            SetPrimarySelectedWire,
+            ClearWireSelection,
+            OpenWireTagPopup,
+            DeleteComponentById,
+            DeleteWireById,
+            UntagWireById
+          };
+
+          Type type = Type::None;
+          int component_id = -1;
+          int wire_id = -1;
+          int port_id = -1;
+          int point_index = -1;
+          ImVec2 screen_pos = {0.0f, 0.0f};
+          ImVec2 world_pos = {0.0f, 0.0f};
+          ComponentInteractionResult component_interaction;
+        };
+
+        struct BoxSelectionResult {
+          std::vector<int> selected_component_ids;
+          std::vector<int> selected_wire_ids;
+          int primary_component_id = -1;
+          int primary_wire_id = -1;
+        };
+
+        struct ComponentMoveSession {
+          int anchor_component_id = -1;
+          ImVec2 drag_start_offset = {0.0f, 0.0f};
+          std::vector<std::pair<int, ImVec2>> offsets;
+        };
+
         /*
          * 배선 편집용 Undo 스냅샷.
          * Undo snapshot for wiring edits.
@@ -232,7 +329,10 @@ namespace plc {
          * 렌더링 및 UI 구성.
          * Rendering and UI composition.
          */
+        void BeginFrame();
+
         void Render();
+        void ProcessFrameKeyboardInput();
 
         void Cleanup();
 
@@ -254,8 +354,12 @@ namespace plc {
         void RenderToolbar();
 
         void RenderMainArea();
+        void ProcessDeferredCanvasWheelInput();
 
         void RenderPLCDebugPanel();
+        void RenderRtlLibraryPanel();
+        void RenderRtlEditor();
+        void RenderRtlToolchainPanel();
         void RenderPhysicsWarningDialog();
         void RenderShortcutHelpDialog();
         ImVec2 WorldToScreen(const ImVec2& world_pos) const;
@@ -267,6 +371,7 @@ namespace plc {
         void RenderPlacedComponents(ImDrawList* draw_list);
 
         void HandleComponentDragStart(int componentIndex);
+        void HandleRtlComponentDragStart(const std::string& moduleId);
 
         void HandleComponentDrag();
 
@@ -285,9 +390,12 @@ namespace plc {
 
         void DeleteSelectedComponent();
 
-        void HandleComponentMoveStart(int instanceId, ImVec2 mousePos);
-
-        void HandleComponentMoveEnd();
+        ComponentMoveSession BuildComponentMoveSession(
+            int instanceId, ImVec2 mousePos) const;
+        void ApplyComponentMoveManualDragState(
+            const ComponentMoveSession& session, bool active);
+        void BeginComponentMoveSession(const ComponentMoveSession& session);
+        void EndComponentMoveSession();
 
         /*
          * 배선 캔버스 상호작용.
@@ -310,9 +418,15 @@ namespace plc {
          * 배선 캔버스 보조 동작.
          * Wiring canvas helper routines.
          */
-        bool HandleFRLPressureAdjustment(ImVec2 mouse_world_pos, const ImGuiIO& io);
+        bool HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
+                                         ImVec2 mouse_screen_pos,
+                                         const ImGuiIO& io,
+                                         float resolved_wheel,
+                                         bool wheel_from_touchpad);
 
-        void HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
+        void HandleZoomAndPan(bool allow_wheel_pan_zoom,
+                              bool allow_mouse_pan, const ImGuiIO& io,
+                              const DeferredCanvasWheelInput& wheel_input,
                               bool frl_handled, bool& wheel_handled);
 
         void RenderGrid(ImDrawList* draw_list);
@@ -320,12 +434,44 @@ namespace plc {
         void HandleComponentDropAndWireDelete(bool is_canvas_hovered,
                                               ImVec2 mouse_world_pos,
                                               const ImGuiIO& io);
-
-        void HandleWireEditMode(ImVec2 mouse_world_pos);
-
-        void HandleSelectMode(bool is_canvas_hovered, ImVec2 mouse_world_pos);
-
-        void HandleWireConnectionMode(bool is_canvas_hovered, ImVec2 mouse_world_pos);
+        void HandleCanvasContextActions(bool is_canvas_hovered,
+                                        ImVec2 mouse_world_pos,
+                                        const ImGuiIO& io);
+        void ApplyCanvasComponentCommand(
+            const CanvasInteractionCommand& command);
+        void ApplyCanvasWireCommand(
+            const CanvasInteractionCommand& command);
+        void ApplyCanvasSelectionCommand(
+            const CanvasInteractionCommand& command);
+        void ApplyCanvasContextCommand(
+            const CanvasInteractionCommand& command);
+        void ApplyCanvasInteractionCommand(
+            const CanvasInteractionCommand& command);
+        void ApplyCanvasInteractionCommands(
+            const std::vector<CanvasInteractionCommand>& commands);
+        void BeginWirePointEditSession(int wire_id, int point_index);
+        void SetPrimarySelectedComponentById(int component_id);
+        void SelectWireExclusiveById(int wire_id);
+        void SetPrimarySelectedWireById(int wire_id);
+        void ResetWireEditState();
+        void UpdateEditedWirePoint(ImVec2 mouse_world_pos);
+        bool TryBuildWireEditCommand(
+            ImVec2 mouse_world_pos,
+            CanvasInteractionCommand* out_command);
+        void CancelBoxSelection();
+        void SnapshotBoxSelection();
+        BoxSelectionResult BuildBoxSelectionResult() const;
+        void ApplyBoxSelectionResult(const BoxSelectionResult& result);
+        bool HandleWireEditMode(ImVec2 mouse_world_pos);
+        void UpdateMovingComponentPositions(ImVec2 mouse_world_pos);
+        void HandleSelectMode(bool is_canvas_hovered,
+                              ImVec2 mouse_screen_pos,
+                              ImVec2 mouse_world_pos,
+                              const ImGuiIO& io);
+        void HandleWireConnectionMode(bool is_canvas_hovered,
+                                      bool is_pan_input,
+                                      ImVec2 mouse_world_pos,
+                                      double now);
 
         void RenderCanvasContent(ImDrawList* draw_list, ImVec2 mouse_world_pos);
 
@@ -349,8 +495,6 @@ namespace plc {
 
         void RenderTemporaryWire(ImDrawList* draw_list);
 
-        void HandleWireSelection(ImVec2 worldPos);
-
         Wire* FindWireAtPosition(ImVec2 worldPos, float tolerance = 5.0f);
         Wire* FindTaggedWireAtScreenPos(ImVec2 screen_pos);
 
@@ -359,6 +503,26 @@ namespace plc {
         bool IsValidWireConnection(const Port& fromPort, const Port& toPort);
 
         Port* FindPortAtPosition(ImVec2 worldPos, int& outComponentId);
+        std::vector<Port> GetRuntimePortsForComponent(
+            const PlacedComponent& comp) const;
+        bool IsRtlComponent(const PlacedComponent& comp) const;
+        void RefreshRtlComponentFromLibrary(PlacedComponent* comp);
+        void PlaceRtlLibraryComponent(const std::string& moduleId,
+                                      Position position);
+        bool AnalyzeRtlModule(const std::string& moduleId);
+        bool BuildRtlModule(const std::string& moduleId);
+        void RequestRtlToolchainRefresh();
+        void PollRtlToolchainRefresh();
+        void RequestRtlAnalyzeAsync(const std::string& moduleId);
+        void RequestRtlBuildAsync(const std::string& moduleId);
+        void RequestRtlTestbenchAsync(const std::string& moduleId);
+        void PollRtlAsyncTask();
+        void InvalidateRtlModuleRuntimeState(const std::string& moduleId);
+        void SyncRtlRuntimeComponents();
+        void UpdateRtlSimulation(const std::map<PortRef, float>& voltages);
+        RtlLogicValue GetRtlPortLogicValue(const PlacedComponent& comp,
+                                           int portId) const;
+        void UpdateRtlRuntimeInputState(PlacedComponent* comp, double step_seconds);
 
         /*
          * 스냅과 탐색 유틸리티.
@@ -402,6 +566,7 @@ namespace plc {
         static constexpr int kWindowHeight = 1024;
 
         std::vector<PlacedComponent> placed_components_;
+        std::recursive_mutex placed_components_mutex_;  // Protect placed_components_ from concurrent access
 
         int selected_component_id_;
 
@@ -412,6 +577,7 @@ namespace plc {
 
         bool is_dragging_;
         int dragged_component_index_;
+        std::string dragged_rtl_module_id_;
         bool is_moving_component_;
         int moving_component_id_;
         ImVec2 drag_start_offset_;
@@ -472,6 +638,8 @@ namespace plc {
         PhysicsEngine* physics_engine_;
         std::unique_ptr<CompiledPLCExecutor> compiled_plc_executor_;
         std::unique_ptr<ProjectFileManager> project_file_manager_;
+        std::unique_ptr<RtlProjectManager> rtl_project_manager_;
+        std::unique_ptr<RtlRuntimeManager> rtl_runtime_manager_;
         std::chrono::steady_clock::time_point last_physics_time_;
         std::chrono::steady_clock::time_point last_render_time_;
         std::chrono::steady_clock::time_point next_frame_time_;
@@ -519,6 +687,7 @@ namespace plc {
         ImVec2 last_pointer_world_pos_;
         double last_pointer_move_time_;
         double last_auto_waypoint_time_;
+        bool canvas_directly_hovered_;
         bool touch_gesture_active_;
         float touch_zoom_delta_;
         ImVec2 touch_pan_delta_;
@@ -527,14 +696,34 @@ namespace plc {
         bool touchpad_zoom_pending_;
         float touchpad_zoom_delta_;
         ImVec2 touchpad_zoom_anchor_screen_pos_;
+        bool touchpad_pan_pending_;
+        ImVec2 touchpad_pan_delta_;
+        bool touchpad_wheel_pending_;
+        float touchpad_wheel_delta_;
+        DeferredCanvasWheelInput deferred_canvas_wheel_input_;
+        UiCaptureRegistry overlay_input_capture_;
+        PlatformInputCollector platform_input_collector_;
         bool prev_right_button_down_;
         bool prev_side_button_down_;
-        bool win32_right_click_;
-        bool win32_side_click_;
-        bool win32_side_down_;
         bool show_restart_popup_;
         bool show_shortcut_help_popup_;
         bool show_component_context_menu_;
+        bool show_rtl_library_panel_;
+        bool show_rtl_toolchain_panel_;
+        bool rtl_toolchain_loading_;
+        bool rtl_toolchain_status_valid_;
+        RtlToolchainStatus rtl_toolchain_status_;
+        std::future<RtlToolchainStatus> rtl_toolchain_future_;
+        bool rtl_async_task_running_;
+        std::future<RtlAsyncTaskResult> rtl_async_task_future_;
+        std::string selected_rtl_module_id_;
+        std::string selected_rtl_source_path_;
+        std::string rtl_rename_source_path_;
+        std::string rtl_rename_source_buffer_;
+        std::string rtl_editor_buffer_;
+        std::string rtl_status_message_;
+        float rtl_editor_height_;
+        ImFont* rtl_editor_font_;
         int context_menu_component_id_;
         ImVec2 context_menu_pos_;
         UiSettings ui_settings_;
@@ -580,6 +769,10 @@ namespace plc {
         void ApplyElectricalDefaults(PlacedComponent* comp) const;
         void AutoConvertSensorsForInputMode();
         void OnElectricalConfigChanged();
+        bool ExportRtlSource(const std::string& module_id,
+                             const std::string& source_path);
+        bool ImportRtlSources(const std::string& module_id);
+        bool InstallRtlToolchain();
     };
 
 }  /* namespace plc */

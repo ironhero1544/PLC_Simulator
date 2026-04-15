@@ -1,6 +1,7 @@
 #include "plc_emulator/components/component_behavior.h"
 
 #include "imgui.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/lang/lang_manager.h"
 
@@ -9,6 +10,18 @@
 
 namespace plc {
 namespace {
+
+ComponentInteractionResult UnhandledInteraction() {
+  return {};
+}
+
+ComponentInteractionResult MakeHandledInteraction(
+    ComponentInteractionCommand command) {
+  ComponentInteractionResult result;
+  result.handled = true;
+  result.commands.push_back(command);
+  return result;
+}
 
 bool IsPointInsideCircle(ImVec2 point, ImVec2 center, float radius) {
   float dx = point.x - center.x;
@@ -23,70 +36,73 @@ constexpr float kButtonUnitRadius = 9.0f;
 constexpr float kEmergencyStopRadius = 26.0f;
 
 
-bool HandleButtonUnitMouseDown(PlacedComponent* comp, ImVec2 world_pos,
-                               int button) {
-  if (!comp || button != ImGuiMouseButton_Left) {
-    return false;
+ComponentInteractionResult HandleButtonUnitMouseDown(
+    const PlacedComponent& comp, ImVec2 world_pos, int button) {
+  if (button != ImGuiMouseButton_Left) {
+    return UnhandledInteraction();
   }
-  bool handled = false;
-  ImVec2 local(world_pos.x - comp->position.x,
-               world_pos.y - comp->position.y);
+  ImVec2 local(world_pos.x - comp.position.x,
+               world_pos.y - comp.position.y);
   for (int i = 0; i < 2; ++i) {
     float y_offset = kButtonUnitBaseY + static_cast<float>(i) *
                                           kButtonUnitSpacingY;
     if (IsPointInsideCircle(local, ImVec2(kButtonUnitCenterX, y_offset),
                             kButtonUnitRadius)) {
-      std::string key = std::string(state_keys::kPressedPrefix) +
-                        std::to_string(i);
-      comp->internalStates[key] = 1.0f;
-      handled = true;
+      ComponentInteractionCommand command;
+      command.type = ComponentInteractionCommandType::SetButtonPressed;
+      command.button_index = i;
+      command.pressed = true;
+      return MakeHandledInteraction(command);
     }
   }
-  return handled;
+  return UnhandledInteraction();
 }
 
-bool HandleButtonUnitMouseUp(PlacedComponent* comp, ImVec2 world_pos,
-                             int button) {
+ComponentInteractionResult HandleButtonUnitMouseUp(
+    const PlacedComponent& comp, ImVec2 world_pos, int button) {
+  (void)comp;
   (void)world_pos;
-  if (!comp || button != ImGuiMouseButton_Left) {
-    return false;
+  if (button != ImGuiMouseButton_Left) {
+    return UnhandledInteraction();
   }
-  comp->internalStates[std::string(state_keys::kPressedPrefix) + "0"] = 0.0f;
-  comp->internalStates[std::string(state_keys::kPressedPrefix) + "1"] = 0.0f;
-  return true;
+  ComponentInteractionCommand command;
+  command.type = ComponentInteractionCommandType::ReleaseButtonMomentary;
+  return MakeHandledInteraction(command);
 }
 
-bool HandleButtonUnitDoubleClick(PlacedComponent* comp, ImVec2 world_pos,
-                                 int button) {
-  if (!comp || button != ImGuiMouseButton_Left) {
-    return false;
+ComponentInteractionResult HandleButtonUnitDoubleClick(
+    const PlacedComponent& comp, ImVec2 world_pos, int button) {
+  if (button != ImGuiMouseButton_Left) {
+    return UnhandledInteraction();
   }
-  ImVec2 local(world_pos.x - comp->position.x,
-               world_pos.y - comp->position.y);
+  ImVec2 local(world_pos.x - comp.position.x,
+               world_pos.y - comp.position.y);
   float y_offset = kButtonUnitBaseY + 2.0f * kButtonUnitSpacingY;
   if (!IsPointInsideCircle(local, ImVec2(kButtonUnitCenterX, y_offset),
                            kButtonUnitRadius)) {
-    return false;
+    return UnhandledInteraction();
   }
-  std::string key = std::string(state_keys::kPressedPrefix) + "2";
-  float current = comp->internalStates.count(key)
-                      ? comp->internalStates.at(key)
-                      : 0.0f;
-  comp->internalStates[key] = 1.0f - current;
-  return true;
+  ComponentInteractionCommand command;
+  command.type = ComponentInteractionCommandType::ToggleButtonLatch;
+  command.button_index = 2;
+  return MakeHandledInteraction(command);
 }
 
-bool HandleFrlMouseWheel(PlacedComponent* comp, ImVec2 world_pos,
-                         const ImGuiIO& io) {
+ComponentInteractionResult HandleFrlMouseWheel(const PlacedComponent& comp,
+                                               ImVec2 world_pos,
+                                               const ImGuiIO& io) {
   (void)world_pos;
-  if (!comp || io.MouseWheel == 0.0f) {
-    return false;
+  if (io.MouseWheel == 0.0f) {
+    return UnhandledInteraction();
   }
 
-  float current_pressure = comp->internalStates.count(state_keys::kAirPressure)
-                               ? comp->internalStates.at(state_keys::kAirPressure)
+  float current_pressure = comp.internalStates.count(state_keys::kAirPressure)
+                               ? comp.internalStates.at(state_keys::kAirPressure)
                                : 6.0f;
   float step = io.KeyCtrl ? 0.1f : 0.5f;
+  if (io.KeyShift) {
+    step *= 0.5f;
+  }
 
   if (io.MouseWheel > 0) {
     current_pressure += step;
@@ -95,21 +111,26 @@ bool HandleFrlMouseWheel(PlacedComponent* comp, ImVec2 world_pos,
   }
 
   current_pressure = std::max(0.0f, std::min(10.0f, current_pressure));
-  comp->internalStates[state_keys::kAirPressure] = current_pressure;
-  return true;
+  ComponentInteractionCommand command;
+  command.type = ComponentInteractionCommandType::SetAirPressure;
+  command.scalar = current_pressure;
+  return MakeHandledInteraction(command);
 }
 
-bool HandleMeterValveMouseWheel(PlacedComponent* comp, ImVec2 world_pos,
-                                const ImGuiIO& io) {
+ComponentInteractionResult HandleMeterValveMouseWheel(
+    const PlacedComponent& comp, ImVec2 world_pos, const ImGuiIO& io) {
   (void)world_pos;
-  if (!comp || io.MouseWheel == 0.0f) {
-    return false;
+  if (io.MouseWheel == 0.0f) {
+    return UnhandledInteraction();
   }
 
-  float current = comp->internalStates.count(state_keys::kFlowSetting)
-                      ? comp->internalStates.at(state_keys::kFlowSetting)
+  float current = comp.internalStates.count(state_keys::kFlowSetting)
+                      ? comp.internalStates.at(state_keys::kFlowSetting)
                       : 1.0f;
   float step = io.KeyCtrl ? 0.005f : 0.02f;
+  if (io.KeyShift) {
+    step *= 0.5f;
+  }
 
   if (io.MouseWheel > 0) {
     current += step;
@@ -118,32 +139,31 @@ bool HandleMeterValveMouseWheel(PlacedComponent* comp, ImVec2 world_pos,
   }
 
   current = std::max(0.0f, std::min(1.0f, current));
-  comp->internalStates[state_keys::kFlowSetting] = current;
-  return true;
+  ComponentInteractionCommand command;
+  command.type = ComponentInteractionCommandType::SetFlowSetting;
+  command.scalar = current;
+  return MakeHandledInteraction(command);
 }
 
-bool HandleEmergencyStopDoubleClick(PlacedComponent* comp, ImVec2 world_pos,
-                                    int button) {
-  if (!comp || button != ImGuiMouseButton_Left) {
-    return false;
+ComponentInteractionResult HandleEmergencyStopDoubleClick(
+    const PlacedComponent& comp, ImVec2 world_pos, int button) {
+  if (button != ImGuiMouseButton_Left) {
+    return UnhandledInteraction();
   }
-  ImVec2 local(world_pos.x - comp->position.x,
-               world_pos.y - comp->position.y);
+  ImVec2 local(world_pos.x - comp.position.x,
+               world_pos.y - comp.position.y);
   if (!IsPointInsideCircle(local, ImVec2(40.0f, 35.0f),
                            kEmergencyStopRadius)) {
-    return false;
+    return UnhandledInteraction();
   }
-  float current = comp->internalStates.count(state_keys::kIsPressed)
-                      ? comp->internalStates.at(state_keys::kIsPressed)
-                      : 0.0f;
-  comp->internalStates[state_keys::kIsPressed] = 1.0f - current;
-  return true;
+  ComponentInteractionCommand command;
+  command.type = ComponentInteractionCommandType::ToggleEmergencyStop;
+  return MakeHandledInteraction(command);
 }
 
 bool BuildLimitSwitchTooltip(const PlacedComponent& comp, ImVec2 world_pos) {
   (void)world_pos;
-  bool is_pressed = comp.internalStates.count(state_keys::kIsPressed) &&
-                    comp.internalStates.at(state_keys::kIsPressed) > 0.5f;
+  bool is_pressed = component_input::IsLimitSwitchPressed(comp);
   ImGui::BeginTooltip();
   char tooltip_buf[256] = {0};
   FormatString(tooltip_buf, sizeof(tooltip_buf),
@@ -159,10 +179,7 @@ bool BuildButtonUnitTooltip(const PlacedComponent& comp, ImVec2 world_pos) {
   (void)world_pos;
   bool is_pressed = false;
   for (int i = 0; i < 3; ++i) {
-    std::string key = std::string(state_keys::kPressedPrefix) +
-                      std::to_string(i);
-    if (comp.internalStates.count(key) &&
-        comp.internalStates.at(key) > 0.5f) {
+    if (component_input::IsButtonUnitPressed(comp, i)) {
       is_pressed = true;
       break;
     }
@@ -213,9 +230,46 @@ bool BuildMeterValveTooltip(const PlacedComponent& comp, ImVec2 world_pos) {
 
 }  // namespace
 
+void ApplyComponentInteractionResult(PlacedComponent* comp,
+                                     const ComponentInteractionResult& result) {
+  if (!comp || !result.handled) {
+    return;
+  }
+
+  for (const auto& command : result.commands) {
+    switch (command.type) {
+      case ComponentInteractionCommandType::SetButtonPressed:
+        component_input::SetButtonUnitPressed(comp, command.button_index,
+                                              command.pressed);
+        break;
+      case ComponentInteractionCommandType::ReleaseButtonMomentary:
+        component_input::ReleaseButtonUnitMomentaryButtons(comp);
+        break;
+      case ComponentInteractionCommandType::ToggleButtonLatch:
+        component_input::ToggleButtonUnitLatch(comp, command.button_index);
+        break;
+      case ComponentInteractionCommandType::ToggleEmergencyStop:
+        component_input::ToggleEmergencyStopPressed(comp);
+        break;
+      case ComponentInteractionCommandType::ToggleLimitSwitchManualOverride:
+        component_input::ToggleLimitSwitchManualOverride(comp);
+        break;
+      case ComponentInteractionCommandType::SetAirPressure:
+        comp->internalStates[state_keys::kAirPressure] = command.scalar;
+        break;
+      case ComponentInteractionCommandType::SetFlowSetting:
+        comp->internalStates[state_keys::kFlowSetting] = command.scalar;
+        break;
+      case ComponentInteractionCommandType::None:
+      default:
+        break;
+    }
+  }
+}
+
 const ComponentBehavior* GetComponentBehavior(ComponentType type) {
-  constexpr int kComponentTypeCount = 20;
-  static_assert(static_cast<int>(ComponentType::EMERGENCY_STOP) ==
+  constexpr int kComponentTypeCount = 21;
+  static_assert(static_cast<int>(ComponentType::RTL_MODULE) ==
                     kComponentTypeCount - 1,
                 "Update component behavior table for new component types.");
 
@@ -261,7 +315,9 @@ const ComponentBehavior* GetComponentBehavior(ComponentType type) {
       // TOWER_LAMP
       {nullptr, nullptr, nullptr, nullptr, nullptr},
       // EMERGENCY_STOP
-      {nullptr, nullptr, HandleEmergencyStopDoubleClick, nullptr, nullptr}};
+      {nullptr, nullptr, HandleEmergencyStopDoubleClick, nullptr, nullptr},
+      // RTL_MODULE
+      {nullptr, nullptr, nullptr, nullptr, nullptr}};
 
   int index = static_cast<int>(type);
   if (index < 0 || index >= kComponentTypeCount) {

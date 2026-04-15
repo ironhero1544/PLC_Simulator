@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 namespace plc {
@@ -16,7 +17,6 @@ ImU32 ToImU32(const Color& color) {
 }
 
 const char kPoweredKey[] = "is_powered";
-const char kDetectedKey[] = "is_detected";
 
 const ComponentPortDef kPorts[] = {
     {0, {30.0f, 110.0f}, PortType::ELECTRIC, true,
@@ -47,8 +47,7 @@ void RenderSensor(ImDrawList* draw_list,
 
   bool is_powered = comp.internalStates.count(kPoweredKey) &&
                     comp.internalStates.at(kPoweredKey) > 0.5f;
-  bool is_detected = comp.internalStates.count(kDetectedKey) &&
-                     comp.internalStates.at(kDetectedKey) > 0.5f;
+  bool is_detected = component_input::IsSensorDetected(comp);
 
   ImU32 led_color = IM_COL32(80, 80, 80, 255);
   if (is_powered) {

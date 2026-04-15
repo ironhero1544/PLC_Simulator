@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 namespace plc {
@@ -14,9 +15,6 @@ ImU32 ToImU32(const Color& color) {
                   static_cast<int>(color.b * 255.0f),
                   static_cast<int>(color.a * 255.0f));
 }
-
-const char kPressedKey[] = "is_pressed";
-
 const ComponentPortDef kPorts[] = {
     {0, {15.0f, 55.0f}, PortType::ELECTRIC, true,
      {0.6f, 0.6f, 0.6f, 1.0f}, "COM"},
@@ -37,8 +35,7 @@ void RenderLimitSwitch(ImDrawList* draw_list,
   draw_list->AddRect(screen_pos, body_end, IM_COL32(80, 80, 80, 255),
                      3.0f * zoom, 0, 2.0f);
 
-  bool is_pressed = comp.internalStates.count(kPressedKey) &&
-                    comp.internalStates.at(kPressedKey) > 0.5f;
+  bool is_pressed = component_input::IsLimitSwitchPressed(comp);
   float actuator_y_offset = is_pressed ? 5.0f * zoom : -5.0f * zoom;
   ImU32 wheel_color =
       is_pressed ? IM_COL32(255, 220, 50, 255) : IM_COL32(255, 193, 7, 255);

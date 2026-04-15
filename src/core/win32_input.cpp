@@ -5,9 +5,13 @@
 #include "plc_emulator/core/win32_input.h"
 
 #include "plc_emulator/core/application.h"
+#include "imgui.h"
 
 #ifdef _WIN32
-
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 #define WIN32_LEAN_AND_MEAN
 
 #ifndef NOMINMAX
@@ -54,6 +58,9 @@ WNDPROC g_prev_wndproc = nullptr;
 Application* g_app_instance = nullptr;
 HWND g_hwnd = nullptr;
 bool g_use_pointer_input = false;
+bool g_logged_input_pipeline_revision = false;
+constexpr const char* kInputPipelineRevision = "input-rewrite-2026-04-12-r2";
+constexpr const char* kInputPipelineBuildStamp = __DATE__ " " __TIME__;
 
 std::unordered_map<UINT32, POINT> g_touch_points;
 float g_prev_pinch_distance = 0.0f;
@@ -72,14 +79,14 @@ struct InputMessageSourceCompat {
 using GetCurrentInputMessageSourceFn =
     BOOL(WINAPI*)(InputMessageSourceCompat*);
 
-bool IsTouchpadInputMessage() {
+bool GetCurrentInputMessageSourceData(InputMessageSourceCompat* out_source) {
   static HMODULE user32_module = GetModuleHandleA("user32.dll");
   static GetCurrentInputMessageSourceFn get_input_source =
       user32_module
           ? reinterpret_cast<GetCurrentInputMessageSourceFn>(
                 GetProcAddress(user32_module, "GetCurrentInputMessageSource"))
           : nullptr;
-  if (!get_input_source) {
+  if (!get_input_source || !out_source) {
     return false;
   }
 
@@ -87,7 +94,40 @@ bool IsTouchpadInputMessage() {
   if (!get_input_source(&source)) {
     return false;
   }
-  return source.deviceType == 0x00000010u;  // IMDT_TOUCHPAD
+  *out_source = source;
+  return true;
+}
+
+bool IsPhysicalCtrlDown() {
+  return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+}
+
+void LogInputPipelineRevisionIfNeeded() {
+  if (!g_app_instance || g_logged_input_pipeline_revision ||
+      !g_app_instance->IsDebugEnabled()) {
+    return;
+  }
+  g_logged_input_pipeline_revision = true;
+  g_app_instance->DebugLog(std::string("[INPUT] PIPELINE_REV=") +
+                           kInputPipelineRevision);
+  char exe_path[MAX_PATH] = {0};
+  DWORD len = GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
+  if (len > 0) {
+    g_app_instance->DebugLog(std::string("[INPUT] EXE_PATH=") +
+                             std::string(exe_path, exe_path + len));
+  }
+  g_app_instance->DebugLog(std::string("[INPUT] BUILD_STAMP=") +
+                           kInputPipelineBuildStamp);
+  g_app_instance->DebugLog(std::string("[INPUT] PID=") +
+                           std::to_string(GetCurrentProcessId()));
+}
+
+DWORD GetCurrentInputMessageDeviceType() {
+  InputMessageSourceCompat source = {};
+  if (!GetCurrentInputMessageSourceData(&source)) {
+    return 0;
+  }
+  return source.deviceType;
 }
 
 void UpdateTouchGestureFromPoints() {
@@ -137,9 +177,22 @@ void UpdateTouchGestureFromPoints() {
   g_prev_pinch_distance = distance;
   g_prev_pinch_center = center;
   g_prev_pinch_center_client = center_client;
-  g_app_instance->SetTouchAnchor(
-      ImVec2(static_cast<float>(center_client.x),
-             static_cast<float>(center_client.y)));
+
+  const ImVec2 center_imvec(static_cast<float>(center_client.x),
+                            static_cast<float>(center_client.y));
+  const bool over_overlay =
+      g_app_instance->ShouldBlockCanvasNavigationAtScreenPos(center_imvec, true);
+
+  if (over_overlay) {
+    if (g_app_instance->IsDebugEnabled()) {
+      g_app_instance->DebugLog(
+          "[INPUT] Touch gesture suppressed: canvas navigation blocked");
+    }
+    g_app_instance->UpdateTouchGesture(0.0f, ImVec2(0, 0), false);
+    return;
+  }
+
+  g_app_instance->SetTouchAnchor(center_imvec);
   g_app_instance->UpdateTouchGesture(zoom_delta, pan_delta, true);
 }
 
@@ -154,6 +207,24 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   if (msg == WM_TABLET_QUERYSYSTEMGESTURESTATUS) {
     return TABLET_DISABLE_PRESSANDHOLD | TABLET_DISABLE_PENTAPFEEDBACK |
            TABLET_DISABLE_PENBARRELFEEDBACK | TABLET_DISABLE_FLICKS;
+  }
+
+  if ((msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) &&
+      g_app_instance->IsDebugEnabled()) {
+    LogInputPipelineRevisionIfNeeded();
+    const DWORD device_type = GetCurrentInputMessageDeviceType();
+    const char* msg_name =
+        (msg == WM_MOUSEHWHEEL) ? "WM_MOUSEHWHEEL" : "WM_MOUSEWHEEL";
+    const float wheel_delta =
+        static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
+        static_cast<float>(WHEEL_DELTA);
+    const bool ctrl_modified = (GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) != 0;
+    std::string log_msg =
+        "[INPUT] RAW_WHEEL msg=" + std::string(msg_name) +
+        " deviceType=0x" + std::to_string(device_type) +
+        " ctrl=" + std::to_string(ctrl_modified ? 1 : 0) +
+        " delta=" + std::to_string(wheel_delta);
+    g_app_instance->DebugLog(log_msg);
   }
 
 #if defined(WM_POINTERDOWN)
@@ -179,6 +250,18 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
       }
 
       if (is_touch) {
+        if (g_app_instance->IsDebugEnabled()) {
+          const char* msg_name = "WM_POINTERUPDATE";
+          if (msg == WM_POINTERDOWN) {
+            msg_name = "WM_POINTERDOWN";
+          } else if (msg == WM_POINTERUP) {
+            msg_name = "WM_POINTERUP";
+          }
+          g_app_instance->DebugLog(
+              "[INPUT] TOUCH_POINTER msg=" + std::string(msg_name) +
+              " id=" + std::to_string(pointer_id) +
+              " count=" + std::to_string(g_touch_points.size()));
+        }
         POINT client_pt = pointer_info.ptPixelLocation;
         if (g_hwnd) {
           ScreenToClient(g_hwnd, &client_pt);
@@ -192,25 +275,34 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         } else {
           g_touch_points[pointer_id] = pointer_info.ptPixelLocation;
         }
-        if (g_touch_points.size() >= 2) {
-          UpdateTouchGestureFromPoints();
-        } else if (msg != WM_POINTERUP) {
-          if (g_has_last_touch) {
-            ImVec2 pan_delta(
-                static_cast<float>(client_pt.x - g_last_touch_client.x),
-                static_cast<float>(client_pt.y - g_last_touch_client.y));
-            g_app_instance->SetTouchAnchor(
-                ImVec2(static_cast<float>(client_pt.x),
-                       static_cast<float>(client_pt.y)));
-            g_app_instance->UpdateTouchGesture(0.0f, pan_delta, true);
+
+        const ImVec2 touch_pos(static_cast<float>(client_pt.x),
+                               static_cast<float>(client_pt.y));
+        const bool over_overlay =
+            g_app_instance->ShouldBlockCanvasNavigationAtScreenPos(
+                touch_pos, true);
+
+        if (over_overlay) {
+          g_app_instance->UpdateTouchGesture(0.0f, ImVec2(0, 0), false);
+          // 캔버스 navigation이 막힌 영역이면 Win32/ImGui 기본 루프로 흘려보냄
+          handled_pointer = false;
+        } else {
+          if (g_touch_points.size() >= 2) {
+            UpdateTouchGestureFromPoints();
+          } else if (msg != WM_POINTERUP) {
+            if (g_has_last_touch) {
+              ImVec2 pan_delta(
+                  static_cast<float>(client_pt.x - g_last_touch_client.x),
+                  static_cast<float>(client_pt.y - g_last_touch_client.y));
+              g_app_instance->SetTouchAnchor(touch_pos);
+              g_app_instance->UpdateTouchGesture(0.0f, pan_delta, true);
+            }
+            g_last_touch_client = client_pt;
+            g_has_last_touch = true;
+            g_app_instance->SetTouchAnchor(touch_pos);
           }
-          g_last_touch_client = client_pt;
-          g_has_last_touch = true;
-          g_app_instance->SetTouchAnchor(
-              ImVec2(static_cast<float>(client_pt.x),
-                     static_cast<float>(client_pt.y)));
+          handled_pointer = true;
         }
-        handled_pointer = true;
       }
 
       bool pen_side_down = false;
@@ -322,33 +414,128 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
   }
 
-  if ((msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) && IsTouchpadInputMessage()) {
+  if (msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) {
     POINT client_pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
     if (g_hwnd) {
       ScreenToClient(g_hwnd, &client_pt);
     }
-    ImVec2 screen_pos(static_cast<float>(client_pt.x),
-                      static_cast<float>(client_pt.y));
-    const bool over_canvas = g_app_instance->IsPointInCanvas(screen_pos);
+    ImVec2 client_screen_pos(static_cast<float>(client_pt.x),
+                             static_cast<float>(client_pt.y));
+    ImVec2 imgui_screen_pos = client_screen_pos;
+    if (ImGui::GetCurrentContext()) {
+      imgui_screen_pos = ImGui::GetIO().MousePos;
+    }
+    InputMessageSourceCompat source = {};
+    GetCurrentInputMessageSourceData(&source);
+    const DWORD device_type = source.deviceType;
+    const DWORD origin_id = source.originId;
+    const bool reported_touchpad = (device_type == 0x00000010u);
+    const bool over_canvas =
+        g_app_instance->IsPointInCanvas(client_screen_pos) ||
+        g_app_instance->IsPointInCanvas(imgui_screen_pos);
+    const bool over_wheel_component =
+        g_app_instance->HasWheelResponsiveComponentAtScreenPos(
+            imgui_screen_pos) ||
+        g_app_instance->HasWheelResponsiveComponentAtScreenPos(
+            client_screen_pos);
+    const bool over_overlay =
+        g_app_instance->IsPointInOverlayCaptureRect(client_screen_pos) ||
+        g_app_instance->IsPointInOverlayCaptureRect(imgui_screen_pos);
+
+    const bool route_to_canvas = over_canvas && !over_overlay;
+    const float wheel_delta =
+        static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
+        static_cast<float>(WHEEL_DELTA);
+
     const bool ctrl_modified = (GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) != 0;
-    if (msg == WM_MOUSEWHEEL && over_canvas && ctrl_modified) {
-      float zoom_delta =
-          static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
-          static_cast<float>(WHEEL_DELTA);
-      zoom_delta *= 0.08f;
-      if (zoom_delta > 0.10f) {
-        zoom_delta = 0.10f;
-      } else if (zoom_delta < -0.10f) {
-        zoom_delta = -0.10f;
+    const bool physical_ctrl_down = IsPhysicalCtrlDown();
+    const bool physical_shift_down = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    const bool synthetic_pinch = ctrl_modified && !physical_ctrl_down;
+    // deviceType=0x2 (IMDT_MOUSE) with origin_id!=0 is a precision touchpad
+    // reporting as mouse. Also accept all 0x2 sources when delta is fractional
+    // (sub-WHEEL_DELTA), which real mice never produce.
+    const int raw_delta = GET_WHEEL_DELTA_WPARAM(wParam);
+    const bool fractional_delta = (raw_delta % WHEEL_DELTA) != 0;
+    const bool touchpad_like_stream =
+        reported_touchpad || synthetic_pinch ||
+        (device_type == 0x00000002u && (origin_id != 0 || fractional_delta));
+
+    if (g_app_instance->IsDebugEnabled()) {
+      const char* msg_name =
+          (msg == WM_MOUSEHWHEEL) ? "WM_MOUSEHWHEEL" : "WM_MOUSEWHEEL";
+      std::string log_msg =
+          "[INPUT] WHEEL_INPUT msg=" + std::string(msg_name) +
+          " deviceType=0x" + std::to_string(device_type) +
+          " originId=" + std::to_string(origin_id) +
+          " reported_touchpad=" + std::to_string(reported_touchpad ? 1 : 0) +
+          " ctrl=" + std::to_string(ctrl_modified ? 1 : 0) +
+          " physical_ctrl=" + std::to_string(physical_ctrl_down ? 1 : 0) +
+          " synthetic_pinch=" + std::to_string(synthetic_pinch ? 1 : 0) +
+          " touchpad_like=" + std::to_string(touchpad_like_stream ? 1 : 0) +
+          " delta=" + std::to_string(wheel_delta) +
+          " over_canvas=" + std::to_string(over_canvas ? 1 : 0) +
+          " over_wheel_component=" +
+          std::to_string(over_wheel_component ? 1 : 0) +
+          " over_overlay=" + std::to_string(over_overlay ? 1 : 0) +
+          " route_to_canvas=" + std::to_string(route_to_canvas ? 1 : 0) +
+          " client=(" + std::to_string(static_cast<int>(client_screen_pos.x)) +
+          "," + std::to_string(static_cast<int>(client_screen_pos.y)) + ")" +
+          " imgui=(" + std::to_string(static_cast<int>(imgui_screen_pos.x)) +
+          "," + std::to_string(static_cast<int>(imgui_screen_pos.y)) + ")" +
+          " " +
+          g_app_instance->DescribeInputTargetAtScreenPos(imgui_screen_pos);
+      g_app_instance->DebugLog(log_msg);
+    }
+    if (over_overlay) {
+      if (g_app_instance->IsDebugEnabled()) {
+        g_app_instance->DebugLog(
+            "[INPUT] WHEEL_INPUT deferred to overlay window");
       }
-      if (zoom_delta != 0.0f) {
-        g_app_instance->QueueTouchpadZoom(zoom_delta, screen_pos);
+      if (g_prev_wndproc) {
+        return CallWindowProc(g_prev_wndproc, hWnd, msg, wParam, lParam);
       }
+      return DefWindowProc(hWnd, msg, wParam, lParam);
+    }
+    if (route_to_canvas) {
+      float vertical_delta = 0.0f;
+      float horizontal_delta = 0.0f;
+      if (msg == WM_MOUSEWHEEL) {
+        vertical_delta = wheel_delta;
+      } else {
+        horizontal_delta = wheel_delta;
+      }
+      g_app_instance->QueueCanvasWheelInput(vertical_delta, horizontal_delta,
+                                            imgui_screen_pos,
+                                            physical_ctrl_down,
+                                            physical_shift_down,
+                                            synthetic_pinch,
+                                            touchpad_like_stream);
+      if (g_app_instance->IsDebugEnabled()) {
+        g_app_instance->DebugLog(
+            "[INPUT] WHEEL_INPUT dispatch=canvas_raw" +
+            std::string(over_wheel_component ? " component_candidate"
+                                             : " canvas"));
+      }
+      return 0;
+    }
+    if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse) {
+      if (g_app_instance->IsDebugEnabled()) {
+        g_app_instance->DebugLog("[INPUT] WHEEL_INPUT deferred to imgui");
+      }
+      if (g_prev_wndproc) {
+        return CallWindowProc(g_prev_wndproc, hWnd, msg, wParam, lParam);
+      }
+      return DefWindowProc(hWnd, msg, wParam, lParam);
+    }
+    if (g_app_instance->IsDebugEnabled()) {
+      g_app_instance->DebugLog(
+          "[INPUT] WHEEL_INPUT ignored: outside canvas or left to default path");
     }
   }
 
   if (msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN ||
       msg == WM_MBUTTONDOWN) {
+    LogInputPipelineRevisionIfNeeded();
     if (!g_use_pointer_input) {
       g_app_instance->SetPanInputActive(false);
     }
@@ -406,5 +593,7 @@ void UninstallWin32InputHook(GLFWwindow* window) {
 }
 
 }  // namespace plc
-
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 #endif  // _WIN32

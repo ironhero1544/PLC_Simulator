@@ -12,15 +12,16 @@
 namespace plc {
 
 void Application::ProcessInput() {
+  platform_input_collector_.BeginFrame();
   glfwPollEvents();
+}
 
+void Application::ProcessFrameKeyboardInput() {
   ImGuiIO& io = ImGui::GetIO();
 
-  if (io.WantCaptureKeyboard)
-    return;
-
   // '?' is typically Shift + '/', and we also accept Ctrl + '/'.
-  if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
+  if (!io.WantTextInput && io.KeyCtrl &&
+      ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
     show_shortcut_help_popup_ = true;
   }
 
@@ -63,71 +64,76 @@ void Application::ProcessInput() {
       if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true))
         programming_mode_->HandleKeyboardInput(ImGuiKey_DownArrow);
     }
-  } else {
-    if (!io.KeyCtrl && !io.KeyAlt &&
-        ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
-      switch (current_tool_) {
-        case ToolType::SELECT:
-          current_tool_ = ToolType::PNEUMATIC;
-          break;
-        case ToolType::PNEUMATIC:
-          current_tool_ = ToolType::ELECTRIC;
-          break;
-        case ToolType::ELECTRIC:
-          current_tool_ = ToolType::TAG;
-          break;
-        case ToolType::TAG:
-        default:
-          current_tool_ = ToolType::SELECT;
-          break;
-      }
+    return;
+  }
+
+  if (io.WantCaptureKeyboard) {
+    return;
+  }
+
+  if (!io.KeyCtrl && !io.KeyAlt &&
+      ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
+    switch (current_tool_) {
+      case ToolType::SELECT:
+        current_tool_ = ToolType::PNEUMATIC;
+        break;
+      case ToolType::PNEUMATIC:
+        current_tool_ = ToolType::ELECTRIC;
+        break;
+      case ToolType::ELECTRIC:
+        current_tool_ = ToolType::TAG;
+        break;
+      case ToolType::TAG:
+      default:
+        current_tool_ = ToolType::SELECT;
+        break;
     }
+  }
 
-    if (io.KeyCtrl) {
-      if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
-        if (io.KeyShift) {
-          RedoWiringState();
-        } else {
-          UndoWiringState();
-        }
-      } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
-        RedoWiringState();
-      }
-    }
-
-    static bool deleteKeyPressed = false;
-
-    bool deleteKeyDown = (glfwGetKey(window_, GLFW_KEY_DELETE) == GLFW_PRESS);
-
-    if (deleteKeyDown && !deleteKeyPressed) {
-      if (selected_component_id_ != -1 || HasSelectedComponents())
-        DeleteSelectedComponent();
-      if (selected_wire_id_ != -1 || HasSelectedWires())
-        DeleteSelectedWires();
-    }
-
-    deleteKeyPressed = deleteKeyDown;
-
-    if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+  if (io.KeyCtrl) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
       if (io.KeyShift) {
-        RotateSelectedComponent(-1);
+        RedoWiringState();
       } else {
-        RotateSelectedComponent(1);
+        UndoWiringState();
       }
+    } else if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+      RedoWiringState();
+    }
+  }
+
+  static bool delete_key_pressed = false;
+  const bool delete_key_down =
+      glfwGetKey(window_, GLFW_KEY_DELETE) == GLFW_PRESS;
+  if (delete_key_down && !delete_key_pressed) {
+    if (selected_component_id_ != -1 || HasSelectedComponents()) {
+      DeleteSelectedComponent();
+    }
+    if (selected_wire_id_ != -1 || HasSelectedWires()) {
+      DeleteSelectedWires();
+    }
+  }
+  delete_key_pressed = delete_key_down;
+
+  if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+    if (io.KeyShift) {
+      RotateSelectedComponent(-1);
+    } else {
+      RotateSelectedComponent(1);
     }
   }
 }
 
 void Application::RegisterWin32RightClick() {
-  win32_right_click_ = true;
+  platform_input_collector_.RegisterWin32RightClick();
 }
 
 void Application::RegisterWin32SideClick() {
-  win32_side_click_ = true;
+  platform_input_collector_.RegisterWin32SideClick();
 }
 
 void Application::RegisterWin32SideDown(bool is_down) {
-  win32_side_down_ = is_down;
+  platform_input_collector_.RegisterWin32SideDown(is_down);
 }
 
 }  // namespace plc

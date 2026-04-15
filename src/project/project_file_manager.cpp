@@ -860,7 +860,7 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProject(
   result.info.version = "1.0";
   result.info.createdDate = GetCurrentDateTime();
   result.info.lastModified = result.info.createdDate;
-  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.toolVersion = "PLC Simulator v1.0.4";
   result.info.schemaVersion = "1.0";
   result.info.layoutChecksum = CalculateChecksum(csvContent);
   result.info.programChecksum = result.info.layoutChecksum;
@@ -873,6 +873,8 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProject(
 
 ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
     const LadderProgram& program, const std::string& layoutJson,
+    const std::string& rtlLibraryJson,
+    const std::map<std::string, std::string>& rtlArtifacts,
     const std::string& filePath, const std::string& projectName) {
   SaveResult result;
   last_error_.clear();
@@ -899,7 +901,7 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
   result.info.version = "2.0";
   result.info.createdDate = GetCurrentDateTime();
   result.info.lastModified = result.info.createdDate;
-  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.toolVersion = "PLC Simulator v1.0.4";
   result.info.schemaVersion = "2.0";
   result.info.layoutChecksum = CalculateChecksum(layoutJson);
   result.info.programChecksum = CalculateChecksum(csvContent);
@@ -907,6 +909,17 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
   std::map<std::string, std::string> files;
   files["program.csv"] = csvContent;
   files["layout.json"] = layoutJson;
+  if (!rtlLibraryJson.empty()) {
+    files["rtl_library.json"] = rtlLibraryJson;
+  }
+  
+  // Pack RTL artifacts
+  for (const auto& [moduleId, data] : rtlArtifacts) {
+    if (!data.empty()) {
+      files["rtl_artifacts/" + moduleId + ".exe"] = data;
+    }
+  }
+
   files["manifest.json"] = GenerateManifest(result.info);
 
   if (!CreateZipFile(filePath, files)) {
@@ -967,7 +980,7 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProject(
   result.info.version = "1.0";
   result.info.createdDate = "";
   result.info.lastModified = "";
-  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.toolVersion = "PLC Simulator v1.0.4";
   result.info.schemaVersion = "1.0";
   result.info.layoutChecksum = CalculateChecksum(csvContent);
   result.info.programChecksum = result.info.layoutChecksum;
@@ -1016,9 +1029,26 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProjectPackage(
   result.success = true;
   result.program = program;
   result.layoutJson = layout_it->second;
+  auto rtl_it = files.find("rtl_library.json");
+  if (rtl_it != files.end()) {
+    result.rtlLibraryJson = rtl_it->second;
+  }
+  
+  // Extract RTL artifacts
+  for (const auto& [fileName, content] : files) {
+    if (fileName.rfind("rtl_artifacts/", 0) == 0) {
+      std::string moduleId = fileName.substr(14); // remove "rtl_artifacts/"
+      size_t dot_pos = moduleId.find_last_of('.');
+      if (dot_pos != std::string::npos) {
+        moduleId = moduleId.substr(0, dot_pos);
+      }
+      result.rtlArtifacts[moduleId] = content;
+    }
+  }
+
   result.info.projectName = ExtractFileName(filePath);
   result.info.version = "2.0";
-  result.info.toolVersion = "PLC Simulator v1.0";
+  result.info.toolVersion = "PLC Simulator v1.0.4";
   result.info.schemaVersion = "2.0";
   result.info.layoutChecksum = CalculateChecksum(result.layoutJson);
   result.info.programChecksum = CalculateChecksum(csv_it->second);
@@ -1037,7 +1067,7 @@ ProjectFileManager::ProjectInfo ProjectFileManager::GetProjectInfo(
   ProjectInfo info;
   info.projectName = ExtractFileName(filePath);
   info.version = "1.0";
-  info.toolVersion = "PLC Simulator v1.0";
+  info.toolVersion = "PLC Simulator v1.0.4";
   info.schemaVersion = "1.0";
 
   std::ifstream file(filePath, std::ios::binary);

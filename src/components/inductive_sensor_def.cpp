@@ -1,6 +1,7 @@
 #include "plc_emulator/components/inductive_sensor_def.h"
 
 #include "imgui.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 
 namespace plc {
@@ -43,8 +44,7 @@ void RenderInductiveSensor(ImDrawList* draw_list,
 
   bool is_powered = comp.internalStates.count(state_keys::kIsPowered) &&
                     comp.internalStates.at(state_keys::kIsPowered) > 0.5f;
-  bool is_detected = comp.internalStates.count(state_keys::kIsDetected) &&
-                     comp.internalStates.at(state_keys::kIsDetected) > 0.5f;
+  bool is_detected = component_input::IsSensorDetected(comp);
 
   ImU32 led_color = IM_COL32(80, 80, 80, 255);
   if (is_powered) {
@@ -71,7 +71,7 @@ void InitInductiveSensorDefaults(PlacedComponent* comp) {
   if (!comp) {
     return;
   }
-  comp->internalStates[state_keys::kIsDetected] = 0.0f;
+  component_input::SetSensorDetected(comp, false);
   comp->internalStates[state_keys::kIsPowered] = 0.0f;
 }
 

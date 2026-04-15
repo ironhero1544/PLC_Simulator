@@ -8,6 +8,7 @@
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 #include "plc_emulator/project/ld_to_ladder_converter.h"
 #include "plc_emulator/project/openplc_compiler_integration.h"
+#include "plc_emulator/rtl/rtl_project_manager.h"
 
 #include <algorithm>
 #include <cctype>
@@ -76,6 +77,8 @@ const char* ComponentTypeToString(ComponentType type) {
       return "TOWER_LAMP";
     case ComponentType::EMERGENCY_STOP:
       return "EMERGENCY_STOP";
+    case ComponentType::RTL_MODULE:
+      return "RTL_MODULE";
     default:
       return "UNKNOWN";
   }
@@ -125,6 +128,8 @@ bool ComponentTypeFromString(const std::string& value, ComponentType* out) {
     *out = ComponentType::TOWER_LAMP;
   } else if (value == "EMERGENCY_STOP") {
     *out = ComponentType::EMERGENCY_STOP;
+  } else if (value == "RTL_MODULE") {
+    *out = ComponentType::RTL_MODULE;
   } else {
     return false;
   }
@@ -174,6 +179,36 @@ bool IsSensorComponentType(ComponentType type) {
   return type == ComponentType::SENSOR ||
          type == ComponentType::INDUCTIVE_SENSOR ||
          type == ComponentType::RING_SENSOR;
+}
+
+const char* RtlLogicFamilyToString(RtlLogicFamily family) {
+  switch (family) {
+    case RtlLogicFamily::INDUSTRIAL_24V:
+      return "INDUSTRIAL_24V";
+    case RtlLogicFamily::CMOS_5V:
+      return "CMOS_5V";
+    case RtlLogicFamily::TTL_5V:
+      return "TTL_5V";
+    default:
+      return "INDUSTRIAL_24V";
+  }
+}
+
+bool RtlLogicFamilyFromString(const std::string& value,
+                              RtlLogicFamily* out) {
+  if (!out) {
+    return false;
+  }
+  if (value == "INDUSTRIAL_24V") {
+    *out = RtlLogicFamily::INDUSTRIAL_24V;
+  } else if (value == "CMOS_5V") {
+    *out = RtlLogicFamily::CMOS_5V;
+  } else if (value == "TTL_5V") {
+    *out = RtlLogicFamily::TTL_5V;
+  } else {
+    return false;
+  }
+  return true;
 }
 
 const char* PlcInputModeToString(PlcInputMode mode) {
@@ -563,6 +598,26 @@ std::string Application::SerializeLayoutJson() const {
     item["rotation_quadrants"] = comp.rotation_quadrants;
     item["flip_x"] = comp.flip_x;
     item["flip_y"] = comp.flip_y;
+    if (!comp.customLabel.empty()) {
+      item["custom_label"] = comp.customLabel;
+    }
+    if (comp.type == ComponentType::RTL_MODULE) {
+      item["rtl"] = {
+          {"module_id", comp.rtlModuleId},
+          {"source_mode", comp.rtlSourceMode},
+          {"override_id", comp.rtlOverrideId},
+          {"clock_pin_name", comp.rtlClockPinName},
+          {"reset_pin_name", comp.rtlResetPinName},
+          {"power_pin_name", comp.rtlPowerPinName},
+          {"ground_pin_name", comp.rtlGroundPinName},
+          {"logic_family", RtlLogicFamilyToString(comp.rtlLogicFamily)},
+          {"use_internal_clock", comp.rtlUseInternalClock},
+          {"clock_frequency_hz", comp.rtlClockFrequencyHz},
+          {"use_startup_reset", comp.rtlUseStartupReset},
+          {"reset_pulse_ms", comp.rtlResetPulseMs},
+          {"reset_active_low", comp.rtlResetActiveLow},
+      };
+    }
     if (IsSensorComponentType(comp.type)) {
       item["sensor_output_mode"] = SensorOutputModeToString(
           GetSensorOutputMode(comp));
@@ -669,10 +724,31 @@ bool Application::DeserializeLayoutJson(const std::string& layout_json) {
       comp.rotation_quadrants = item.value("rotation_quadrants", 0);
       comp.flip_x = item.value("flip_x", false);
       comp.flip_y = item.value("flip_y", false);
+      comp.customLabel = item.value("custom_label", std::string());
       if (def->InitDefaultState) {
         def->InitDefaultState(&comp);
       }
       ApplyElectricalDefaults(&comp);
+      if (comp.type == ComponentType::RTL_MODULE &&
+          item.contains("rtl") && item["rtl"].is_object()) {
+        const json& rtl = item["rtl"];
+        comp.rtlModuleId = rtl.value("module_id", std::string());
+        comp.rtlSourceMode = rtl.value("source_mode", std::string("library"));
+        comp.rtlOverrideId = rtl.value("override_id", std::string());
+        comp.rtlClockPinName = rtl.value("clock_pin_name", std::string());
+        comp.rtlResetPinName = rtl.value("reset_pin_name", std::string());
+        comp.rtlPowerPinName = rtl.value("power_pin_name", std::string());
+        comp.rtlGroundPinName = rtl.value("ground_pin_name", std::string());
+        RtlLogicFamilyFromString(
+            rtl.value("logic_family", std::string("INDUSTRIAL_24V")),
+            &comp.rtlLogicFamily);
+        comp.rtlUseInternalClock = rtl.value("use_internal_clock", false);
+        comp.rtlClockFrequencyHz = rtl.value("clock_frequency_hz", 1.0f);
+        comp.rtlUseStartupReset = rtl.value("use_startup_reset", false);
+        comp.rtlResetPulseMs = rtl.value("reset_pulse_ms", 20.0f);
+        comp.rtlResetActiveLow = rtl.value("reset_active_low", false);
+        RefreshRtlComponentFromLibrary(&comp);
+      }
       if (IsSensorComponentType(comp.type)) {
         SensorOutputMode sensor_mode = GetSensorOutputMode(comp);
         SensorOutputModeFromString(item.value("sensor_output_mode", ""),
@@ -1338,10 +1414,24 @@ bool Application::SaveProjectPackage(const std::string& filePath,
   try {
     LadderProgram currentProgram = BuildProgramForSave(programming_mode_.get());
     std::string layoutJson = SerializeLayoutJson();
+    std::string rtlLibraryJson =
+        rtl_project_manager_ ? rtl_project_manager_->SerializeProjectRtlJson() : "";
+
+    std::map<std::string, std::string> rtlArtifacts;
+    if (rtl_project_manager_) {
+      for (const auto& entry : rtl_project_manager_->GetLibrary()) {
+        if (entry.buildSuccess) {
+          std::string data = rtl_project_manager_->GetBuildArtifactData(entry.moduleId);
+          if (!data.empty()) {
+            rtlArtifacts[entry.moduleId] = data;
+          }
+        }
+      }
+    }
 
     project_file_manager_->SetDebugMode(enable_debug_logging_);
     auto result = project_file_manager_->SaveProjectPackage(
-        currentProgram, layoutJson, filePath, projectName);
+        currentProgram, layoutJson, rtlLibraryJson, rtlArtifacts, filePath, projectName);
 
     if (!result.success) {
       std::cerr << "[ERROR] Project package save failed: "
@@ -1536,6 +1626,30 @@ bool Application::LoadProjectPackage(const std::string& filePath) {
                 << result.errorMessage << std::endl;
       return false;
     }
+    if (rtl_project_manager_) {
+      if (!result.rtlLibraryJson.empty()) {
+        rtl_project_manager_->DeserializeLibraryJson(result.rtlLibraryJson, true);
+        
+        // Restore artifacts first so HasBuildArtifact returns true
+        for (const auto& [moduleId, data] : result.rtlArtifacts) {
+          rtl_project_manager_->RestoreBuildArtifact(moduleId, data);
+        }
+
+        for (auto& entry : rtl_project_manager_->GetLibrary()) {
+          if (entry.buildSuccess &&
+              !rtl_project_manager_->HasBuildArtifact(entry)) {
+            entry.buildSuccess = false;
+            if (entry.buildDiagnostics.empty()) {
+              entry.buildDiagnostics =
+                  "RTL worker artifact was not found on this machine. Rebuild the module.";
+            } else {
+              entry.buildDiagnostics +=
+                  "\nRTL worker artifact was not found on this machine. Rebuild the module.";
+            }
+          }
+        }
+      }
+    }
     if (result.layoutJson.empty() ||
         !DeserializeLayoutJson(result.layoutJson)) {
       std::cerr << "[ERROR] Project package load failed: invalid layout JSON"
@@ -1544,6 +1658,13 @@ bool Application::LoadProjectPackage(const std::string& filePath) {
     }
 
     loaded_ladder_program_ = result.program;
+    if (rtl_project_manager_) {
+      for (auto& comp : placed_components_) {
+        if (comp.type == ComponentType::RTL_MODULE) {
+          RefreshRtlComponentFromLibrary(&comp);
+        }
+      }
+    }
     programming_mode_->SetLadderProgram(result.program);
 
     plc_device_states_.clear();

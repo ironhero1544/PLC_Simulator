@@ -3,6 +3,7 @@
 // Synchronization between PLC/application state and physics engine.
 
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/core/component_transform.h"
 
@@ -293,9 +294,7 @@ void Application::SyncPhysicsEngineToApplication() {
             comp.internalStates[state_keys::kIsPowered] =
                 (sensorState.powerConsumption > 0.1f) ? 1.0f : 0.0f;
           } else {
-            bool is_detected =
-                comp.internalStates.count(state_keys::kIsDetected) &&
-                comp.internalStates.at(state_keys::kIsDetected) > 0.5f;
+            bool is_detected = component_input::IsSensorDetected(comp);
             bool is_powered =
                 comp.internalStates.count(state_keys::kIsPowered) &&
                 comp.internalStates.at(state_keys::kIsPowered) > 0.5f;
@@ -368,8 +367,8 @@ void Application::SyncPhysicsEngineToApplication() {
 
           // Synchronize button states
           for (int i = 0; i < 3; i++) {
-            comp.internalStates["is_pressed_" + std::to_string(i)] =
-                buttonState.buttonStates[i] ? 1.0f : 0.0f;
+            component_input::SetButtonUnitPressed(&comp, i,
+                                                  buttonState.buttonStates[i]);
             comp.internalStates["lamp_on_" + std::to_string(i)] =
                 buttonState.ledStates[i] ? 1.0f : 0.0f;
             comp.internalStates["button_voltage_" + std::to_string(i)] =

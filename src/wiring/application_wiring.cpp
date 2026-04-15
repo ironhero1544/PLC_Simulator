@@ -8,6 +8,9 @@
 #include "plc_emulator/components/component_behavior.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/core/application.h"
+#ifdef _WIN32
+#include "plc_emulator/core/win32_haptics.h"
+#endif
 #include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/lang/lang_manager.h"
 
@@ -29,6 +32,68 @@ namespace plc {
 namespace {
 
 using PortRef = std::pair<int, int>;
+
+const char* RtlLogicFamilyLabel(RtlLogicFamily family) {
+  switch (family) {
+    case RtlLogicFamily::INDUSTRIAL_24V:
+      return TR("ui.wiring.rtl.industrial_24v", "24V Industrial");
+    case RtlLogicFamily::CMOS_5V:
+      return TR("ui.wiring.rtl.cmos_5v", "CMOS 5V");
+    case RtlLogicFamily::TTL_5V:
+      return TR("ui.wiring.rtl.ttl_5v", "TTL 5V");
+    default:
+      return TR("ui.wiring.rtl.industrial_24v", "24V Industrial");
+  }
+}
+
+const char* DebugComponentTypeLabel(ComponentType type) {
+  switch (type) {
+    case ComponentType::PLC:
+      return "PLC";
+    case ComponentType::FRL:
+      return "FRL";
+    case ComponentType::MANIFOLD:
+      return "MANIFOLD";
+    case ComponentType::METER_VALVE:
+      return "METER_VALVE";
+    case ComponentType::LIMIT_SWITCH:
+      return "LIMIT_SWITCH";
+    case ComponentType::BUTTON_UNIT:
+      return "BUTTON_UNIT";
+    case ComponentType::SENSOR:
+      return "SENSOR";
+    case ComponentType::INDUCTIVE_SENSOR:
+      return "INDUCTIVE_SENSOR";
+    case ComponentType::RING_SENSOR:
+      return "RING_SENSOR";
+    case ComponentType::CYLINDER:
+      return "CYLINDER";
+    case ComponentType::VALVE_SINGLE:
+      return "VALVE_SINGLE";
+    case ComponentType::VALVE_DOUBLE:
+      return "VALVE_DOUBLE";
+    case ComponentType::POWER_SUPPLY:
+      return "POWER_SUPPLY";
+    case ComponentType::WORKPIECE_METAL:
+      return "WORKPIECE_METAL";
+    case ComponentType::WORKPIECE_NONMETAL:
+      return "WORKPIECE_NONMETAL";
+    case ComponentType::CONVEYOR:
+      return "CONVEYOR";
+    case ComponentType::PROCESSING_CYLINDER:
+      return "PROCESSING_CYLINDER";
+    case ComponentType::BOX:
+      return "BOX";
+    case ComponentType::TOWER_LAMP:
+      return "TOWER_LAMP";
+    case ComponentType::EMERGENCY_STOP:
+      return "EMERGENCY_STOP";
+    case ComponentType::RTL_MODULE:
+      return "RTL_MODULE";
+    default:
+      return "UNKNOWN";
+  }
+}
 
 int FindTopmostComponentIndexAtPosition(
     const std::vector<PlacedComponent>& components,
@@ -833,19 +898,22 @@ void Application::RenderWiringCanvas() {
 
     ImGui::SetCursorScreenPos(canvas_top_left_);
     ImGui::InvisibleButton("canvas_interaction_area", canvas_size_);
+    canvas_directly_hovered_ = ImGui::IsItemHovered() && ImGui::IsWindowHovered();
     ImVec2 mouse_screen_pos =
         last_pointer_is_pan_input_ ? touch_anchor_screen_pos_ : io.MousePos;
     ImVec2 mouse_world_pos = ScreenToWorld(mouse_screen_pos);
+    const bool mouse_within_canvas_bounds =
+        (mouse_screen_pos.x >= canvas_top_left_.x &&
+         mouse_screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
+         mouse_screen_pos.y >= canvas_top_left_.y &&
+         mouse_screen_pos.y <= canvas_top_left_.y + canvas_size_.y);
+    const bool overlay_point_blocking =
+        IsPointInOverlayCaptureRect(mouse_screen_pos);
 
     const bool is_canvas_hovered =
         !popup_blocking &&
-        (ImGui::IsItemHovered() ||
-         (mouse_screen_pos.x >= canvas_top_left_.x &&
-          mouse_screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
-          mouse_screen_pos.y >= canvas_top_left_.y &&
-          mouse_screen_pos.y <= canvas_top_left_.y + canvas_size_.y));
-    const bool allow_pan_zoom =
-        !popup_blocking && (is_canvas_hovered || touch_gesture_active_);
+        !overlay_point_blocking &&
+        (ImGui::IsItemHovered() || mouse_within_canvas_bounds);
     const bool is_pan_input = last_pointer_is_pan_input_;
     const double now = ImGui::GetTime();
     const float move_epsilon = 1.0f;
@@ -857,502 +925,21 @@ void Application::RenderWiringCanvas() {
       last_pointer_move_time_ = now;
     }
 
-    bool frl_interaction_handled = false;
-    bool wheel_handled = false;
-    if (!popup_blocking) {
-      // Handle FRL pressure adjustment
-      frl_interaction_handled =
-          HandleFRLPressureAdjustment(mouse_world_pos, io);
-
-      // Centralize all canvas navigation input here so FRL wheel usage can
-      // short-circuit before camera gestures consume the same frame.
-      HandleZoomAndPan(allow_pan_zoom, io, frl_interaction_handled,
-                       wheel_handled);
-
-      if ((wheel_handled || frl_interaction_handled) && is_canvas_hovered) {
-        ImGui::SetItemDefaultFocus();
-      }
-    }
-
     // Render grid
     RenderGrid(draw_list);
 
     if (!popup_blocking) {
       // Handle component drop and wire deletion
       HandleComponentDropAndWireDelete(is_canvas_hovered, mouse_world_pos, io);
-
-      auto clear_component_selection = [&]() {
-        ClearComponentSelection();
-      };
-
-      auto try_begin_wire_edit = [&](ImVec2 world_pos) {
-        constexpr float kWaypointRadius = 8.0f;
-        for (auto& wire : wires_) {
-          int idx = FindWayPointAtPosition(wire, world_pos, kWaypointRadius);
-          if (idx >= 0) {
-            PushWiringUndoState();
-            clear_component_selection();
-            ClearWireSelection();
-            wire.selected = true;
-            selected_wire_id_ = wire.id;
-            wire_edit_mode_ = WireEditMode::MOVING_POINT;
-            editing_wire_id_ = wire.id;
-            editing_point_index_ = idx;
-            return true;
-          }
-        }
-        return false;
-      };
-
-      auto cancel_box_selection = [&]() {
-        box_select_pending_ = false;
-        is_box_selecting_ = false;
-        box_select_additive_ = false;
-        box_select_base_selection_ids_.clear();
-        box_select_base_wire_ids_.clear();
-      };
-
-      auto snapshot_box_selection = [&]() {
-        box_select_base_selection_ids_.clear();
-        box_select_base_wire_ids_.clear();
-        for (const auto& comp : placed_components_) {
-          if (comp.selected) {
-            box_select_base_selection_ids_.push_back(comp.instanceId);
-          }
-        }
-        for (const auto& wire : wires_) {
-          if (wire.selected || wire.id == selected_wire_id_) {
-            box_select_base_wire_ids_.push_back(wire.id);
-          }
-        }
-      };
-
-      auto apply_box_selection = [&]() {
-        const float min_x =
-            std::min(box_select_start_world_.x, box_select_current_world_.x);
-        const float max_x =
-            std::max(box_select_start_world_.x, box_select_current_world_.x);
-        const float min_y =
-            std::min(box_select_start_world_.y, box_select_current_world_.y);
-        const float max_y =
-            std::max(box_select_start_world_.y, box_select_current_world_.y);
-
-        wire_edit_mode_ = WireEditMode::NONE;
-        editing_wire_id_ = -1;
-        editing_point_index_ = -1;
-
-        int topmost_hit_id = -1;
-        int topmost_hit_z = std::numeric_limits<int>::min();
-        int topmost_hit_instance = -1;
-        int topmost_added_id = -1;
-        int topmost_added_z = std::numeric_limits<int>::min();
-        int topmost_added_instance = -1;
-        int topmost_hit_wire_id = -1;
-        int topmost_added_wire_id = -1;
-
-        // Marquee selection uses the same replace/XOR rule for components and
-        // wires so mixed selections stay predictable.
-        for (auto& comp : placed_components_) {
-          const Size display = GetComponentDisplaySize(comp);
-          const bool hit =
-              !(comp.position.x + display.width < min_x ||
-                comp.position.x > max_x ||
-                comp.position.y + display.height < min_y ||
-                comp.position.y > max_y);
-          const bool base_selected =
-              std::find(box_select_base_selection_ids_.begin(),
-                        box_select_base_selection_ids_.end(),
-                        comp.instanceId) != box_select_base_selection_ids_.end();
-          const bool new_selected =
-              box_select_additive_ ? (base_selected != hit) : hit;
-          comp.selected = new_selected;
-
-          if (hit &&
-              (comp.z_order > topmost_hit_z ||
-               (comp.z_order == topmost_hit_z &&
-                comp.instanceId > topmost_hit_instance))) {
-            topmost_hit_id = comp.instanceId;
-            topmost_hit_z = comp.z_order;
-            topmost_hit_instance = comp.instanceId;
-          }
-
-          if (box_select_additive_ && hit && !base_selected && new_selected &&
-              (comp.z_order > topmost_added_z ||
-               (comp.z_order == topmost_added_z &&
-                comp.instanceId > topmost_added_instance))) {
-            topmost_added_id = comp.instanceId;
-            topmost_added_z = comp.z_order;
-            topmost_added_instance = comp.instanceId;
-          }
-        }
-
-        for (auto& wire : wires_) {
-          const bool hit =
-              DoesWireIntersectSelectionRect(wire, port_positions_, min_x,
-                                             min_y, max_x, max_y);
-          const bool base_selected =
-              std::find(box_select_base_wire_ids_.begin(),
-                        box_select_base_wire_ids_.end(),
-                        wire.id) != box_select_base_wire_ids_.end();
-          const bool new_selected =
-              box_select_additive_ ? (base_selected != hit) : hit;
-          wire.selected = new_selected;
-
-          if (hit && wire.id > topmost_hit_wire_id) {
-            topmost_hit_wire_id = wire.id;
-          }
-
-          if (box_select_additive_ && hit && !base_selected && new_selected &&
-              wire.id > topmost_added_wire_id) {
-            topmost_added_wire_id = wire.id;
-          }
-        }
-
-        if (box_select_additive_) {
-          if (topmost_added_id != -1) {
-            selected_component_id_ = topmost_added_id;
-          }
-          if (topmost_added_wire_id != -1) {
-            selected_wire_id_ = topmost_added_wire_id;
-          }
-        } else {
-          selected_component_id_ = topmost_hit_id;
-          selected_wire_id_ = topmost_hit_wire_id;
-        }
-        RepairPrimarySelection();
-        RepairPrimaryWireSelection();
-      };
-
-      bool wire_edit_active = (wire_edit_mode_ == WireEditMode::MOVING_POINT);
-      if (wire_edit_active) {
-        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-          for (auto& wire : wires_) {
-            if (wire.id == editing_wire_id_ && editing_point_index_ >= 0 &&
-                editing_point_index_ <
-                    static_cast<int>(wire.wayPoints.size())) {
-              ImVec2 reference_point = mouse_world_pos;
-              if (editing_point_index_ > 0) {
-                const Position& prev =
-                    wire.wayPoints[static_cast<size_t>(editing_point_index_ -
-                                                      1)];
-                reference_point = ImVec2(prev.x, prev.y);
-              } else {
-                auto it = port_positions_.find(
-                    {wire.fromComponentId, wire.fromPortId});
-                if (it != port_positions_.end()) {
-                  reference_point = ImVec2(it->second.x, it->second.y);
-                }
-              }
-
-              ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
-              if (snapped_pos.x == mouse_world_pos.x &&
-                  snapped_pos.y == mouse_world_pos.y) {
-                snapped_pos = ApplyAngleSnap(mouse_world_pos, reference_point);
-              }
-              wire.wayPoints[static_cast<size_t>(editing_point_index_)] =
-                  snapped_pos;
-            }
-          }
-        } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-          wire_edit_mode_ = WireEditMode::NONE;
-          editing_wire_id_ = -1;
-          editing_point_index_ = -1;
-        }
-      }
-
-      if (!wire_edit_active && current_tool_ == ToolType::SELECT) {
-        if (box_select_pending_ && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-          box_select_current_world_ = mouse_world_pos;
-          const ImVec2 box_drag_delta(
-              mouse_screen_pos.x - box_select_press_screen_.x,
-              mouse_screen_pos.y - box_select_press_screen_.y);
-          const float box_drag_threshold = 6.0f;
-          if (box_drag_delta.x * box_drag_delta.x +
-                  box_drag_delta.y * box_drag_delta.y >=
-              box_drag_threshold * box_drag_threshold) {
-            box_select_pending_ = false;
-            is_box_selecting_ = true;
-            apply_box_selection();
-          }
-        }
-
-        if (is_box_selecting_) {
-          if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-            box_select_current_world_ = mouse_world_pos;
-            apply_box_selection();
-          } else {
-            box_select_current_world_ = mouse_world_pos;
-            apply_box_selection();
-            cancel_box_selection();
-          }
-        } else if (box_select_pending_ &&
-                   ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-          if (!box_select_additive_) {
-            ClearComponentSelection();
-            ClearWireSelection();
-            wire_edit_mode_ = WireEditMode::NONE;
-            editing_wire_id_ = -1;
-            editing_point_index_ = -1;
-          }
-          cancel_box_selection();
-        }
-      }
-
+      const bool wire_edit_active = HandleWireEditMode(mouse_world_pos);
       if (!wire_edit_active &&
           (current_tool_ == ToolType::SELECT ||
            current_tool_ == ToolType::TAG)) {
-        if (is_moving_component_) {
-          if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            for (const auto& moving_entry : moving_component_offsets_) {
-              PlacedComponent* comp = FindComponentById(moving_entry.first);
-              if (!comp) {
-                continue;
-              }
-              comp->position.x = mouse_world_pos.x - moving_entry.second.x;
-              comp->position.y = mouse_world_pos.y - moving_entry.second.y;
-            }
-          }
-          if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-            HandleComponentMoveEnd();
-        } else {
-          if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-              is_canvas_hovered) {
-            bool interaction_handled = false;
-            if (io.KeyShift) {
-              int top_index =
-                  FindTopmostComponentIndexAtPosition(placed_components_,
-                                                      mouse_world_pos);
-              if (top_index != -1) {
-                auto& comp =
-                    placed_components_[static_cast<size_t>(top_index)];
-                if (comp.type == ComponentType::LIMIT_SWITCH) {
-                  float current =
-                      comp.internalStates.count(state_keys::kIsPressedManual)
-                          ? comp.internalStates.at(
-                                state_keys::kIsPressedManual)
-                          : 0.0f;
-                  PushWiringUndoState();
-                  comp.internalStates[state_keys::kIsPressedManual] =
-                      1.0f - current;
-                  HandleComponentSelection(comp.instanceId);
-                  interaction_handled = true;
-                }
-              }
-            }
-            if (current_tool_ == ToolType::TAG) {
-              Wire* tagged_wire =
-                  FindTaggedWireAtScreenPos(mouse_screen_pos);
-              if (tagged_wire && tagged_wire->isTagged) {
-                ClearWireSelection();
-                tagged_wire->selected = true;
-                selected_wire_id_ = tagged_wire->id;
-                interaction_handled = true;
-              } else {
-                Wire* wire = FindWireAtPosition(mouse_world_pos);
-                if (wire && !wire->isTagged) {
-                  OpenTagPopupForWire(wire->id);
-                  interaction_handled = true;
-                }
-              }
-            }
-            if (!interaction_handled) {
-              int top_index =
-                  FindTopmostComponentIndexAtPosition(placed_components_,
-                                                      mouse_world_pos);
-              if (top_index != -1) {
-                const bool already_selected =
-                    placed_components_[static_cast<size_t>(top_index)].selected;
-                const int clicked_id =
-                    placed_components_[static_cast<size_t>(top_index)]
-                        .instanceId;
-                if (current_tool_ == ToolType::SELECT && io.KeyCtrl) {
-                  ToggleComponentSelection(clicked_id);
-                } else if (current_tool_ == ToolType::SELECT &&
-                           already_selected) {
-                  ClearWireSelection();
-                  wire_edit_mode_ = WireEditMode::NONE;
-                  editing_wire_id_ = -1;
-                  editing_point_index_ = -1;
-                  selected_component_id_ = clicked_id;
-                } else {
-                  HandleComponentSelection(clicked_id);
-                }
-                interaction_handled = true;
-              }
-            }
-            if (!interaction_handled) {
-              if (!try_begin_wire_edit(mouse_world_pos)) {
-                if (current_tool_ == ToolType::SELECT) {
-                  Wire* wire = FindWireAtPosition(mouse_world_pos);
-                  if (wire) {
-                    if (io.KeyCtrl) {
-                      ToggleWireSelection(wire->id);
-                    } else if (wire->selected) {
-                      ClearComponentSelection();
-                      wire_edit_mode_ = WireEditMode::NONE;
-                      editing_wire_id_ = -1;
-                      editing_point_index_ = -1;
-                      selected_wire_id_ = wire->id;
-                    } else {
-                      HandleWireSelection(mouse_world_pos);
-                    }
-                  } else {
-                    box_select_pending_ = true;
-                    is_box_selecting_ = false;
-                    box_select_additive_ = io.KeyCtrl;
-                    box_select_start_world_ = mouse_world_pos;
-                    box_select_current_world_ = mouse_world_pos;
-                    box_select_press_screen_ = mouse_screen_pos;
-                    snapshot_box_selection();
-                  }
-                  interaction_handled = true;
-                } else {
-                  HandleWireSelection(mouse_world_pos);
-                }
-              } else {
-                interaction_handled = true;
-              }
-            }
-          }
-
-          if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-              is_canvas_hovered) {
-            bool handled = false;
-            if (current_tool_ == ToolType::TAG) {
-              Wire* tagged_wire =
-                  FindTaggedWireAtScreenPos(mouse_screen_pos);
-              if (!tagged_wire) {
-                Wire* wire = FindWireAtPosition(mouse_world_pos);
-                if (wire && wire->isTagged) {
-                  tagged_wire = wire;
-                }
-              }
-              if (tagged_wire) {
-                OpenTagPopupForWire(tagged_wire->id);
-                handled = true;
-              }
-            }
-            if (!handled) {
-              int top_index =
-                  FindTopmostComponentIndexAtPosition(placed_components_,
-                                                      mouse_world_pos);
-              if (top_index != -1) {
-                auto& comp =
-                    placed_components_[static_cast<size_t>(top_index)];
-                const ComponentBehavior* behavior =
-                    GetComponentBehavior(comp.type);
-                bool handled_by_behavior = false;
-                if (behavior && behavior->OnDoubleClick) {
-                  ImVec2 adjusted_pos =
-                      GetBehaviorWorldPos(comp, mouse_world_pos);
-                  handled_by_behavior = behavior->OnDoubleClick(
-                      &comp, adjusted_pos, ImGuiMouseButton_Left);
-                }
-                if (!handled_by_behavior) {
-                  HandleComponentSelection(comp.instanceId);
-                  OpenComponentContextMenu(comp.instanceId, mouse_screen_pos);
-                }
-              }
-            }
-          }
-
-          if (ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-              is_canvas_hovered &&
-              !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
-              !box_select_pending_ && !is_box_selecting_ &&
-              !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
-            int top_index =
-                FindTopmostComponentIndexAtPosition(placed_components_,
-                                                    mouse_world_pos);
-            if (top_index != -1) {
-              auto& comp =
-                  placed_components_[static_cast<size_t>(top_index)];
-              const ComponentBehavior* behavior =
-                  GetComponentBehavior(comp.type);
-              if (behavior && behavior->OnMouseDown) {
-                ImVec2 adjusted_pos =
-                    GetBehaviorWorldPos(comp, mouse_world_pos);
-                behavior->OnMouseDown(&comp, adjusted_pos,
-                                      ImGuiMouseButton_Left);
-              }
-            }
-          } else if (!box_select_pending_ && !is_box_selecting_ &&
-                     !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
-            for (auto& comp : placed_components_) {
-              const ComponentBehavior* behavior =
-                  GetComponentBehavior(comp.type);
-              if (behavior && behavior->OnMouseUp) {
-                ImVec2 adjusted_pos =
-                    GetBehaviorWorldPos(comp, mouse_world_pos);
-                behavior->OnMouseUp(&comp, adjusted_pos,
-                                    ImGuiMouseButton_Left);
-              }
-            }
-          }
-
-          if (is_canvas_hovered && !is_dragging_ &&
-              ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
-              HasSelectedComponents() && !is_moving_component_ &&
-              !box_select_pending_ && !is_box_selecting_ && !io.KeyCtrl) {
-            int top_index =
-                FindTopmostComponentIndexAtPosition(placed_components_,
-                                                    mouse_world_pos);
-            if (top_index != -1) {
-              const auto& comp =
-                  placed_components_[static_cast<size_t>(top_index)];
-              if (comp.selected) {
-                HandleComponentMoveStart(comp.instanceId, mouse_world_pos);
-              }
-            }
-          }
-        }
+        HandleSelectMode(is_canvas_hovered, mouse_screen_pos, mouse_world_pos,
+                         io);
       } else if (!wire_edit_active) {
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
-          int clickedComponentId = -1;
-          Port* clickedPort =
-              FindPortAtPosition(mouse_world_pos, clickedComponentId);
-          if (clickedPort && clickedComponentId != -1) {
-            ImVec2 port_world_pos = mouse_world_pos;
-            auto it =
-                port_positions_.find({clickedComponentId, clickedPort->id});
-            if (it != port_positions_.end()) {
-              port_world_pos = ImVec2(it->second.x, it->second.y);
-            }
-            if (!is_connecting_) {
-              StartWireConnection(clickedComponentId, clickedPort->id,
-                                  port_world_pos);
-            } else {
-              CompleteWireConnection(clickedComponentId, clickedPort->id,
-                                     port_world_pos);
-            }
-          } else if (is_connecting_) {
-            HandleWayPointClick(mouse_world_pos, true);
-          } else {
-            if (!try_begin_wire_edit(mouse_world_pos)) {
-              HandleWireSelection(mouse_world_pos);
-            }
-          }
-        }
-        if (is_connecting_ && is_pan_input && is_canvas_hovered) {
-          const double idle_threshold = 0.25;
-          const double cooldown = 0.35;
-          const float min_waypoint_dist = 6.0f;
-          if ((now - last_pointer_move_time_) >= idle_threshold &&
-              (now - last_auto_waypoint_time_) >= cooldown) {
-            ImVec2 candidate = ApplySnap(mouse_world_pos, true);
-            ImVec2 last_point = current_way_points_.empty()
-                                    ? wire_start_pos_
-                                    : ImVec2(current_way_points_.back().x,
-                                             current_way_points_.back().y);
-            float dx = candidate.x - last_point.x;
-            float dy = candidate.y - last_point.y;
-            if ((dx * dx + dy * dy) >=
-                (min_waypoint_dist * min_waypoint_dist)) {
-              AddWayPoint(candidate);
-              last_auto_waypoint_time_ = now;
-            }
-          }
-        }
+        HandleWireConnectionMode(is_canvas_hovered, is_pan_input,
+                                 mouse_world_pos, now);
       }
     }
 
@@ -1470,13 +1057,13 @@ void Application::RenderWiringCanvas() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
         ImGui::Text("%s", TR("ui.wiring.camera_help.title", "Camera"));
         ImGui::Separator();
-        ImGui::Text("%s", TR("ui.wiring.camera_help.zoom", "Zoom: Mouse wheel (no Ctrl)"));
+        ImGui::Text("%s", TR("ui.wiring.camera_help.zoom", "Zoom: Mouse wheel / Trackpad pinch"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.pan_alt",
                              "Trackpad: Pinch to zoom"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.pan_middle",
                              "Pan: Middle drag / Alt + Right drag"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.trackpad",
-                             "Trackpad: Ctrl + Scroll (Pan)"));
+                             "Trackpad: Two-finger scroll to pan"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.touch",
                              "Touch: Pinch to zoom, drag to pan"));
         ImGui::PopStyleColor();
@@ -1636,24 +1223,6 @@ void Application::RenderTemporaryWire(ImDrawList* draw_list) {
                      2.0f);
 }
 
-void Application::HandleWireSelection(ImVec2 worldPos) {
-  Wire* selectedWire = FindWireAtPosition(worldPos);
-  if (selectedWire) {
-    ClearComponentSelection();
-    ClearWireSelection();
-    selectedWire->selected = true;
-    selected_wire_id_ = selectedWire->id;
-    wire_edit_mode_ = WireEditMode::NONE;
-    editing_wire_id_ = -1;
-    editing_point_index_ = -1;
-  } else {
-    ClearWireSelection();
-    wire_edit_mode_ = WireEditMode::NONE;
-    editing_wire_id_ = -1;
-    editing_point_index_ = -1;
-  }
-}
-
 int Application::FindWayPointAtPosition(Wire& wire, ImVec2 worldPos,
                                         float radius) {
   for (size_t i = 0; i < wire.wayPoints.size(); i++) {
@@ -1740,27 +1309,1188 @@ Wire* Application::FindTaggedWireAtScreenPos(ImVec2 screen_pos) {
 // RenderWiringCanvas Helper Functions (Phase 6 Refactoring)
 // ============================================================================
 
-bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos, 
-                                               const ImGuiIO& io) {
-  if (!io.MouseWheel)
-    return false;
+void Application::ResetWireEditState() {
+  wire_edit_mode_ = WireEditMode::NONE;
+  editing_wire_id_ = -1;
+  editing_point_index_ = -1;
+}
 
-  for (auto& comp : placed_components_) {
-    if (IsPointInsideComponent(comp, mouse_world_pos)) {
-      const ComponentBehavior* behavior =
-          GetComponentBehavior(comp.type);
-      if (behavior && behavior->OnMouseWheel &&
-          behavior->OnMouseWheel(
-              &comp, GetBehaviorWorldPos(comp, mouse_world_pos), io)) {
-        return true;
-      }
+bool Application::TryBuildWireEditCommand(
+    ImVec2 mouse_world_pos,
+    CanvasInteractionCommand* out_command) {
+  if (!out_command) {
+    return false;
+  }
+  constexpr float kWaypointRadius = 8.0f;
+  for (auto& wire : wires_) {
+    int idx = FindWayPointAtPosition(wire, mouse_world_pos, kWaypointRadius);
+    if (idx < 0) {
+      continue;
     }
+
+    out_command->type = CanvasInteractionCommand::Type::BeginWirePointEdit;
+    out_command->wire_id = wire.id;
+    out_command->point_index = idx;
+    return true;
   }
   return false;
 }
 
-void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
-                                    bool frl_handled, bool& wheel_handled) {
+void Application::CancelBoxSelection() {
+  box_select_pending_ = false;
+  is_box_selecting_ = false;
+  box_select_additive_ = false;
+  box_select_base_selection_ids_.clear();
+  box_select_base_wire_ids_.clear();
+}
+
+void Application::SnapshotBoxSelection() {
+  box_select_base_selection_ids_.clear();
+  box_select_base_wire_ids_.clear();
+  for (const auto& comp : placed_components_) {
+    if (comp.selected) {
+      box_select_base_selection_ids_.push_back(comp.instanceId);
+    }
+  }
+  for (const auto& wire : wires_) {
+    if (wire.selected || wire.id == selected_wire_id_) {
+      box_select_base_wire_ids_.push_back(wire.id);
+    }
+  }
+}
+
+Application::BoxSelectionResult Application::BuildBoxSelectionResult() const {
+  BoxSelectionResult result;
+  const float min_x =
+      std::min(box_select_start_world_.x, box_select_current_world_.x);
+  const float max_x =
+      std::max(box_select_start_world_.x, box_select_current_world_.x);
+  const float min_y =
+      std::min(box_select_start_world_.y, box_select_current_world_.y);
+  const float max_y =
+      std::max(box_select_start_world_.y, box_select_current_world_.y);
+
+  int topmost_hit_id = -1;
+  int topmost_hit_z = std::numeric_limits<int>::min();
+  int topmost_hit_instance = -1;
+  int topmost_added_id = -1;
+  int topmost_added_z = std::numeric_limits<int>::min();
+  int topmost_added_instance = -1;
+  int topmost_hit_wire_id = -1;
+  int topmost_added_wire_id = -1;
+
+  for (auto& comp : placed_components_) {
+    const Size display = GetComponentDisplaySize(comp);
+    const bool hit =
+        !(comp.position.x + display.width < min_x ||
+          comp.position.x > max_x ||
+          comp.position.y + display.height < min_y ||
+          comp.position.y > max_y);
+    const bool base_selected =
+        std::find(box_select_base_selection_ids_.begin(),
+                  box_select_base_selection_ids_.end(),
+                  comp.instanceId) != box_select_base_selection_ids_.end();
+    const bool new_selected = box_select_additive_ ? (base_selected != hit) : hit;
+    if (new_selected) {
+      result.selected_component_ids.push_back(comp.instanceId);
+    }
+
+    if (hit &&
+        (comp.z_order > topmost_hit_z ||
+         (comp.z_order == topmost_hit_z &&
+          comp.instanceId > topmost_hit_instance))) {
+      topmost_hit_id = comp.instanceId;
+      topmost_hit_z = comp.z_order;
+      topmost_hit_instance = comp.instanceId;
+    }
+
+    if (box_select_additive_ && hit && !base_selected && new_selected &&
+        (comp.z_order > topmost_added_z ||
+         (comp.z_order == topmost_added_z &&
+          comp.instanceId > topmost_added_instance))) {
+      topmost_added_id = comp.instanceId;
+      topmost_added_z = comp.z_order;
+      topmost_added_instance = comp.instanceId;
+    }
+  }
+
+  for (auto& wire : wires_) {
+    const bool hit = DoesWireIntersectSelectionRect(wire, port_positions_, min_x,
+                                                    min_y, max_x, max_y);
+    const bool base_selected =
+        std::find(box_select_base_wire_ids_.begin(),
+                  box_select_base_wire_ids_.end(),
+                  wire.id) != box_select_base_wire_ids_.end();
+    const bool new_selected = box_select_additive_ ? (base_selected != hit) : hit;
+    if (new_selected) {
+      result.selected_wire_ids.push_back(wire.id);
+    }
+
+    if (hit && wire.id > topmost_hit_wire_id) {
+      topmost_hit_wire_id = wire.id;
+    }
+
+    if (box_select_additive_ && hit && !base_selected && new_selected &&
+        wire.id > topmost_added_wire_id) {
+      topmost_added_wire_id = wire.id;
+    }
+  }
+
+  if (box_select_additive_) {
+    result.primary_component_id = selected_component_id_;
+    result.primary_wire_id = selected_wire_id_;
+    if (topmost_added_id != -1) {
+      result.primary_component_id = topmost_added_id;
+    }
+    if (topmost_added_wire_id != -1) {
+      result.primary_wire_id = topmost_added_wire_id;
+    }
+  } else {
+    result.primary_component_id = topmost_hit_id;
+    result.primary_wire_id = topmost_hit_wire_id;
+  }
+  return result;
+}
+
+void Application::ApplyBoxSelectionResult(const BoxSelectionResult& result) {
+  ResetWireEditState();
+
+  for (auto& comp : placed_components_) {
+    comp.selected =
+        std::find(result.selected_component_ids.begin(),
+                  result.selected_component_ids.end(),
+                  comp.instanceId) != result.selected_component_ids.end();
+  }
+
+  for (auto& wire : wires_) {
+    wire.selected =
+        std::find(result.selected_wire_ids.begin(),
+                  result.selected_wire_ids.end(),
+                  wire.id) != result.selected_wire_ids.end();
+  }
+
+  selected_component_id_ = result.primary_component_id;
+  selected_wire_id_ = result.primary_wire_id;
+  RepairPrimarySelection();
+  RepairPrimaryWireSelection();
+}
+
+void Application::UpdateEditedWirePoint(ImVec2 mouse_world_pos) {
+  for (auto& wire : wires_) {
+    if (wire.id != editing_wire_id_ || editing_point_index_ < 0 ||
+        editing_point_index_ >= static_cast<int>(wire.wayPoints.size())) {
+      continue;
+    }
+
+    ImVec2 reference_point = mouse_world_pos;
+    if (editing_point_index_ > 0) {
+      const Position& prev =
+          wire.wayPoints[static_cast<size_t>(editing_point_index_ - 1)];
+      reference_point = ImVec2(prev.x, prev.y);
+    } else {
+      auto it = port_positions_.find({wire.fromComponentId, wire.fromPortId});
+      if (it != port_positions_.end()) {
+        reference_point = ImVec2(it->second.x, it->second.y);
+      }
+    }
+
+    ImVec2 snapped_pos = ApplyPortSnap(mouse_world_pos);
+    if (snapped_pos.x == mouse_world_pos.x &&
+        snapped_pos.y == mouse_world_pos.y) {
+      snapped_pos = ApplyAngleSnap(mouse_world_pos, reference_point);
+    }
+    wire.wayPoints[static_cast<size_t>(editing_point_index_)] = snapped_pos;
+    break;
+  }
+}
+
+bool Application::HandleWireEditMode(ImVec2 mouse_world_pos) {
+  const bool wire_edit_active = (wire_edit_mode_ == WireEditMode::MOVING_POINT);
+  if (!wire_edit_active) {
+    return false;
+  }
+
+  if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    CanvasInteractionCommand command;
+    command.type = CanvasInteractionCommand::Type::UpdateWirePointEdit;
+    command.world_pos = mouse_world_pos;
+    ApplyCanvasInteractionCommand(command);
+  } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    CanvasInteractionCommand command;
+    command.type = CanvasInteractionCommand::Type::EndWirePointEdit;
+    ApplyCanvasInteractionCommand(command);
+  }
+
+  return true;
+}
+
+void Application::UpdateMovingComponentPositions(ImVec2 mouse_world_pos) {
+  for (const auto& moving_entry : moving_component_offsets_) {
+    PlacedComponent* comp = FindComponentById(moving_entry.first);
+    if (!comp) {
+      continue;
+    }
+    comp->position.x = mouse_world_pos.x - moving_entry.second.x;
+    comp->position.y = mouse_world_pos.y - moving_entry.second.y;
+  }
+}
+
+void Application::HandleSelectMode(bool is_canvas_hovered,
+                                   ImVec2 mouse_screen_pos,
+                                   ImVec2 mouse_world_pos,
+                                   const ImGuiIO& io) {
+  if (current_tool_ == ToolType::SELECT) {
+    if (box_select_pending_ && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+      box_select_current_world_ = mouse_world_pos;
+      const ImVec2 box_drag_delta(mouse_screen_pos.x - box_select_press_screen_.x,
+                                  mouse_screen_pos.y - box_select_press_screen_.y);
+      const float box_drag_threshold = 6.0f;
+      if (box_drag_delta.x * box_drag_delta.x +
+              box_drag_delta.y * box_drag_delta.y >=
+          box_drag_threshold * box_drag_threshold) {
+        box_select_pending_ = false;
+        is_box_selecting_ = true;
+        ApplyBoxSelectionResult(BuildBoxSelectionResult());
+      }
+    }
+
+    if (is_box_selecting_) {
+      box_select_current_world_ = mouse_world_pos;
+      ApplyBoxSelectionResult(BuildBoxSelectionResult());
+      if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        CancelBoxSelection();
+      }
+    } else if (box_select_pending_ &&
+               ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+      if (!box_select_additive_) {
+        ApplyBoxSelectionResult(BoxSelectionResult{});
+      }
+      CancelBoxSelection();
+    }
+  }
+
+  if (is_moving_component_) {
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::UpdateComponentMove;
+      command.world_pos = mouse_world_pos;
+      ApplyCanvasInteractionCommand(command);
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::EndComponentMove;
+      ApplyCanvasInteractionCommand(command);
+    }
+    return;
+  }
+
+  std::vector<CanvasInteractionCommand> commands;
+  auto queue_command = [&](const CanvasInteractionCommand& command) {
+    commands.push_back(command);
+  };
+  auto flush_commands = [&]() {
+    if (commands.empty()) {
+      return;
+    }
+    ApplyCanvasInteractionCommands(commands);
+    commands.clear();
+  };
+
+  if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
+    bool interaction_handled = false;
+    if (io.KeyShift) {
+      int top_index =
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+      if (top_index != -1) {
+        auto& comp = placed_components_[static_cast<size_t>(top_index)];
+        if (comp.type == ComponentType::LIMIT_SWITCH) {
+          PushWiringUndoState();
+          ComponentInteractionResult interaction;
+          interaction.handled = true;
+          ComponentInteractionCommand interaction_command;
+          interaction_command.type =
+              ComponentInteractionCommandType::ToggleLimitSwitchManualOverride;
+          interaction.commands.push_back(interaction_command);
+
+          CanvasInteractionCommand canvas_command;
+          canvas_command.type =
+              CanvasInteractionCommand::Type::ApplyComponentInteraction;
+          canvas_command.component_id = comp.instanceId;
+          canvas_command.component_interaction = interaction;
+          queue_command(canvas_command);
+
+          CanvasInteractionCommand select_command;
+          select_command.type =
+              CanvasInteractionCommand::Type::SelectComponentExclusive;
+          select_command.component_id = comp.instanceId;
+          queue_command(select_command);
+          interaction_handled = true;
+        }
+      }
+    }
+
+    if (current_tool_ == ToolType::TAG) {
+      Wire* tagged_wire = FindTaggedWireAtScreenPos(mouse_screen_pos);
+      if (tagged_wire && tagged_wire->isTagged) {
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::SelectWireExclusive;
+        command.wire_id = tagged_wire->id;
+        queue_command(command);
+        interaction_handled = true;
+      } else {
+        Wire* wire = FindWireAtPosition(mouse_world_pos);
+        if (wire && !wire->isTagged) {
+          CanvasInteractionCommand command;
+          command.type = CanvasInteractionCommand::Type::OpenWireTagPopup;
+          command.wire_id = wire->id;
+          queue_command(command);
+          interaction_handled = true;
+        }
+      }
+    }
+
+    if (!interaction_handled) {
+      int top_index =
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+      if (top_index != -1) {
+        const bool already_selected =
+            placed_components_[static_cast<size_t>(top_index)].selected;
+        const int clicked_id =
+            placed_components_[static_cast<size_t>(top_index)].instanceId;
+        CanvasInteractionCommand command;
+        command.component_id = clicked_id;
+        if (current_tool_ == ToolType::SELECT && io.KeyCtrl) {
+          command.type = CanvasInteractionCommand::Type::ToggleComponentSelection;
+        } else if (current_tool_ == ToolType::SELECT && already_selected) {
+          command.type =
+              CanvasInteractionCommand::Type::SetPrimarySelectedComponent;
+        } else {
+          command.type = CanvasInteractionCommand::Type::SelectComponentExclusive;
+        }
+        queue_command(command);
+        interaction_handled = true;
+      }
+    }
+
+    if (!interaction_handled) {
+      CanvasInteractionCommand wire_edit_command;
+      if (!TryBuildWireEditCommand(mouse_world_pos, &wire_edit_command)) {
+        if (current_tool_ == ToolType::SELECT) {
+          Wire* wire = FindWireAtPosition(mouse_world_pos);
+          if (wire) {
+            CanvasInteractionCommand command;
+            command.wire_id = wire->id;
+            if (io.KeyCtrl) {
+              command.type = CanvasInteractionCommand::Type::ToggleWireSelection;
+            } else if (wire->selected) {
+              command.type = CanvasInteractionCommand::Type::SetPrimarySelectedWire;
+            } else {
+              command.type = CanvasInteractionCommand::Type::SelectWireExclusive;
+            }
+            queue_command(command);
+          } else {
+            box_select_pending_ = true;
+            is_box_selecting_ = false;
+            box_select_additive_ = io.KeyCtrl;
+            box_select_start_world_ = mouse_world_pos;
+            box_select_current_world_ = mouse_world_pos;
+            box_select_press_screen_ = mouse_screen_pos;
+            SnapshotBoxSelection();
+          }
+          interaction_handled = true;
+        } else {
+          Wire* wire = FindWireAtPosition(mouse_world_pos);
+          CanvasInteractionCommand command;
+          if (wire) {
+            command.type = CanvasInteractionCommand::Type::SelectWireExclusive;
+            command.wire_id = wire->id;
+          } else {
+            command.type = CanvasInteractionCommand::Type::ClearWireSelection;
+          }
+          queue_command(command);
+          interaction_handled = true;
+        }
+      } else {
+        queue_command(wire_edit_command);
+        interaction_handled = true;
+      }
+    }
+
+    flush_commands();
+  }
+
+  if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
+    std::vector<CanvasInteractionCommand> double_click_commands;
+    auto queue_double_click_command = [&](const CanvasInteractionCommand& command) {
+      double_click_commands.push_back(command);
+    };
+    auto flush_double_click_commands = [&]() {
+      if (double_click_commands.empty()) {
+        return;
+      }
+      ApplyCanvasInteractionCommands(double_click_commands);
+      double_click_commands.clear();
+    };
+    bool handled = false;
+    if (current_tool_ == ToolType::TAG) {
+      Wire* tagged_wire = FindTaggedWireAtScreenPos(mouse_screen_pos);
+      if (!tagged_wire) {
+        Wire* wire = FindWireAtPosition(mouse_world_pos);
+        if (wire && wire->isTagged) {
+          tagged_wire = wire;
+        }
+      }
+      if (tagged_wire) {
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::OpenWireTagPopup;
+        command.wire_id = tagged_wire->id;
+        queue_double_click_command(command);
+        handled = true;
+      }
+    }
+
+    if (!handled) {
+      int top_index =
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+      if (top_index != -1) {
+        auto& comp = placed_components_[static_cast<size_t>(top_index)];
+        const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
+        bool handled_by_behavior = false;
+        if (behavior && behavior->OnDoubleClick) {
+          ImVec2 adjusted_pos = GetBehaviorWorldPos(comp, mouse_world_pos);
+          ComponentInteractionResult interaction =
+              behavior->OnDoubleClick(comp, adjusted_pos, ImGuiMouseButton_Left);
+          if (interaction.handled) {
+            CanvasInteractionCommand interaction_command;
+            interaction_command.type =
+                CanvasInteractionCommand::Type::ApplyComponentInteraction;
+            interaction_command.component_id = comp.instanceId;
+            interaction_command.component_interaction = interaction;
+            queue_double_click_command(interaction_command);
+            handled_by_behavior = true;
+          }
+        }
+        if (!handled_by_behavior) {
+          CanvasInteractionCommand command;
+          command.type = CanvasInteractionCommand::Type::OpenComponentContextMenu;
+          command.component_id = comp.instanceId;
+          command.screen_pos = mouse_screen_pos;
+          queue_double_click_command(command);
+        }
+      }
+    }
+
+    flush_double_click_commands();
+  }
+
+  if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && is_canvas_hovered &&
+      !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+      !box_select_pending_ && !is_box_selecting_ &&
+      !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
+    int top_index =
+        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+    if (top_index != -1) {
+      auto& comp = placed_components_[static_cast<size_t>(top_index)];
+      const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
+      if (behavior && behavior->OnMouseDown) {
+        ImVec2 adjusted_pos = GetBehaviorWorldPos(comp, mouse_world_pos);
+        ComponentInteractionResult interaction =
+            behavior->OnMouseDown(comp, adjusted_pos, ImGuiMouseButton_Left);
+        if (interaction.handled) {
+          CanvasInteractionCommand command;
+          command.type =
+              CanvasInteractionCommand::Type::ApplyComponentInteraction;
+          command.component_id = comp.instanceId;
+          command.component_interaction = interaction;
+          ApplyCanvasInteractionCommand(command);
+        }
+      }
+    }
+  } else if (!box_select_pending_ && !is_box_selecting_ &&
+             !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
+    std::vector<CanvasInteractionCommand> mouse_up_commands;
+    for (auto& comp : placed_components_) {
+      const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
+      if (behavior && behavior->OnMouseUp) {
+        ImVec2 adjusted_pos = GetBehaviorWorldPos(comp, mouse_world_pos);
+        ComponentInteractionResult interaction =
+            behavior->OnMouseUp(comp, adjusted_pos, ImGuiMouseButton_Left);
+        if (!interaction.handled) {
+          continue;
+        }
+        CanvasInteractionCommand command;
+        command.type =
+            CanvasInteractionCommand::Type::ApplyComponentInteraction;
+        command.component_id = comp.instanceId;
+        command.component_interaction = interaction;
+        mouse_up_commands.push_back(command);
+      }
+    }
+    ApplyCanvasInteractionCommands(mouse_up_commands);
+  }
+
+  if (is_canvas_hovered && !is_dragging_ &&
+      ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
+      HasSelectedComponents() && !is_moving_component_ &&
+      !box_select_pending_ && !is_box_selecting_ && !io.KeyCtrl) {
+    int top_index =
+        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+    if (top_index != -1) {
+      const auto& comp = placed_components_[static_cast<size_t>(top_index)];
+      if (comp.selected) {
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::StartComponentMove;
+        command.component_id = comp.instanceId;
+        command.world_pos = mouse_world_pos;
+        ApplyCanvasInteractionCommand(command);
+      }
+    }
+  }
+}
+
+void Application::HandleWireConnectionMode(bool is_canvas_hovered,
+                                           bool is_pan_input,
+                                           ImVec2 mouse_world_pos,
+                                           double now) {
+  std::vector<CanvasInteractionCommand> commands;
+  auto queue_command = [&](const CanvasInteractionCommand& command) {
+    commands.push_back(command);
+  };
+  auto flush_commands = [&]() {
+    if (commands.empty()) {
+      return;
+    }
+    ApplyCanvasInteractionCommands(commands);
+    commands.clear();
+  };
+
+  if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered) {
+    int clicked_component_id = -1;
+    Port* clicked_port =
+        FindPortAtPosition(mouse_world_pos, clicked_component_id);
+    if (clicked_port && clicked_component_id != -1) {
+      ImVec2 port_world_pos = mouse_world_pos;
+      auto it = port_positions_.find({clicked_component_id, clicked_port->id});
+      if (it != port_positions_.end()) {
+        port_world_pos = ImVec2(it->second.x, it->second.y);
+      }
+      if (!is_connecting_) {
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::StartWireConnection;
+        command.component_id = clicked_component_id;
+        command.port_id = clicked_port->id;
+        command.world_pos = port_world_pos;
+        queue_command(command);
+      } else {
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::CompleteWireConnection;
+        command.component_id = clicked_component_id;
+        command.port_id = clicked_port->id;
+        command.world_pos = port_world_pos;
+        queue_command(command);
+      }
+    } else if (is_connecting_) {
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::AddWireWaypoint;
+      command.world_pos = mouse_world_pos;
+      queue_command(command);
+    } else {
+      CanvasInteractionCommand wire_edit_command;
+      if (TryBuildWireEditCommand(mouse_world_pos, &wire_edit_command)) {
+        queue_command(wire_edit_command);
+      } else {
+        Wire* wire = FindWireAtPosition(mouse_world_pos);
+        CanvasInteractionCommand command;
+        if (wire) {
+          command.type = CanvasInteractionCommand::Type::SelectWireExclusive;
+          command.wire_id = wire->id;
+        } else {
+          command.type = CanvasInteractionCommand::Type::ClearWireSelection;
+        }
+        queue_command(command);
+      }
+    }
+    flush_commands();
+  }
+
+  if (is_connecting_ && is_pan_input && is_canvas_hovered) {
+    const double idle_threshold = 0.25;
+    const double cooldown = 0.35;
+    const float min_waypoint_dist = 6.0f;
+    if ((now - last_pointer_move_time_) >= idle_threshold &&
+        (now - last_auto_waypoint_time_) >= cooldown) {
+      ImVec2 candidate = ApplySnap(mouse_world_pos, true);
+      ImVec2 last_point = current_way_points_.empty()
+                              ? wire_start_pos_
+                              : ImVec2(current_way_points_.back().x,
+                                       current_way_points_.back().y);
+      float dx = candidate.x - last_point.x;
+      float dy = candidate.y - last_point.y;
+      if ((dx * dx + dy * dy) >= (min_waypoint_dist * min_waypoint_dist)) {
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::AddWireWaypoint;
+        command.world_pos = candidate;
+        ApplyCanvasInteractionCommand(command);
+        last_auto_waypoint_time_ = now;
+      }
+    }
+  }
+}
+
+void Application::ApplyCanvasComponentCommand(
+    const CanvasInteractionCommand& command) {
+  switch (command.type) {
+    case CanvasInteractionCommand::Type::ApplyComponentInteraction: {
+      PlacedComponent* comp = FindComponentById(command.component_id);
+      if (comp) {
+        ApplyComponentInteractionResult(comp, command.component_interaction);
+      }
+      break;
+    }
+    case CanvasInteractionCommand::Type::StartComponentMove:
+      if (command.component_id >= 0) {
+        BeginComponentMoveSession(
+            BuildComponentMoveSession(command.component_id, command.world_pos));
+      }
+      break;
+    case CanvasInteractionCommand::Type::UpdateComponentMove:
+      UpdateMovingComponentPositions(command.world_pos);
+      break;
+    case CanvasInteractionCommand::Type::EndComponentMove:
+      EndComponentMoveSession();
+      break;
+    case CanvasInteractionCommand::Type::DeleteComponentById:
+      if (command.component_id >= 0) {
+        CanvasInteractionCommand select_command;
+        select_command.type =
+            CanvasInteractionCommand::Type::SelectComponentExclusive;
+        select_command.component_id = command.component_id;
+        ApplyCanvasSelectionCommand(select_command);
+        DeleteSelectedComponent();
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void Application::BeginWirePointEditSession(int wire_id, int point_index) {
+  if (wire_id < 0 || point_index < 0) {
+    return;
+  }
+
+  PushWiringUndoState();
+  ClearComponentSelection();
+  ClearWireSelection();
+  for (auto& wire : wires_) {
+    if (wire.id != wire_id) {
+      continue;
+    }
+    wire.selected = true;
+    selected_wire_id_ = wire_id;
+    wire_edit_mode_ = WireEditMode::MOVING_POINT;
+    editing_wire_id_ = wire_id;
+    editing_point_index_ = point_index;
+    break;
+  }
+}
+
+void Application::SetPrimarySelectedComponentById(int component_id) {
+  if (component_id < 0) {
+    return;
+  }
+
+  ClearWireSelection();
+  ResetWireEditState();
+  for (auto& comp : placed_components_) {
+    if (comp.instanceId != component_id) {
+      continue;
+    }
+    comp.selected = true;
+    selected_component_id_ = component_id;
+    break;
+  }
+  RepairPrimarySelection();
+}
+
+void Application::SelectWireExclusiveById(int wire_id) {
+  ClearComponentSelection();
+  ClearWireSelection();
+  ResetWireEditState();
+  if (wire_id < 0) {
+    return;
+  }
+
+  for (auto& wire : wires_) {
+    if (wire.id != wire_id) {
+      continue;
+    }
+    wire.selected = true;
+    selected_wire_id_ = wire_id;
+    break;
+  }
+  RepairPrimaryWireSelection();
+}
+
+void Application::SetPrimarySelectedWireById(int wire_id) {
+  if (wire_id < 0) {
+    return;
+  }
+
+  ClearComponentSelection();
+  ResetWireEditState();
+  for (auto& wire : wires_) {
+    if (wire.id != wire_id) {
+      continue;
+    }
+    wire.selected = true;
+    selected_wire_id_ = wire_id;
+    break;
+  }
+  RepairPrimaryWireSelection();
+}
+
+void Application::ApplyCanvasWireCommand(
+    const CanvasInteractionCommand& command) {
+  switch (command.type) {
+    case CanvasInteractionCommand::Type::CancelWireConnection:
+      is_connecting_ = false;
+      current_way_points_.clear();
+      break;
+    case CanvasInteractionCommand::Type::BeginWirePointEdit:
+      BeginWirePointEditSession(command.wire_id, command.point_index);
+      break;
+    case CanvasInteractionCommand::Type::UpdateWirePointEdit:
+      UpdateEditedWirePoint(command.world_pos);
+      break;
+    case CanvasInteractionCommand::Type::EndWirePointEdit:
+      ResetWireEditState();
+      break;
+    case CanvasInteractionCommand::Type::StartWireConnection:
+      if (command.component_id >= 0 && command.port_id >= 0) {
+        StartWireConnection(command.component_id, command.port_id,
+                            command.world_pos);
+      }
+      break;
+    case CanvasInteractionCommand::Type::CompleteWireConnection:
+      if (command.component_id >= 0 && command.port_id >= 0) {
+        CompleteWireConnection(command.component_id, command.port_id,
+                               command.world_pos);
+      }
+      break;
+    case CanvasInteractionCommand::Type::AddWireWaypoint:
+      HandleWayPointClick(command.world_pos, true);
+      break;
+    case CanvasInteractionCommand::Type::OpenWireTagPopup:
+      if (command.wire_id >= 0) {
+        OpenTagPopupForWire(command.wire_id);
+      }
+      break;
+    case CanvasInteractionCommand::Type::DeleteWireById:
+      if (command.wire_id >= 0) {
+        DeleteWire(command.wire_id);
+      }
+      break;
+    case CanvasInteractionCommand::Type::UntagWireById:
+      if (command.wire_id >= 0) {
+        for (auto& wire : wires_) {
+          if (wire.id != command.wire_id) {
+            continue;
+          }
+          PushWiringUndoState();
+          wire.isTagged = false;
+          wire.tagText.clear();
+          wire.tagColorIndex = 0;
+          break;
+        }
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void Application::ApplyCanvasSelectionCommand(
+    const CanvasInteractionCommand& command) {
+  switch (command.type) {
+    case CanvasInteractionCommand::Type::SelectComponentExclusive:
+      if (command.component_id >= 0) {
+        HandleComponentSelection(command.component_id);
+      }
+      break;
+    case CanvasInteractionCommand::Type::ToggleComponentSelection:
+      if (command.component_id >= 0) {
+        ToggleComponentSelection(command.component_id);
+      }
+      break;
+    case CanvasInteractionCommand::Type::SetPrimarySelectedComponent:
+      SetPrimarySelectedComponentById(command.component_id);
+      break;
+    case CanvasInteractionCommand::Type::SelectWireExclusive:
+      SelectWireExclusiveById(command.wire_id);
+      break;
+    case CanvasInteractionCommand::Type::ToggleWireSelection:
+      if (command.wire_id >= 0) {
+        ToggleWireSelection(command.wire_id);
+      }
+      break;
+    case CanvasInteractionCommand::Type::SetPrimarySelectedWire:
+      SetPrimarySelectedWireById(command.wire_id);
+      break;
+    case CanvasInteractionCommand::Type::ClearWireSelection:
+      ClearWireSelection();
+      ResetWireEditState();
+      break;
+    default:
+      break;
+  }
+}
+
+void Application::ApplyCanvasContextCommand(
+    const CanvasInteractionCommand& command) {
+  switch (command.type) {
+    case CanvasInteractionCommand::Type::OpenComponentContextMenu:
+      if (command.component_id >= 0) {
+        CanvasInteractionCommand select_command;
+        select_command.type =
+            CanvasInteractionCommand::Type::SelectComponentExclusive;
+        select_command.component_id = command.component_id;
+        ApplyCanvasSelectionCommand(select_command);
+        OpenComponentContextMenu(command.component_id, command.screen_pos);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void Application::ApplyCanvasInteractionCommand(
+    const CanvasInteractionCommand& command) {
+  switch (command.type) {
+    case CanvasInteractionCommand::Type::ApplyComponentInteraction:
+    case CanvasInteractionCommand::Type::StartComponentMove:
+    case CanvasInteractionCommand::Type::UpdateComponentMove:
+    case CanvasInteractionCommand::Type::EndComponentMove:
+    case CanvasInteractionCommand::Type::DeleteComponentById:
+      ApplyCanvasComponentCommand(command);
+      break;
+    case CanvasInteractionCommand::Type::CancelWireConnection:
+    case CanvasInteractionCommand::Type::BeginWirePointEdit:
+    case CanvasInteractionCommand::Type::UpdateWirePointEdit:
+    case CanvasInteractionCommand::Type::EndWirePointEdit:
+    case CanvasInteractionCommand::Type::StartWireConnection:
+    case CanvasInteractionCommand::Type::CompleteWireConnection:
+    case CanvasInteractionCommand::Type::AddWireWaypoint:
+    case CanvasInteractionCommand::Type::OpenWireTagPopup:
+    case CanvasInteractionCommand::Type::DeleteWireById:
+    case CanvasInteractionCommand::Type::UntagWireById:
+      ApplyCanvasWireCommand(command);
+      break;
+    case CanvasInteractionCommand::Type::SelectComponentExclusive:
+    case CanvasInteractionCommand::Type::ToggleComponentSelection:
+    case CanvasInteractionCommand::Type::SetPrimarySelectedComponent:
+    case CanvasInteractionCommand::Type::SelectWireExclusive:
+    case CanvasInteractionCommand::Type::ToggleWireSelection:
+    case CanvasInteractionCommand::Type::SetPrimarySelectedWire:
+    case CanvasInteractionCommand::Type::ClearWireSelection:
+      ApplyCanvasSelectionCommand(command);
+      break;
+    case CanvasInteractionCommand::Type::OpenComponentContextMenu:
+      ApplyCanvasContextCommand(command);
+      break;
+    case CanvasInteractionCommand::Type::None:
+    default:
+      break;
+  }
+}
+
+void Application::ApplyCanvasInteractionCommands(
+    const std::vector<CanvasInteractionCommand>& commands) {
+  for (const auto& command : commands) {
+    ApplyCanvasInteractionCommand(command);
+  }
+}
+
+bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
+                                              ImVec2 mouse_screen_pos,
+                                              const ImGuiIO& io,
+                                              float resolved_wheel,
+                                              bool wheel_from_touchpad) {
+  float effective_wheel = resolved_wheel;
+  bool from_touchpad = wheel_from_touchpad;
+  if (effective_wheel == 0.0f) {
+    effective_wheel = io.MouseWheel;
+  }
+  if (effective_wheel == 0.0f && touchpad_wheel_pending_) {
+    effective_wheel = touchpad_wheel_delta_;
+    from_touchpad = true;
+  }
+
+  if (effective_wheel == 0.0f) {
+    return false;
+  }
+
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] ComponentWheel begin wheel=" +
+             std::to_string(effective_wheel) + " touchpad=" +
+             std::to_string(from_touchpad ? 1 : 0) + " ctrl=" +
+             std::to_string(io.KeyCtrl ? 1 : 0) + " " +
+             DescribeInputTargetAtScreenPos(mouse_screen_pos));
+  }
+
+  // Build a synthetic IO with the resolved wheel value and physical modifiers.
+  ImGuiIO synth_io = io;
+  synth_io.MouseWheel = effective_wheel;
+  synth_io.KeyCtrl = io.KeyCtrl || (resolved_wheel != 0.0f && deferred_canvas_wheel_input_.physical_ctrl_down);
+  synth_io.KeyShift = io.KeyShift || (resolved_wheel != 0.0f && deferred_canvas_wheel_input_.physical_shift_down);
+  
+  auto try_apply_wheel_interaction =
+      [&](PlacedComponent* comp,
+          const ComponentBehavior* behavior) -> bool {
+    if (!comp || !behavior || !behavior->OnMouseWheel) {
+      if (IsDebugEnabled() && comp) {
+        DebugLog("[INPUT] ComponentWheel skip id=" +
+                 std::to_string(comp->instanceId) + " type=" +
+                 DebugComponentTypeLabel(comp->type) + " reason=no_handler");
+      }
+      return false;
+    }
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] ComponentWheel try id=" +
+               std::to_string(comp->instanceId) + " type=" +
+               DebugComponentTypeLabel(comp->type) + " selected=" +
+               std::to_string(comp->selected ? 1 : 0));
+    }
+    ComponentInteractionResult interaction =
+        behavior->OnMouseWheel(*comp, GetBehaviorWorldPos(*comp, mouse_world_pos),
+                               synth_io);
+    if (!interaction.handled) {
+      if (IsDebugEnabled()) {
+        DebugLog("[INPUT] ComponentWheel miss id=" +
+                 std::to_string(comp->instanceId) + " type=" +
+                 DebugComponentTypeLabel(comp->type) +
+                 " reason=behavior_unhandled");
+      }
+      return false;
+    }
+    CanvasInteractionCommand command;
+    command.type = CanvasInteractionCommand::Type::ApplyComponentInteraction;
+    command.component_id = comp->instanceId;
+    command.component_interaction = interaction;
+    ApplyCanvasInteractionCommand(command);
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] ComponentWheel handled id=" +
+               std::to_string(comp->instanceId) + " type=" +
+               DebugComponentTypeLabel(comp->type) + " commands=" +
+               std::to_string(interaction.commands.size()));
+    }
+    return true;
+  };
+
+  // 1. Prioritize selected components
+  for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
+       ++it) {
+    auto& comp = *it;
+    if (!comp.selected) {
+      continue;
+    }
+    if (IsPointInsideComponent(comp, mouse_world_pos)) {
+      const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
+      if (try_apply_wheel_interaction(&comp, behavior)) {
+        if (from_touchpad) {
+          // Consume the touchpad wheel/pan so the camera does NOT also move.
+          touchpad_wheel_pending_ = false;
+          touchpad_wheel_delta_ = 0.0f;
+          touchpad_pan_pending_ = false;
+          touchpad_pan_delta_ = ImVec2(0.0f, 0.0f);
+        }
+#ifdef _WIN32
+        TriggerTouchpadHapticClick();
+#endif
+        return true;
+      }
+    }
+  }
+
+  // 2. Check all components (not just selected ones) if no selected component handled it
+  for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
+       ++it) {
+    auto& comp = *it;
+    if (comp.selected) {
+      continue; // Already checked above
+    }
+    if (IsPointInsideComponent(comp, mouse_world_pos)) {
+      const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
+      if (try_apply_wheel_interaction(&comp, behavior)) {
+        if (from_touchpad) {
+          touchpad_wheel_pending_ = false;
+          touchpad_wheel_delta_ = 0.0f;
+          touchpad_pan_pending_ = false;
+          touchpad_pan_delta_ = ImVec2(0.0f, 0.0f);
+        }
+#ifdef _WIN32
+        TriggerTouchpadHapticClick();
+#endif
+        return true;
+      }
+    }
+  }
+
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] ComponentWheel no_match " +
+             DescribeInputTargetAtScreenPos(mouse_screen_pos));
+  }
+  return false;
+}
+
+void Application::ProcessDeferredCanvasWheelInput() {
+  ImGuiIO& io = ImGui::GetIO();
+  if (canvas_size_.x <= 0.0f || canvas_size_.y <= 0.0f) {
+    deferred_canvas_wheel_input_ = Application::DeferredCanvasWheelInput{};
+    return;
+  }
+
+  Application::DeferredCanvasWheelInput wheel_input =
+      deferred_canvas_wheel_input_;
+#ifndef _WIN32
+  if (!wheel_input.pending &&
+      (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f)) {
+    wheel_input.pending = true;
+    wheel_input.vertical_delta = io.MouseWheel;
+    wheel_input.horizontal_delta = io.MouseWheelH;
+    wheel_input.screen_pos = io.MousePos;
+    wheel_input.physical_ctrl_down = io.KeyCtrl;
+    wheel_input.synthetic_pinch = false;
+    wheel_input.touchpad_like = false;
+  }
+#endif
+
+  const bool popup_blocking =
+      ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
+  ImVec2 mouse_screen_pos =
+      wheel_input.pending
+          ? wheel_input.screen_pos
+          : (last_pointer_is_pan_input_ ? touch_anchor_screen_pos_
+                                        : io.MousePos);
+  ImVec2 mouse_world_pos = ScreenToWorld(mouse_screen_pos);
+  const bool mouse_within_canvas_bounds =
+      (mouse_screen_pos.x >= canvas_top_left_.x &&
+       mouse_screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
+       mouse_screen_pos.y >= canvas_top_left_.y &&
+       mouse_screen_pos.y <= canvas_top_left_.y + canvas_size_.y);
+  const bool overlay_rect_blocking =
+      IsPointInOverlayCaptureRect(mouse_screen_pos);
+  const bool overlay_capture_blocking = false;
+  const bool component_navigation_blocking =
+      wheel_input.touchpad_like &&
+      IsPointOverComponentAtScreenPos(mouse_screen_pos);
+  const bool overlay_point_blocking =
+      overlay_rect_blocking || overlay_capture_blocking;
+  const bool navigation_blocking =
+      overlay_point_blocking || component_navigation_blocking;
+
+  const bool is_canvas_hovered =
+      !popup_blocking && !navigation_blocking &&
+      mouse_within_canvas_bounds;
+  const bool middle_drag_active =
+      ImGui::IsMouseDragging(ImGuiMouseButton_Middle);
+  const bool alt_right_drag_active =
+      io.KeyAlt && ImGui::IsMouseDragging(ImGuiMouseButton_Right);
+  const bool allow_wheel_pan_zoom =
+      !popup_blocking && !navigation_blocking &&
+      (is_canvas_hovered || touch_gesture_active_ ||
+       touchpad_zoom_pending_ || touchpad_pan_pending_ ||
+       wheel_input.pending);
+  const bool allow_mouse_pan =
+      !popup_blocking && !overlay_point_blocking &&
+      (is_canvas_hovered || middle_drag_active || alt_right_drag_active);
+
+  if (wheel_input.pending && IsDebugEnabled()) {
+    DebugLog("[INPUT] DeferredCanvasWheel pending v=" +
+             std::to_string(wheel_input.vertical_delta) + " h=" +
+             std::to_string(wheel_input.horizontal_delta) + " pos=(" +
+             std::to_string(mouse_screen_pos.x) + "," +
+             std::to_string(mouse_screen_pos.y) + ") overlay=" +
+             std::to_string(overlay_point_blocking ? 1 : 0) +
+             " overlay_rect=" +
+             std::to_string(overlay_rect_blocking ? 1 : 0) +
+             " overlay_capture_src=disabled value=" +
+             std::to_string(overlay_capture_blocking ? 1 : 0) +
+             " component_nav_block=" +
+             std::to_string(component_navigation_blocking ? 1 : 0) +
+             " want_capture=" +
+             std::to_string(io.WantCaptureMouse ? 1 : 0) +
+             " canvas_hovered=" +
+             std::to_string(is_canvas_hovered ? 1 : 0) +
+             " allow_wheel_pan_zoom=" +
+             std::to_string(allow_wheel_pan_zoom ? 1 : 0) +
+             " allow_mouse_pan=" +
+             std::to_string(allow_mouse_pan ? 1 : 0) + " " +
+             DescribeInputTargetAtScreenPos(mouse_screen_pos));
+  }
+
+  // Win32 raw queue에 입력이 없지만 ImGui IO에 휠 값이 있다면,
+  // overlay가 메시지를 소비했거나 wheel-responsive component 경로로
+  // ImGui 쪽으로 넘겨진 케이스다.
+  if (!wheel_input.pending && (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) &&
+      !overlay_point_blocking) {
+    wheel_input.pending = true;
+    wheel_input.vertical_delta = io.MouseWheel;
+    wheel_input.horizontal_delta = io.MouseWheelH;
+    wheel_input.screen_pos = io.MousePos;
+    wheel_input.physical_ctrl_down = io.KeyCtrl;
+    wheel_input.synthetic_pinch = false;
+    wheel_input.touchpad_like = false;
+  }
+
+  canvas_directly_hovered_ = is_canvas_hovered;
+
+  bool frl_interaction_handled = false;
+  bool wheel_handled = false;
+
+  const bool ui_blocking = popup_blocking || overlay_point_blocking;
+
+  if (!ui_blocking) {
+    const bool allow_component_wheel = !wheel_input.synthetic_pinch;
+    frl_interaction_handled = HandleFRLPressureAdjustment(
+        mouse_world_pos, mouse_screen_pos, io,
+        allow_component_wheel ? wheel_input.vertical_delta : 0.0f,
+        allow_component_wheel && wheel_input.touchpad_like);
+  }
+
+  if (!ui_blocking && !navigation_blocking) {
+    HandleZoomAndPan(allow_wheel_pan_zoom, allow_mouse_pan, io, wheel_input,
+                     frl_interaction_handled, wheel_handled);
+  } else {
+    if ((wheel_input.pending || touchpad_zoom_pending_ || touchpad_pan_pending_ ||
+         touch_gesture_active_) &&
+        IsDebugEnabled()) {
+      DebugLog("[INPUT] DeferredCanvasWheel blocked popup=" +
+               std::to_string(popup_blocking ? 1 : 0) + " overlay=" +
+               std::to_string(overlay_point_blocking ? 1 : 0) +
+               " component_nav=" +
+               std::to_string(component_navigation_blocking ? 1 : 0) + " " +
+               DescribeInputTargetAtScreenPos(mouse_screen_pos));
+    }
+    touchpad_zoom_pending_ = false;
+    touchpad_zoom_delta_ = 0.0f;
+    touchpad_pan_pending_ = false;
+    touchpad_pan_delta_ = ImVec2(0.0f, 0.0f);
+    touchpad_wheel_pending_ = false;
+    touchpad_wheel_delta_ = 0.0f;
+    touch_gesture_active_ = false;
+    touch_zoom_delta_ = 0.0f;
+    touch_pan_delta_ = ImVec2(0.0f, 0.0f);
+    wheel_input.pending = false;
+  }
+  deferred_canvas_wheel_input_ = Application::DeferredCanvasWheelInput{};
+}
+
+void Application::HandleZoomAndPan(bool allow_wheel_pan_zoom,
+                                   bool allow_mouse_pan, const ImGuiIO& io,
+                                   const Application::DeferredCanvasWheelInput&
+                                       wheel_input,
+                                   bool frl_handled, bool& wheel_handled) {
   auto apply_zoom_at_anchor = [&](float zoom_factor, ImVec2 screen_anchor)
       -> bool {
     if (zoom_factor <= 0.01f) {
@@ -1776,7 +2506,7 @@ void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
     return true;
   };
 
-  if (touchpad_zoom_pending_ && is_canvas_hovered) {
+  if (touchpad_zoom_pending_ && allow_wheel_pan_zoom) {
     float zoom_factor = 1.0f + touchpad_zoom_delta_;
     if (apply_zoom_at_anchor(zoom_factor, touchpad_zoom_anchor_screen_pos_)) {
       wheel_handled = true;
@@ -1788,7 +2518,22 @@ void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
     touchpad_zoom_delta_ = 0.0f;
   }
 
-  if (touch_gesture_active_ && is_canvas_hovered) {
+  if (touchpad_pan_pending_ && allow_wheel_pan_zoom) {
+    camera_offset_.x += touchpad_pan_delta_.x / camera_zoom_;
+    camera_offset_.y += touchpad_pan_delta_.y / camera_zoom_;
+    touchpad_pan_pending_ = false;
+    touchpad_pan_delta_ = ImVec2(0.0f, 0.0f);
+    wheel_handled = true;
+  } else if (touchpad_pan_pending_) {
+    touchpad_pan_pending_ = false;
+    touchpad_pan_delta_ = ImVec2(0.0f, 0.0f);
+  }
+  if (touchpad_wheel_pending_ && !frl_handled) {
+    touchpad_wheel_pending_ = false;
+    touchpad_wheel_delta_ = 0.0f;
+  }
+
+  if (touch_gesture_active_ && allow_wheel_pan_zoom) {
     float zoom_factor = 1.0f + touch_zoom_delta_;
     apply_zoom_at_anchor(zoom_factor, touch_anchor_screen_pos_);
 
@@ -1800,44 +2545,90 @@ void Application::HandleZoomAndPan(bool is_canvas_hovered, const ImGuiIO& io,
     wheel_handled = true;
   }
 
-  // Plain wheel zoom is the default desktop path. Precision touchpad pinch is
-  // consumed earlier through the Win32 queue and sets wheel_handled.
-  if (is_canvas_hovered && io.MouseWheel != 0 && !io.KeyCtrl && !frl_handled &&
+  if (allow_wheel_pan_zoom && wheel_input.pending && !frl_handled &&
       !wheel_handled) {
-    const float wheel_delta = io.MouseWheel;
-    const float zoom_speed = 0.08f;
-    float zoom_step = 1.0f + zoom_speed * std::fabs(wheel_delta);
-    if (wheel_delta > 0.0f) {
-      apply_zoom_at_anchor(zoom_step, io.MousePos);
-    } else {
-      apply_zoom_at_anchor(1.0f / zoom_step, io.MousePos);
+    if ((wheel_input.synthetic_pinch || wheel_input.physical_ctrl_down) &&
+        wheel_input.vertical_delta != 0.0f) {
+      float zoom_delta = wheel_input.vertical_delta * 0.08f;
+      if (zoom_delta > 0.12f) {
+        zoom_delta = 0.12f;
+      } else if (zoom_delta < -0.12f) {
+        zoom_delta = -0.12f;
+      }
+      float zoom_factor = 1.0f + zoom_delta;
+      if (apply_zoom_at_anchor(zoom_factor, wheel_input.screen_pos)) {
+        wheel_handled = true;
+        if (IsDebugEnabled()) {
+          DebugLog("[INPUT] DeferredCanvasWheel route=zoom " +
+                   DescribeInputTargetAtScreenPos(wheel_input.screen_pos));
+        }
+      }
+    } else if (wheel_input.touchpad_like && !wheel_input.physical_ctrl_down &&
+               !wheel_input.physical_shift_down) {
+      const float pan_step = 36.0f;
+      camera_offset_.x +=
+          wheel_input.horizontal_delta * pan_step / camera_zoom_;
+      camera_offset_.y +=
+          (-wheel_input.vertical_delta) * pan_step / camera_zoom_;
+      wheel_handled = (wheel_input.horizontal_delta != 0.0f ||
+                       wheel_input.vertical_delta != 0.0f);
+      if (wheel_handled && IsDebugEnabled()) {
+        DebugLog("[INPUT] DeferredCanvasWheel route=touchpad_pan " +
+                 DescribeInputTargetAtScreenPos(wheel_input.screen_pos));
+      }
+    } else if (wheel_input.physical_shift_down ||
+               wheel_input.horizontal_delta != 0.0f) {
+      // 마우스 휠로 좌우 이동 (Shift + Vertical Wheel 또는 Horizontal Wheel)
+      const float pan_step = wheel_input.touchpad_like ? 36.0f : 50.0f;
+      float h_delta = wheel_input.horizontal_delta;
+      if (h_delta == 0.0f && wheel_input.physical_shift_down) {
+        h_delta = wheel_input.vertical_delta;
+      }
+      camera_offset_.x += h_delta * pan_step / camera_zoom_;
+      wheel_handled = (h_delta != 0.0f);
+      if (wheel_handled && IsDebugEnabled()) {
+        DebugLog("[INPUT] DeferredCanvasWheel route=horizontal_pan " +
+                 DescribeInputTargetAtScreenPos(wheel_input.screen_pos));
+      }
+    } else if (wheel_input.vertical_delta != 0.0f) {
+      // Default: Vertical Zoom (consistent with previous behavior but now Ctrl+Wheel also zooms)
+      const float zoom_speed = 0.08f;
+      float zoom_step =
+          1.0f + zoom_speed * std::fabs(wheel_input.vertical_delta);
+      if (wheel_input.vertical_delta > 0.0f) {
+        apply_zoom_at_anchor(zoom_step, wheel_input.screen_pos);
+      } else {
+        apply_zoom_at_anchor(1.0f / zoom_step, wheel_input.screen_pos);
+      }
+      wheel_handled = true;
+      if (IsDebugEnabled()) {
+        DebugLog("[INPUT] DeferredCanvasWheel route=mouse_zoom " +
+                 DescribeInputTargetAtScreenPos(wheel_input.screen_pos));
+      }
     }
-    wheel_handled = true;
-  }
-
-  // Keep Ctrl+Scroll as an explicit pan fallback for users who rely on it.
-  if (is_canvas_hovered && io.KeyCtrl &&
-      (io.MouseWheelH != 0 || io.MouseWheel != 0) && !frl_handled &&
-      !wheel_handled) {
-    float trackpad_sensitivity = 0.8f;
-    camera_offset_.x += io.MouseWheelH * 20.0f * trackpad_sensitivity;
-    camera_offset_.y += io.MouseWheel * 20.0f * trackpad_sensitivity;
-    wheel_handled = true;
   }
   
   // Middle-button drag remains the primary mouse pan gesture.
   float pan_sensitivity = 1.0f;
-  if (is_canvas_hovered &&
+  if (allow_mouse_pan &&
       ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
     camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
     camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] MousePan route=middle_drag " +
+               DescribeInputTargetAtScreenPos(io.MousePos));
+    }
   }
   
   // Alt+Right drag mirrors the old CAD-style pan gesture.
-  if (is_canvas_hovered && io.KeyAlt &&
+  if (allow_mouse_pan && io.KeyAlt &&
       ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
     camera_offset_.x += io.MouseDelta.x / camera_zoom_ * pan_sensitivity;
     camera_offset_.y += io.MouseDelta.y / camera_zoom_ * pan_sensitivity;
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] MousePan route=alt_right_drag " +
+               DescribeInputTargetAtScreenPos(io.MousePos));
+    }
   }
 }
 
@@ -1868,6 +2659,13 @@ void Application::RenderGrid(ImDrawList* draw_list) {
 void Application::UpdateTouchGesture(float zoom_delta, ImVec2 pan_delta,
                                      bool active) {
   touch_gesture_active_ = active;
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] UpdateTouchGesture active=" +
+             std::to_string(active ? 1 : 0) + " zoom=" +
+             std::to_string(zoom_delta) + " pan=(" +
+             std::to_string(pan_delta.x) + "," +
+             std::to_string(pan_delta.y) + ")");
+  }
   if (!active) {
     touch_zoom_delta_ = 0.0f;
     touch_pan_delta_ = ImVec2(0.0f, 0.0f);
@@ -1886,14 +2684,107 @@ void Application::SetTouchAnchor(ImVec2 screen_pos) {
 }
 
 void Application::QueueTouchpadZoom(float zoom_delta, ImVec2 screen_pos) {
+  const bool blocked = ShouldBlockCanvasNavigationAtScreenPos(screen_pos, true);
+  if (blocked) {
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] QueueTouchpadZoom blocked delta=" +
+               std::to_string(zoom_delta) + " " +
+               DescribeInputTargetAtScreenPos(screen_pos));
+    }
+    return;
+  }
   touchpad_zoom_pending_ = true;
   touchpad_zoom_delta_ = zoom_delta;
   touchpad_zoom_anchor_screen_pos_ = screen_pos;
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] QueueTouchpadZoom delta=" + std::to_string(zoom_delta) +
+             " anchor=(" + std::to_string(screen_pos.x) + "," +
+             std::to_string(screen_pos.y) + ") " +
+             DescribeInputTargetAtScreenPos(screen_pos));
+  }
 }
 
-void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
-                                                    ImVec2 mouse_world_pos,
-                                                    const ImGuiIO& io) {
+void Application::QueueTouchpadPan(ImVec2 pan_delta) {
+  const bool blocked =
+      ShouldBlockCanvasNavigationAtScreenPos(touch_anchor_screen_pos_, true);
+  if (blocked) {
+    if (IsDebugEnabled()) {
+      DebugLog("[INPUT] QueueTouchpadPan blocked delta=(" +
+               std::to_string(pan_delta.x) + "," +
+               std::to_string(pan_delta.y) + ") " +
+               DescribeInputTargetAtScreenPos(touch_anchor_screen_pos_));
+    }
+    return;
+  }
+  touchpad_pan_pending_ = true;
+  touchpad_pan_delta_.x += pan_delta.x;
+  touchpad_pan_delta_.y += pan_delta.y;
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] QueueTouchpadPan delta=(" +
+             std::to_string(pan_delta.x) + "," +
+             std::to_string(pan_delta.y) + ") " +
+             DescribeInputTargetAtScreenPos(touch_anchor_screen_pos_));
+  }
+}
+
+void Application::QueueTouchpadWheel(float wheel_delta) {
+  touchpad_wheel_pending_ = true;
+  touchpad_wheel_delta_ += wheel_delta;
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] QueueTouchpadWheel delta=" +
+             std::to_string(wheel_delta) + " total=" +
+             std::to_string(touchpad_wheel_delta_));
+  }
+}
+
+void Application::QueueCanvasWheelInput(float vertical_delta,
+                                        float horizontal_delta,
+                                        ImVec2 screen_pos,
+                                        bool physical_ctrl_down,
+                                        bool physical_shift_down,
+                                        bool synthetic_pinch,
+                                        bool touchpad_like) {
+  deferred_canvas_wheel_input_.pending = true;
+  deferred_canvas_wheel_input_.vertical_delta += vertical_delta;
+  deferred_canvas_wheel_input_.horizontal_delta += horizontal_delta;
+  deferred_canvas_wheel_input_.screen_pos = screen_pos;
+  deferred_canvas_wheel_input_.physical_ctrl_down =
+      deferred_canvas_wheel_input_.physical_ctrl_down || physical_ctrl_down;
+  deferred_canvas_wheel_input_.physical_shift_down =
+      deferred_canvas_wheel_input_.physical_shift_down || physical_shift_down;
+  deferred_canvas_wheel_input_.synthetic_pinch =
+      deferred_canvas_wheel_input_.synthetic_pinch || synthetic_pinch;
+  deferred_canvas_wheel_input_.touchpad_like =
+      deferred_canvas_wheel_input_.touchpad_like || touchpad_like;
+  if (IsDebugEnabled()) {
+    DebugLog("[INPUT] QueueCanvasWheelInput v=" +
+             std::to_string(vertical_delta) + " h=" +
+             std::to_string(horizontal_delta) + " pos=(" +
+             std::to_string(screen_pos.x) + "," +
+             std::to_string(screen_pos.y) + ") ctrl=" +
+             std::to_string(physical_ctrl_down ? 1 : 0) +
+             " synthetic_pinch=" +
+             std::to_string(synthetic_pinch ? 1 : 0) +
+             " touchpad_like=" +
+             std::to_string(touchpad_like ? 1 : 0) + " " +
+             DescribeInputTargetAtScreenPos(screen_pos));
+  }
+}
+
+void Application::HandleCanvasContextActions(bool is_canvas_hovered,
+                                             ImVec2 mouse_world_pos,
+                                             const ImGuiIO& io) {
+  std::vector<CanvasInteractionCommand> commands;
+  auto queue_command = [&](CanvasInteractionCommand command) {
+    commands.push_back(command);
+  };
+  auto flush_commands = [&]() {
+    if (commands.empty()) {
+      return;
+    }
+    ApplyCanvasInteractionCommands(commands);
+    commands.clear();
+  };
   auto can_delete_wire = [&](const Wire* wire) -> bool {
     if (!wire) {
       return false;
@@ -1908,17 +2799,7 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
     return tagged_wire && tagged_wire->id == wire->id;
   };
 
-  // Handle component drop
-  if (is_dragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-    if (is_canvas_hovered)
-      HandleComponentDrop(mouse_world_pos);
-    else {
-      is_dragging_ = false;
-      dragged_component_index_ = -1;
-    }
-  }
-
-  bool right_click = win32_right_click_ ||
+  bool right_click = platform_input_collector_.ConsumeWin32RightClick() ||
                      ImGui::IsMouseClicked(ImGuiMouseButton_Right);
   bool right_double_click =
       ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Right);
@@ -1927,7 +2808,6 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
   if (!right_click && right_down && !prev_right_button_down_) {
     right_click = true;
   }
-  win32_right_click_ = false;
   prev_right_button_down_ = right_down;
 
   if (right_click && is_canvas_hovered && io.KeyAlt) {
@@ -1939,10 +2819,11 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
       }
     }
     if (tagged_wire && tagged_wire->isTagged) {
-      PushWiringUndoState();
-      tagged_wire->isTagged = false;
-      tagged_wire->tagText.clear();
-      tagged_wire->tagColorIndex = 0;
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::UntagWireById;
+      command.wire_id = tagged_wire->id;
+      queue_command(command);
+      flush_commands();
     }
     return;
   }
@@ -1953,8 +2834,12 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
                                             mouse_world_pos);
     if (top_index != -1) {
       const auto& comp = placed_components_[static_cast<size_t>(top_index)];
-      HandleComponentSelection(comp.instanceId);
-      OpenComponentContextMenu(comp.instanceId, io.MousePos);
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::OpenComponentContextMenu;
+      command.component_id = comp.instanceId;
+      command.screen_pos = io.MousePos;
+      queue_command(command);
+      flush_commands();
     }
     return;
   }
@@ -1967,8 +2852,10 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
   }
   if (right_click && is_canvas_hovered && !io.KeyAlt) {
     if (is_connecting_) {
-      is_connecting_ = false;
-      current_way_points_.clear();
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::CancelWireConnection;
+      queue_command(command);
+      flush_commands();
       if (IsDebugEnabled()) {
         DebugLog("[INPUT] Right click: cancel wire");
       }
@@ -1981,8 +2868,11 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
         if (top_index != -1) {
           const auto& comp =
               placed_components_[static_cast<size_t>(top_index)];
-          HandleComponentSelection(comp.instanceId);
-          DeleteSelectedComponent();
+          CanvasInteractionCommand command;
+          command.type = CanvasInteractionCommand::Type::DeleteComponentById;
+          command.component_id = comp.instanceId;
+          queue_command(command);
+          flush_commands();
           deleted = true;
           if (IsDebugEnabled()) {
             DebugLog("[INPUT] Right double click: delete component " +
@@ -1997,7 +2887,11 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
         }
         if (wire_to_delete) {
           int wire_id = wire_to_delete->id;
-          DeleteWire(wire_id);
+          CanvasInteractionCommand command;
+          command.type = CanvasInteractionCommand::Type::DeleteWireById;
+          command.wire_id = wire_id;
+          queue_command(command);
+          flush_commands();
           deleted = true;
           if (IsDebugEnabled()) {
             DebugLog("[INPUT] Right click: delete wire " +
@@ -2014,15 +2908,16 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
   }
 
   // Delete component or wire with side button (XButton1)
-  bool side_click = win32_side_click_ || ImGui::IsMouseClicked(3);
+  bool side_click = platform_input_collector_.ConsumeWin32SideClick() ||
+                    ImGui::IsMouseClicked(3);
   bool side_down = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_4) ==
                    GLFW_PRESS;
-  bool side_hold = win32_side_down_ || ImGui::IsMouseDown(3) || side_down;
+  bool side_hold = platform_input_collector_.IsWin32SideDown() ||
+                   ImGui::IsMouseDown(3) || side_down;
   if (!side_click && side_down && !prev_side_button_down_) {
     side_click = true;
   }
-  win32_side_click_ = false;
-  win32_side_down_ = side_hold;
+  platform_input_collector_.SetWin32SideDown(side_hold);
   prev_side_button_down_ = side_down;
 
   if (side_click && !is_canvas_hovered) {
@@ -2032,8 +2927,10 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
   }
   if ((side_click || side_hold) && is_canvas_hovered) {
     if (side_click && is_connecting_) {
-      is_connecting_ = false;
-      current_way_points_.clear();
+      CanvasInteractionCommand command;
+      command.type = CanvasInteractionCommand::Type::CancelWireConnection;
+      queue_command(command);
+      flush_commands();
       if (IsDebugEnabled()) {
         DebugLog("[INPUT] Side click: cancel wire");
       }
@@ -2045,8 +2942,11 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
                                               mouse_world_pos);
       if (top_index != -1) {
         const auto& comp = placed_components_[static_cast<size_t>(top_index)];
-        HandleComponentSelection(comp.instanceId);
-        DeleteSelectedComponent();
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::DeleteComponentById;
+        command.component_id = comp.instanceId;
+        queue_command(command);
+        flush_commands();
         deleted = true;
         if (IsDebugEnabled()) {
           DebugLog("[INPUT] Side click: delete component " +
@@ -2063,7 +2963,11 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
       }
       if (wire_to_delete) {
         int wire_id = wire_to_delete->id;
-        DeleteWire(wire_id);
+        CanvasInteractionCommand command;
+        command.type = CanvasInteractionCommand::Type::DeleteWireById;
+        command.wire_id = wire_id;
+        queue_command(command);
+        flush_commands();
         deleted = true;
         if (IsDebugEnabled()) {
           DebugLog("[INPUT] Side click: delete wire " +
@@ -2079,7 +2983,26 @@ void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
   }
 }
 
+void Application::HandleComponentDropAndWireDelete(bool is_canvas_hovered,
+                                                   ImVec2 mouse_world_pos,
+                                                   const ImGuiIO& io) {
+  if (is_dragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    if (is_canvas_hovered) {
+      HandleComponentDrop(mouse_world_pos);
+    } else {
+      is_dragging_ = false;
+      dragged_component_index_ = -1;
+      dragged_rtl_module_id_.clear();
+    }
+  }
+
+  HandleCanvasContextActions(is_canvas_hovered, mouse_world_pos, io);
+}
+
 bool Application::IsPointInCanvas(ImVec2 screen_pos) const {
+  if (current_mode_ != Mode::WIRING) {
+    return false;
+  }
   if (canvas_size_.x <= 0.0f || canvas_size_.y <= 0.0f) {
     return false;
   }
@@ -2087,6 +3010,84 @@ bool Application::IsPointInCanvas(ImVec2 screen_pos) const {
          screen_pos.x <= canvas_top_left_.x + canvas_size_.x &&
          screen_pos.y >= canvas_top_left_.y &&
          screen_pos.y <= canvas_top_left_.y + canvas_size_.y;
+}
+
+bool Application::IsPointOverComponentAtScreenPos(ImVec2 screen_pos) const {
+  if (!IsPointInCanvas(screen_pos)) {
+    return false;
+  }
+  ImVec2 world_pos = ScreenToWorld(screen_pos);
+  for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
+       ++it) {
+    if (IsPointInsideComponent(*it, world_pos)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Application::HasWheelResponsiveComponentAtScreenPos(
+    ImVec2 screen_pos) const {
+  if (!IsPointInCanvas(screen_pos)) {
+    return false;
+  }
+  ImVec2 world_pos = ScreenToWorld(screen_pos);
+  for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
+       ++it) {
+    if (!IsPointInsideComponent(*it, world_pos)) {
+      continue;
+    }
+    const ComponentBehavior* behavior = GetComponentBehavior(it->type);
+    if (behavior && behavior->OnMouseWheel != nullptr) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Application::ShouldBlockCanvasNavigationAtScreenPos(
+    ImVec2 screen_pos, bool block_on_component) const {
+  if (IsPointInOverlayCaptureRect(screen_pos)) {
+    return true;
+  }
+  if (block_on_component && IsPointOverComponentAtScreenPos(screen_pos)) {
+    return true;
+  }
+  return false;
+}
+
+std::string Application::DescribeInputTargetAtScreenPos(ImVec2 screen_pos) const {
+  std::string desc = "screen=(" +
+                     std::to_string(static_cast<int>(screen_pos.x)) + "," +
+                     std::to_string(static_cast<int>(screen_pos.y)) + ")";
+  desc += " canvas=" + std::to_string(IsPointInCanvas(screen_pos) ? 1 : 0);
+  desc += " overlay_rect=" +
+          std::to_string(IsPointInOverlayCaptureRect(screen_pos) ? 1 : 0);
+  desc += " overlay_capture_src=disabled";
+
+  if (!IsPointInCanvas(screen_pos)) {
+    return desc + " target=outside_canvas";
+  }
+
+  ImVec2 world_pos = ScreenToWorld(screen_pos);
+  desc += " world=(" + std::to_string(static_cast<int>(world_pos.x)) + "," +
+          std::to_string(static_cast<int>(world_pos.y)) + ")";
+
+  int top_index = FindTopmostComponentIndexAtPosition(placed_components_, world_pos);
+  if (top_index == -1) {
+    return desc + " target=canvas_empty";
+  }
+
+  const auto& comp = placed_components_[static_cast<size_t>(top_index)];
+  const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
+  desc += " target=component";
+  desc += " id=" + std::to_string(comp.instanceId);
+  desc += " type=" + std::string(DebugComponentTypeLabel(comp.type));
+  desc += " selected=" + std::to_string(comp.selected ? 1 : 0);
+  desc += " wheel_handler=" +
+          std::to_string((behavior && behavior->OnMouseWheel != nullptr) ? 1
+                                                                         : 0);
+  return desc;
 }
 
 PlacedComponent* Application::FindComponentById(int instance_id) {
@@ -2317,6 +3318,258 @@ void Application::RenderComponentContextMenu() {
               !source_selected) {
             PushWiringUndoState();
             SetPlcOutputMode(PlcOutputMode::SOURCE);
+          }
+          ImGui::EndMenu();
+        }
+      }
+      if (comp && comp->type == ComponentType::RTL_MODULE) {
+        ImGui::Separator();
+        if (ImGui::BeginMenu(TR("ui.wiring.rtl.runtime_menu", "RTL Runtime"))) {
+          const RtlLibraryEntry* rtl_entry =
+              rtl_project_manager_ ? rtl_project_manager_->FindEntryById(
+                                         comp->rtlModuleId)
+                                  : nullptr;
+          std::vector<std::string> input_pin_names;
+          if (rtl_entry) {
+            input_pin_names.reserve(rtl_entry->ports.size());
+            for (const auto& port : rtl_entry->ports) {
+              if (port.isInput) {
+                input_pin_names.push_back(port.pinName);
+              }
+            }
+          }
+          char buf[256];
+          plc::FormatString(buf, sizeof(buf), "ui.wiring.rtl.logic_family_label",
+                            "Logic family: %s",
+                            RtlLogicFamilyLabel(comp->rtlLogicFamily));
+          ImGui::TextDisabled("%s", buf);
+
+          if (ImGui::BeginCombo(TR("ui.wiring.rtl.logic_family", "Logic Family"),
+                                RtlLogicFamilyLabel(comp->rtlLogicFamily))) {
+            const RtlLogicFamily families[] = {
+                RtlLogicFamily::INDUSTRIAL_24V,
+                RtlLogicFamily::CMOS_5V,
+                RtlLogicFamily::TTL_5V};
+            for (RtlLogicFamily family : families) {
+              bool selected = comp->rtlLogicFamily == family;
+              if (ImGui::Selectable(RtlLogicFamilyLabel(family), selected)) {
+                PushWiringUndoState();
+                comp->rtlLogicFamily = family;
+                InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+              }
+              if (selected) {
+                ImGui::SetItemDefaultFocus();
+              }
+            }
+            ImGui::EndCombo();
+          }
+
+          plc::FormatString(buf, sizeof(buf), "ui.wiring.rtl.vcc_pin",
+                            "VCC pin: %s",
+                            comp->rtlPowerPinName.empty()
+                                ? TR("ui.wiring.rtl.always_powered",
+                                     "(always powered)")
+                                : comp->rtlPowerPinName.c_str());
+          ImGui::TextDisabled("%s", buf);
+
+          const char* current_power_pin =
+              comp->rtlPowerPinName.empty()
+                  ? TR("ui.wiring.rtl.always_powered", "(always powered)")
+                  : comp->rtlPowerPinName.c_str();
+          if (ImGui::BeginCombo(TR("ui.wiring.rtl.vcc_pin_label", "Power Pin"),
+                                current_power_pin)) {
+            bool selected_none = comp->rtlPowerPinName.empty();
+            if (ImGui::Selectable(
+                    TR("ui.wiring.rtl.always_powered", "(always powered)"),
+                    selected_none)) {
+              PushWiringUndoState();
+              comp->rtlPowerPinName.clear();
+              InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+            }
+            if (selected_none) {
+              ImGui::SetItemDefaultFocus();
+            }
+            for (const auto& pin_name : input_pin_names) {
+              bool selected = comp->rtlPowerPinName == pin_name;
+              if (ImGui::Selectable(pin_name.c_str(), selected)) {
+                PushWiringUndoState();
+                comp->rtlPowerPinName = pin_name;
+                InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+              }
+              if (selected) {
+                ImGui::SetItemDefaultFocus();
+              }
+            }
+            ImGui::EndCombo();
+          }
+
+          plc::FormatString(buf, sizeof(buf), "ui.wiring.rtl.gnd_pin",
+                            "GND pin: %s",
+                            comp->rtlGroundPinName.empty()
+                                ? TR("ui.wiring.rtl.none", "(none)")
+                                : comp->rtlGroundPinName.c_str());
+          ImGui::TextDisabled("%s", buf);
+
+          const char* current_ground_pin =
+              comp->rtlGroundPinName.empty()
+                  ? TR("ui.wiring.rtl.none", "(none)")
+                  : comp->rtlGroundPinName.c_str();
+          if (ImGui::BeginCombo(TR("ui.wiring.rtl.gnd_pin_label", "Ground Pin"),
+                                current_ground_pin)) {
+            bool selected_none = comp->rtlGroundPinName.empty();
+            if (ImGui::Selectable(TR("ui.wiring.rtl.none", "(none)"),
+                                  selected_none)) {
+              PushWiringUndoState();
+              comp->rtlGroundPinName.clear();
+              InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+            }
+            if (selected_none) {
+              ImGui::SetItemDefaultFocus();
+            }
+            for (const auto& pin_name : input_pin_names) {
+              bool selected = comp->rtlGroundPinName == pin_name;
+              if (ImGui::Selectable(pin_name.c_str(), selected)) {
+                PushWiringUndoState();
+                comp->rtlGroundPinName = pin_name;
+                InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+              }
+              if (selected) {
+                ImGui::SetItemDefaultFocus();
+              }
+            }
+            ImGui::EndCombo();
+          }
+          ImGui::Separator();
+
+          plc::FormatString(buf, sizeof(buf), "ui.wiring.rtl.clock_pin",
+                            "Clock pin: %s",
+                            comp->rtlClockPinName.empty()
+                                ? TR("ui.wiring.rtl.none", "(none)")
+                                : comp->rtlClockPinName.c_str());
+          ImGui::TextDisabled("%s", buf);
+
+          const char* current_clock_pin =
+              comp->rtlClockPinName.empty() ? TR("ui.wiring.rtl.none", "(none)")
+                                            : comp->rtlClockPinName.c_str();
+          if (ImGui::BeginCombo(
+                  TR("ui.wiring.rtl.clock_pin_label", "Clock Source Pin"),
+                  current_clock_pin)) {
+            bool selected_none = comp->rtlClockPinName.empty();
+            if (ImGui::Selectable(TR("ui.wiring.rtl.none", "(none)"),
+                                  selected_none)) {
+              PushWiringUndoState();
+              comp->rtlClockPinName.clear();
+              comp->rtlUseInternalClock = false;
+              InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+            }
+            if (selected_none) {
+              ImGui::SetItemDefaultFocus();
+            }
+            for (const auto& pin_name : input_pin_names) {
+              bool selected = comp->rtlClockPinName == pin_name;
+              if (ImGui::Selectable(pin_name.c_str(), selected)) {
+                PushWiringUndoState();
+                comp->rtlClockPinName = pin_name;
+                InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+              }
+              if (selected) {
+                ImGui::SetItemDefaultFocus();
+              }
+            }
+            ImGui::EndCombo();
+          }
+          bool internal_clock = comp->rtlUseInternalClock;
+          if (comp->rtlClockPinName.empty()) {
+            ImGui::BeginDisabled();
+          }
+          if (ImGui::Checkbox(
+                  TR("ui.wiring.rtl.use_internal_clock", "Use Internal Clock"),
+                  &internal_clock)) {
+            PushWiringUndoState();
+            comp->rtlUseInternalClock = internal_clock;
+            InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+          }
+          if (comp->rtlClockPinName.empty()) {
+            ImGui::EndDisabled();
+          }
+          if (comp->rtlUseInternalClock) {
+            float freq = std::max(0.1f, comp->rtlClockFrequencyHz);
+            if (ImGui::InputFloat(TR("ui.wiring.rtl.clock_hz", "Clock Hz"),
+                                  &freq, 0.1f, 1.0f, "%.2f")) {
+              PushWiringUndoState();
+              comp->rtlClockFrequencyHz = std::max(0.1f, freq);
+              InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+            }
+          }
+          ImGui::Separator();
+
+          plc::FormatString(buf, sizeof(buf), "ui.wiring.rtl.reset_pin",
+                            "Reset pin: %s",
+                            comp->rtlResetPinName.empty()
+                                ? TR("ui.wiring.rtl.none", "(none)")
+                                : comp->rtlResetPinName.c_str());
+          ImGui::TextDisabled("%s", buf);
+          const char* current_reset_pin =
+              comp->rtlResetPinName.empty() ? TR("ui.wiring.rtl.none", "(none)")
+                                            : comp->rtlResetPinName.c_str();
+          if (ImGui::BeginCombo(
+                  TR("ui.wiring.rtl.reset_pin_label", "Reset Source Pin"),
+                  current_reset_pin)) {
+            bool selected_none = comp->rtlResetPinName.empty();
+            if (ImGui::Selectable(TR("ui.wiring.rtl.none", "(none)"),
+                                  selected_none)) {
+              PushWiringUndoState();
+              comp->rtlResetPinName.clear();
+              comp->rtlUseStartupReset = false;
+              InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+            }
+            if (selected_none) {
+              ImGui::SetItemDefaultFocus();
+            }
+            for (const auto& pin_name : input_pin_names) {
+              bool selected = comp->rtlResetPinName == pin_name;
+              if (ImGui::Selectable(pin_name.c_str(), selected)) {
+                PushWiringUndoState();
+                comp->rtlResetPinName = pin_name;
+                InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+              }
+              if (selected) {
+                ImGui::SetItemDefaultFocus();
+              }
+            }
+            ImGui::EndCombo();
+          }
+          bool startup_reset = comp->rtlUseStartupReset;
+          if (comp->rtlResetPinName.empty()) {
+            ImGui::BeginDisabled();
+          }
+          if (ImGui::Checkbox(
+                  TR("ui.wiring.rtl.startup_reset", "Startup Reset Pulse"),
+                  &startup_reset)) {
+            PushWiringUndoState();
+            comp->rtlUseStartupReset = startup_reset;
+            InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+          }
+          if (comp->rtlResetPinName.empty()) {
+            ImGui::EndDisabled();
+          }
+          bool active_low = comp->rtlResetActiveLow;
+          if (ImGui::Checkbox(
+                  TR("ui.wiring.rtl.reset_active_low", "Reset Active Low"),
+                  &active_low)) {
+            PushWiringUndoState();
+            comp->rtlResetActiveLow = active_low;
+            InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+          }
+          if (comp->rtlUseStartupReset) {
+            float pulse_ms = std::max(1.0f, comp->rtlResetPulseMs);
+            if (ImGui::InputFloat(
+                    TR("ui.wiring.rtl.reset_pulse_ms", "Reset Pulse ms"),
+                    &pulse_ms, 1.0f, 10.0f, "%.1f")) {
+              PushWiringUndoState();
+              comp->rtlResetPulseMs = std::max(1.0f, pulse_ms);
+              InvalidateRtlModuleRuntimeState(comp->rtlModuleId);
+            }
           }
           ImGui::EndMenu();
         }

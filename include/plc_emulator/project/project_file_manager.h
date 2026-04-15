@@ -61,6 +61,8 @@ class ProjectFileManager {
     LadderProgram program;
     std::string ldProgram;
     std::string layoutJson;
+    std::string rtlLibraryJson;
+    std::map<std::string, std::string> rtlArtifacts;
     ProjectInfo info;
   };
 
@@ -72,6 +74,8 @@ class ProjectFileManager {
                          const std::string& projectName = "");
   SaveResult SaveProjectPackage(const LadderProgram& program,
                                 const std::string& layoutJson,
+                                const std::string& rtlLibraryJson,
+                                const std::map<std::string, std::string>& rtlArtifacts,
                                 const std::string& filePath,
                                 const std::string& projectName = "");
 

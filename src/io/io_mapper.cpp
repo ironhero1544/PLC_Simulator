@@ -500,6 +500,8 @@ int IOMapper_GetMaxPortCount(ComponentType type) {
       return 4;
     case ComponentType::EMERGENCY_STOP:
       return 4;
+    case ComponentType::RTL_MODULE:
+      return 0;
     default:
       return 1;
   }
@@ -546,6 +548,8 @@ std::string IOMapper_GetComponentRole(ComponentType type) {
       return "LAMP";
     case ComponentType::EMERGENCY_STOP:
       return "EMERGENCY_STOP";
+    case ComponentType::RTL_MODULE:
+      return "RTL_MODULE";
     default:
       return "UNKNOWN";
   }

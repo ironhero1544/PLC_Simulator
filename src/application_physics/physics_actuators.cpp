@@ -3,6 +3,7 @@
 // Component logic and actuator updates.
 
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/physics/component_physics_adapter.h"
 
@@ -19,6 +20,17 @@
 
 namespace plc {
 namespace {
+
+void ApplySensorResolvedState(PlacedComponent* sensor, bool detected) {
+  if (!sensor) {
+    return;
+  }
+  if (sensor->type == ComponentType::LIMIT_SWITCH) {
+    component_input::SetLimitSwitchPhysicalDetected(sensor, detected);
+  } else {
+    component_input::SetSensorDetected(sensor, detected);
+  }
+}
 
 struct ValveLogicContext {
   std::vector<PlacedComponent>* components = nullptr;
@@ -249,19 +261,8 @@ void Application::UpdateActuatorsImpl(float delta_time,
 
         (void)closestCylinderId;  // Unused variable
 
-        if (sensor.type == ComponentType::LIMIT_SWITCH) {
-          bool isPressedManually =
-              sensor.internalStates.count(state_keys::kIsPressedManual) &&
-              sensor.internalStates.at(state_keys::kIsPressedManual) > 0.5f;
-          sensor.internalStates["is_pressed"] =
-              (isActivatedByPhysics || isActivatedByWorkpiece ||
-               isPressedManually)
-                  ? 1.0f
-                  : 0.0f;
-        } else {
-          sensor.internalStates["is_detected"] =
-              (isActivatedByPhysics || isActivatedByWorkpiece) ? 1.0f : 0.0f;
-        }
+        ApplySensorResolvedState(
+            &sensor, isActivatedByPhysics || isActivatedByWorkpiece);
       }
     }
   }
@@ -394,20 +395,8 @@ void Application::UpdateBasicPhysicsImpl(float delta_time) {
           }
         }
 
-        // Update sensor state.
-        if (sensor.type == ComponentType::LIMIT_SWITCH) {
-          bool isPressedManually =
-              sensor.internalStates.count("is_pressed_manual") &&
-              sensor.internalStates.at("is_pressed_manual") > 0.5f;
-          sensor.internalStates["is_pressed"] =
-              (isActivatedByPhysics || isActivatedByWorkpiece ||
-               isPressedManually)
-                  ? 1.0f
-                  : 0.0f;
-        } else {
-          sensor.internalStates["is_detected"] =
-              (isActivatedByPhysics || isActivatedByWorkpiece) ? 1.0f : 0.0f;
-        }
+        ApplySensorResolvedState(
+            &sensor, isActivatedByPhysics || isActivatedByWorkpiece);
       }
     }
   }

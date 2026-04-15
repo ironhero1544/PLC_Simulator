@@ -35,25 +35,22 @@ Port* Application::FindPortAtPosition(ImVec2 worldPos, int& outComponentId) {
       continue;
     }
 
-    const ComponentDefinition* def = GetComponentDefinition(component.type);
-    if (!def || !def->ports || def->port_count <= 0) {
+    std::vector<Port> ports = GetRuntimePortsForComponent(component);
+    if (ports.empty()) {
       continue;
     }
 
-    for (int i = 0; i < def->port_count; ++i) {
-      const ComponentPortDef& port_def = def->ports[i];
+    for (const auto& port_def : ports) {
       ImVec2 port_world =
           LocalToWorld(component,
-                       ImVec2(port_def.rel_pos.x, port_def.rel_pos.y));
+                       ImVec2(port_def.relativePos.x, port_def.relativePos.y));
       float dx = worldPos.x - port_world.x;
       float dy = worldPos.y - port_world.y;
       float dist_sq = dx * dx + dy * dy;
       if (dist_sq <= best_dist_sq) {
         best_dist_sq = dist_sq;
         outComponentId = component.instanceId;
-        temp_port_buffer_ = {port_def.id, port_def.rel_pos, port_def.color,
-                             port_def.is_input, port_def.type,
-                             port_def.role ? port_def.role : ""};
+        temp_port_buffer_ = port_def;
         found = true;
       }
     }

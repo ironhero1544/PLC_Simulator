@@ -205,6 +205,9 @@ PortInfo GetComponentPortInfo(ComponentType type) {
       info.electricalPorts = 4;
       info.isElectricalActive = true;
       break;
+
+    case ComponentType::RTL_MODULE:
+      break;
   }
 
   return info;

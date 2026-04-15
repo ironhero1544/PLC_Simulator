@@ -3,6 +3,7 @@
 // Electrical simulation helpers.
 
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/physics/component_physics_adapter.h"
 
@@ -24,6 +25,85 @@ struct ElectricalUpdateContext {
   std::vector<PlacedComponent>* components = nullptr;
   const std::map<PortRef, float>* voltages = nullptr;
 };
+
+float GetRtlOutputHighVoltage(const PlacedComponent& comp) {
+  switch (comp.rtlLogicFamily) {
+    case RtlLogicFamily::CMOS_5V:
+    case RtlLogicFamily::TTL_5V:
+      return 5.0f;
+    case RtlLogicFamily::INDUSTRIAL_24V:
+    default:
+      return 24.0f;
+  }
+}
+
+float GetRtlInputHighThreshold(const PlacedComponent& comp) {
+  switch (comp.rtlLogicFamily) {
+    case RtlLogicFamily::CMOS_5V:
+      return 3.5f;
+    case RtlLogicFamily::TTL_5V:
+      return 2.0f;
+    case RtlLogicFamily::INDUSTRIAL_24V:
+    default:
+      return 12.0f;
+  }
+}
+
+float GetRtlGroundMaxVoltage(const PlacedComponent& comp) {
+  switch (comp.rtlLogicFamily) {
+    case RtlLogicFamily::CMOS_5V:
+      return 1.0f;
+    case RtlLogicFamily::TTL_5V:
+      return 0.8f;
+    case RtlLogicFamily::INDUSTRIAL_24V:
+    default:
+      return 2.0f;
+  }
+}
+
+bool TryGetRtlPinVoltage(const PlacedComponent& comp,
+                         const std::map<PortRef, float>& voltages,
+                         const std::string& pin_name,
+                         float* out_voltage) {
+  if (!out_voltage || pin_name.empty()) {
+    return false;
+  }
+  for (const auto& binding : comp.rtlPinBindings) {
+    if (binding.pinName != pin_name) {
+      continue;
+    }
+    auto it = voltages.find(std::make_pair(comp.instanceId, binding.portId));
+    if (it == voltages.end()) {
+      return false;
+    }
+    *out_voltage = it->second;
+    return true;
+  }
+  return false;
+}
+
+bool IsRtlComponentPowered(const PlacedComponent& comp,
+                          const std::map<PortRef, float>& voltages) {
+  if (comp.rtlPowerPinName.empty() && comp.rtlGroundPinName.empty()) {
+    return true;
+  }
+  bool power_ok = true;
+  if (!comp.rtlPowerPinName.empty()) {
+    float voltage = -1.0f;
+    power_ok = TryGetRtlPinVoltage(comp, voltages, comp.rtlPowerPinName,
+                                   &voltage) &&
+               voltage >= GetRtlInputHighThreshold(comp);
+  }
+  bool ground_ok = true;
+  if (!comp.rtlGroundPinName.empty()) {
+    float voltage = -1.0f;
+    ground_ok = TryGetRtlPinVoltage(comp, voltages, comp.rtlGroundPinName,
+                                    &voltage) &&
+                voltage >= 0.0f &&
+                voltage <= GetRtlGroundMaxVoltage(comp);
+  }
+  return power_ok && ground_ok;
+}
 
 void UpdateElectricalComponent(size_t index, void* context) {
   auto* ctx = static_cast<ElectricalUpdateContext*>(context);
@@ -52,7 +132,7 @@ void Application::SimulateElectricalImpl() {
     }
   }
 
-  enum class VoltageType { NONE, V24, V0 };
+  enum class VoltageType { NONE, V24, V5, V0 };
   constexpr int kMaxPortsPerComponent = 32;
   constexpr int kMaxElectricalComponents = 512;
   constexpr int kMaxElectricalPorts =
@@ -246,8 +326,7 @@ void Application::SimulateElectricalImpl() {
 
   for (const auto& comp : placed_components_) {
     if (comp.type == ComponentType::LIMIT_SWITCH) {
-      bool is_pressed = comp.internalStates.count("is_pressed") &&
-                        comp.internalStates.at("is_pressed") > 0.5f;
+      bool is_pressed = component_input::IsLimitSwitchPressed(comp);
       int com_index = get_index(comp.instanceId, 0);
       int target_port = is_pressed ? 1 : 2;
       int target_index = get_index(comp.instanceId, target_port);
@@ -255,8 +334,7 @@ void Application::SimulateElectricalImpl() {
         unite(com_index, target_index);
       }
     } else if (comp.type == ComponentType::EMERGENCY_STOP) {
-      bool is_pressed = comp.internalStates.count(state_keys::kIsPressed) &&
-                        comp.internalStates.at(state_keys::kIsPressed) > 0.5f;
+      bool is_pressed = component_input::IsEmergencyStopPressed(comp);
       int nc_index_a = get_index(comp.instanceId, 0);
       int nc_index_b = get_index(comp.instanceId, 1);
       int no_index_a = get_index(comp.instanceId, 2);
@@ -294,9 +372,7 @@ void Application::SimulateElectricalImpl() {
       }
     } else if (comp.type == ComponentType::BUTTON_UNIT) {
       for (int i = 0; i < 3; ++i) {
-        bool is_pressed =
-            comp.internalStates.count("is_pressed_" + std::to_string(i)) &&
-            comp.internalStates.at("is_pressed_" + std::to_string(i)) > 0.5f;
+        bool is_pressed = component_input::IsButtonUnitPressed(comp, i);
         int com_index = get_index(comp.instanceId, i * 5 + 0);
         int target_port = is_pressed ? (i * 5 + 1) : (i * 5 + 2);
         int target_index = get_index(comp.instanceId, target_port);
@@ -307,8 +383,7 @@ void Application::SimulateElectricalImpl() {
     } else if (comp.type == ComponentType::SENSOR ||
                comp.type == ComponentType::INDUCTIVE_SENSOR ||
                comp.type == ComponentType::RING_SENSOR) {
-      bool is_detected = comp.internalStates.count("is_detected") &&
-                         comp.internalStates.at("is_detected") > 0.5f;
+      bool is_detected = component_input::IsSensorDetected(comp);
       if (is_detected) {
         SensorOutputMode output_mode = GetSensorOutputMode(comp);
         int drive_port = output_mode == SensorOutputMode::NPN
@@ -340,55 +415,113 @@ void Application::SimulateElectricalImpl() {
   }
 
   cache.net_count = net_count;
-  for (int i = 0; i < cache.net_count; ++i) {
-    cache.net_voltage[i] = static_cast<int>(VoltageType::NONE);
-  }
+  auto clear_net_voltages = [&]() {
+    for (int i = 0; i < cache.net_count; ++i) {
+      cache.net_voltage[i] = static_cast<int>(VoltageType::NONE);
+    }
+  };
 
-  for (int i = 0; i < cache.port_count; ++i) {
-    int comp_id = cache.ports[i].first;
-    int port_id = cache.ports[i].second;
-    int net_id = cache.port_net_id[i];
+  auto assign_net_driver = [&](int net_id, VoltageType drive) {
     if (net_id < 0) {
-      continue;
+      return;
     }
+    int& slot = cache.net_voltage[net_id];
+    if (slot == static_cast<int>(VoltageType::NONE)) {
+      slot = static_cast<int>(drive);
+      return;
+    }
+    if (slot != static_cast<int>(drive)) {
+      slot = static_cast<int>(VoltageType::NONE);
+    }
+  };
 
-    if (comp_id >= 0 && comp_id <= cache.last_max_component_id) {
-      ComponentType type = cache.component_types[comp_id];
-      if (type == ComponentType::POWER_SUPPLY) {
-        if (port_id == 0 && cache.net_voltage[net_id] !=
-                                static_cast<int>(VoltageType::V0)) {
-          cache.net_voltage[net_id] = static_cast<int>(VoltageType::V24);
-        }
-        if (port_id == 1) {
-          cache.net_voltage[net_id] = static_cast<int>(VoltageType::V0);
-        }
-      } else if (type == ComponentType::PLC && port_id >= 16 && port_id < 32) {
-        int y_index = port_id - 16;
-        bool y_state = GetPlcDeviceState("Y" + std::to_string(y_index));
-        if (y_state) {
-          cache.net_voltage[net_id] =
-              (GetPlcOutputOnVoltage() > 12.0f)
-                  ? static_cast<int>(VoltageType::V24)
-                  : static_cast<int>(VoltageType::V0);
+  auto assign_drivers = [&]() {
+    for (int i = 0; i < cache.port_count; ++i) {
+      int comp_id = cache.ports[i].first;
+      int port_id = cache.ports[i].second;
+      int net_id = cache.port_net_id[i];
+      if (net_id < 0) {
+        continue;
+      }
+
+      if (comp_id >= 0 && comp_id <= cache.last_max_component_id) {
+        ComponentType type = cache.component_types[comp_id];
+        if (type == ComponentType::POWER_SUPPLY) {
+          if (port_id == 0) {
+            assign_net_driver(net_id, VoltageType::V24);
+          } else if (port_id == 1) {
+            assign_net_driver(net_id, VoltageType::V0);
+          }
+        } else if (type == ComponentType::PLC && port_id >= 16 && port_id < 32) {
+          int y_index = port_id - 16;
+          bool y_state = GetPlcDeviceState("Y" + std::to_string(y_index));
+          if (y_state) {
+            assign_net_driver(
+                net_id, (GetPlcOutputOnVoltage() > 12.0f) ? VoltageType::V24
+                                                          : VoltageType::V0);
+          }
         }
       }
     }
-  }
 
-  for (int i = 0; i < cache.port_count; ++i) {
-    int net_id = cache.port_net_id[i];
-    float voltage = -1.0f;
-    if (net_id >= 0) {
-      VoltageType net_voltage =
-          static_cast<VoltageType>(cache.net_voltage[net_id]);
-      if (net_voltage == VoltageType::V24) {
-        voltage = 24.0f;
-      } else if (net_voltage == VoltageType::V0) {
-        voltage = 0.0f;
+    for (const auto& comp : placed_components_) {
+      if (comp.type != ComponentType::RTL_MODULE) {
+        continue;
+      }
+      if (!IsRtlComponentPowered(comp, port_voltages_)) {
+        continue;
+      }
+      for (const auto& binding : comp.rtlPinBindings) {
+        if (binding.isInput) {
+          continue;
+        }
+        int port_index = get_index(comp.instanceId, binding.portId);
+        if (port_index < 0) {
+          continue;
+        }
+        int net_id = cache.port_net_id[port_index];
+        RtlLogicValue value = GetRtlPortLogicValue(comp, binding.portId);
+        if (value == RtlLogicValue::ONE) {
+          assign_net_driver(
+              net_id, GetRtlOutputHighVoltage(comp) > 12.0f ? VoltageType::V24
+                                                            : VoltageType::V5);
+        } else if (value == RtlLogicValue::ZERO) {
+          assign_net_driver(net_id, VoltageType::V0);
+        }
       }
     }
-    port_voltages_[cache.ports[i]] = voltage;
-  }
+  };
+
+  auto update_port_voltages = [&]() {
+    for (int i = 0; i < cache.port_count; ++i) {
+      int net_id = cache.port_net_id[i];
+      float voltage = -1.0f;
+      if (net_id >= 0) {
+        VoltageType net_voltage =
+            static_cast<VoltageType>(cache.net_voltage[net_id]);
+        if (net_voltage == VoltageType::V24) {
+          voltage = 24.0f;
+        } else if (net_voltage == VoltageType::V5) {
+          voltage = 5.0f;
+        } else if (net_voltage == VoltageType::V0) {
+          voltage = 0.0f;
+        }
+      }
+      port_voltages_[cache.ports[i]] = voltage;
+    }
+  };
+
+  clear_net_voltages();
+  assign_drivers();
+  update_port_voltages();
+  UpdateRtlSimulation(port_voltages_);
+  clear_net_voltages();
+  assign_drivers();
+  update_port_voltages();
+  UpdateRtlSimulation(port_voltages_);
+  clear_net_voltages();
+  assign_drivers();
+  update_port_voltages();
 
   ElectricalUpdateContext update_context;
   update_context.components = &placed_components_;

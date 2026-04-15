@@ -5,6 +5,7 @@
 #include "plc_emulator/core/application.h"
 
 #include "imgui.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/lang/lang_manager.h"
 
@@ -156,11 +157,10 @@ void Application::LogComponentStates() {
 
       case ComponentType::LIMIT_SWITCH: {
         limitSwitchCount++;
-        bool isPressed = comp.internalStates.count(state_keys::kIsPressed) &&
-                         comp.internalStates.at(state_keys::kIsPressed) > 0.5f;
-        bool manualPress =
-            comp.internalStates.count(state_keys::kIsPressedManual) &&
-            comp.internalStates.at(state_keys::kIsPressedManual) > 0.5f;
+        bool isPressed = component_input::IsLimitSwitchPressed(comp);
+        bool manualPress = component_input::GetLimitSwitchManualOverride(comp);
+        bool physicalDetected =
+            component_input::GetLimitSwitchPhysicalDetected(comp);
 
         float closestDistance = 999999.0f;
         int closestCylinderId = -1;
@@ -191,6 +191,7 @@ void Application::LogComponentStates() {
         PrintDebugToConsole(
             "  LimitSwitch[" + std::to_string(comp.instanceId) +
             "] Pressed:" + (isPressed ? "YES" : "NO") +
+            " Detect:" + (physicalDetected ? "YES" : "NO") +
             " Manual:" + (manualPress ? "YES" : "NO") +
             " Pos:(" +
             std::to_string(static_cast<int>(comp.position.x)) + "," +
@@ -202,9 +203,7 @@ void Application::LogComponentStates() {
 
       case ComponentType::SENSOR: {
         sensorCount++;
-        bool isDetected = comp.internalStates.count(state_keys::kIsDetected) &&
-                          comp.internalStates.at(state_keys::kIsDetected) >
-                              0.5f;
+        bool isDetected = component_input::IsSensorDetected(comp);
         bool isPowered = comp.internalStates.count(state_keys::kIsPowered) &&
                          comp.internalStates.at(state_keys::kIsPowered) > 0.5f;
 

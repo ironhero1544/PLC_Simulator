@@ -72,6 +72,11 @@ std::vector<std::pair<int, bool>> Application::GetPortsForComponent(
     case ComponentType::EMERGENCY_STOP:
       max_ports = 4;
       break;
+    case ComponentType::RTL_MODULE:
+      for (const auto& port : comp.runtimePorts) {
+        ports.push_back({port.id, port.isInput});
+      }
+      return ports;
     default:
       max_ports = 0;
       break;

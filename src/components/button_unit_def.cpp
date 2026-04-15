@@ -2,6 +2,8 @@
 
 #include "imgui.h"
 
+#include "plc_emulator/components/component_input_resolver.h"
+#include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 #include <string>
@@ -73,12 +75,11 @@ void RenderButtonUnit(ImDrawList* draw_list,
         screen_pos.y + (20.0f + static_cast<float>(btn) * 30.0f) * zoom;
     ImVec2 button_pos = ImVec2(screen_pos.x + 25 * zoom, y_offset);
 
-    std::string lamp_key = "lamp_on_" + std::to_string(btn);
-    std::string pressed_key = "is_pressed_" + std::to_string(btn);
+    std::string lamp_key =
+        std::string(state_keys::kLampOnPrefix) + std::to_string(btn);
     bool lamp_on = comp.internalStates.count(lamp_key) &&
                    comp.internalStates.at(lamp_key) > 0.5f;
-    bool is_pressed = comp.internalStates.count(pressed_key) &&
-                      comp.internalStates.at(pressed_key) > 0.5f;
+    bool is_pressed = component_input::IsButtonUnitPressed(comp, btn);
 
     if (!is_pressed) {
       draw_list->AddCircleFilled(

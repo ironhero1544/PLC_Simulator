@@ -4,6 +4,7 @@
 
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/core/win32_input.h"
+#include "plc_emulator/core/win32_haptics.h"
 #include "plc_emulator/lang/lang_manager.h"
 #include "plc_emulator/core/ui_settings.h"
 
@@ -240,6 +241,7 @@ Application::Application(bool enable_debug_mode)
       is_dragging_(false),
 
       dragged_component_index_(-1),
+      dragged_rtl_module_id_(""),
 
       is_moving_component_(false),
 
@@ -275,6 +277,8 @@ Application::Application(bool enable_debug_mode)
       physics_engine_(nullptr),
 
       project_file_manager_(std::make_unique<ProjectFileManager>()),
+      rtl_project_manager_(std::make_unique<RtlProjectManager>()),
+      rtl_runtime_manager_(std::make_unique<RtlRuntimeManager>()),
       physics_accumulator_(0.0),
       plc_accumulator_(0.0),
       physics_time_initialized_(false),
@@ -316,6 +320,19 @@ Application::Application(bool enable_debug_mode)
       show_restart_popup_(false),
       show_shortcut_help_popup_(false),
       show_component_context_menu_(false),
+      show_rtl_library_panel_(false),
+      show_rtl_toolchain_panel_(false),
+      rtl_toolchain_loading_(false),
+      rtl_toolchain_status_valid_(false),
+      rtl_async_task_running_(false),
+      selected_rtl_module_id_(""),
+      selected_rtl_source_path_(""),
+      rtl_rename_source_path_(""),
+      rtl_rename_source_buffer_(""),
+      rtl_editor_buffer_(""),
+      rtl_status_message_(""),
+      rtl_editor_height_(560.0f),
+      rtl_editor_font_(nullptr),
       context_menu_component_id_(-1),
       context_menu_pos_(ImVec2(0.0f, 0.0f)),
       font_atlas_window_width_(0),
@@ -343,6 +360,7 @@ Application::Application(bool enable_debug_mode)
   last_pointer_world_pos_ = {0.0f, 0.0f};
   last_pointer_move_time_ = 0.0;
   last_auto_waypoint_time_ = 0.0;
+  canvas_directly_hovered_ = false;
   touch_gesture_active_ = false;
   touch_zoom_delta_ = 0.0f;
   touch_pan_delta_ = {0.0f, 0.0f};
@@ -351,11 +369,13 @@ Application::Application(bool enable_debug_mode)
   touchpad_zoom_pending_ = false;
   touchpad_zoom_delta_ = 0.0f;
   touchpad_zoom_anchor_screen_pos_ = {0.0f, 0.0f};
+  touchpad_pan_pending_ = false;
+  touchpad_pan_delta_ = {0.0f, 0.0f};
+  touchpad_wheel_pending_ = false;
+  touchpad_wheel_delta_ = 0.0f;
+  deferred_canvas_wheel_input_ = Application::DeferredCanvasWheelInput{};
   prev_right_button_down_ = false;
   prev_side_button_down_ = false;
-      win32_right_click_ = false;
-  win32_side_click_ = false;
-  win32_side_down_ = false;
   ui_settings_ = {};
   SetDefaultUiSettings(&ui_settings_);
 
@@ -376,9 +396,15 @@ Application::Application(bool enable_debug_mode)
 
   g_physics_warning_app = this;
   SetPhysicsWarningCallback(PhysicsWarningDialogCallback);
+  if (rtl_runtime_manager_) {
+    rtl_runtime_manager_->SetProjectManager(rtl_project_manager_.get());
+  }
 }
 
 Application::~Application() {
+  if (rtl_runtime_manager_) {
+    rtl_runtime_manager_->ShutdownAll();
+  }
   if (g_physics_warning_app == this) {
     g_physics_warning_app = nullptr;
   }
@@ -470,6 +496,7 @@ void Application::Run() {
   while (running_ && !glfwWindowShouldClose(window_)) {
 
     ProcessInput();
+    BeginFrame();
 
     Update();
 
@@ -480,6 +507,9 @@ void Application::Run() {
 }
 
 void Application::Shutdown() {
+  if (rtl_runtime_manager_) {
+    rtl_runtime_manager_->ShutdownAll();
+  }
 
   if (physics_engine_) {
 
@@ -506,6 +536,8 @@ void Application::Shutdown() {
 }
 
 void Application::Update() {
+  PollRtlAsyncTask();
+  PollRtlToolchainRefresh();
 
   if (ProcessCacheWarmup()) {
     return;
@@ -660,6 +692,7 @@ bool Application::InitializeWindow() {
 
 #ifdef _WIN32
   InstallWin32InputHook(window_, this);
+  InitTouchpadHaptics();
 #endif
 
 
@@ -745,6 +778,23 @@ bool Application::RebuildImGuiFonts(float auto_font_scale) {
   const ImWchar* jp_ranges = io.Fonts->GetGlyphRangesJapanese();
   io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
                                &merge_config, jp_ranges);
+  ImFontConfig mono_config = font_config;
+  mono_config.MergeMode = false;
+  mono_config.PixelSnapH = true;
+  rtl_editor_font_ = io.Fonts->AddFontFromFileTTF(
+      "resources/fonts/JetBrainsMono.ttf",
+      16.0f * ui_settings_.font_scale * auto_font_scale,
+      &mono_config, io.Fonts->GetGlyphRangesDefault());
+  if (rtl_editor_font_) {
+    ImFontConfig mono_merge_config = font_config;
+    mono_merge_config.MergeMode = true;
+    mono_merge_config.PixelSnapH = true;
+    mono_merge_config.DstFont = rtl_editor_font_;
+    io.Fonts->AddFontFromFileTTF("resources/fonts/unifont.ttf", font_size,
+                                 &mono_merge_config, korean_ranges);
+    io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
+                                 &mono_merge_config, jp_ranges);
+  }
   io.Fonts->Build();
   io.FontGlobalScale = 1.0f;
   return true;
@@ -920,6 +970,7 @@ void Application::Cleanup() {
   ImGui::DestroyContext();
 
 #ifdef _WIN32
+  ShutdownTouchpadHaptics();
   UninstallWin32InputHook(window_);
 #endif
 

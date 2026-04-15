@@ -3,21 +3,56 @@
 
 #include "plc_emulator/core/data_types.h"
 
+#include <vector>
+
 struct ImGuiIO;
 struct ImVec2;
 
 namespace plc {
 
+enum class ComponentInteractionCommandType {
+  None,
+  SetButtonPressed,
+  ReleaseButtonMomentary,
+  ToggleButtonLatch,
+  ToggleEmergencyStop,
+  ToggleLimitSwitchManualOverride,
+  SetAirPressure,
+  SetFlowSetting
+};
+
+struct ComponentInteractionCommand {
+  ComponentInteractionCommandType type =
+      ComponentInteractionCommandType::None;
+  int button_index = -1;
+  bool pressed = false;
+  float scalar = 0.0f;
+};
+
+struct ComponentInteractionResult {
+  bool handled = false;
+  std::vector<ComponentInteractionCommand> commands;
+};
+
 struct ComponentBehavior {
-  bool (*OnMouseDown)(PlacedComponent* comp, ImVec2 world_pos, int button);
-  bool (*OnMouseUp)(PlacedComponent* comp, ImVec2 world_pos, int button);
-  bool (*OnDoubleClick)(PlacedComponent* comp, ImVec2 world_pos, int button);
-  bool (*OnMouseWheel)(PlacedComponent* comp, ImVec2 world_pos,
-                       const ImGuiIO& io);
+  ComponentInteractionResult (*OnMouseDown)(const PlacedComponent& comp,
+                                            ImVec2 world_pos,
+                                            int button);
+  ComponentInteractionResult (*OnMouseUp)(const PlacedComponent& comp,
+                                          ImVec2 world_pos,
+                                          int button);
+  ComponentInteractionResult (*OnDoubleClick)(const PlacedComponent& comp,
+                                              ImVec2 world_pos,
+                                              int button);
+  ComponentInteractionResult (*OnMouseWheel)(const PlacedComponent& comp,
+                                             ImVec2 world_pos,
+                                             const ImGuiIO& io);
   bool (*BuildTooltip)(const PlacedComponent& comp, ImVec2 world_pos);
 };
 
 const ComponentBehavior* GetComponentBehavior(ComponentType type);
+void ApplyComponentInteractionResult(PlacedComponent* comp,
+                                     const ComponentInteractionResult& result);
 
 }  /* namespace plc */
 

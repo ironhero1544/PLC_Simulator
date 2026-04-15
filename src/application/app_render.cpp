@@ -7,6 +7,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_internal.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 #include <glad/glad.h>
@@ -147,7 +148,7 @@ void OpenExternalUrl(const char* url) {
 
 }  // namespace
 
-void Application::Render() {
+void Application::BeginFrame() {
   glClearColor(0.94f, 0.94f, 0.94f, 1.00f);
   glClear(GL_COLOR_BUFFER_BIT);
 
@@ -157,7 +158,11 @@ void Application::Render() {
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
+  BeginOverlayInputCaptureFrame();
+  ProcessFrameKeyboardInput();
+}
 
+void Application::Render() {
   RenderUI();
 
   ImGui::Render();
@@ -207,6 +212,19 @@ void Application::Render() {
   }
 }
 
+void Application::BeginOverlayInputCaptureFrame() {
+  overlay_input_capture_.BeginFrame();
+}
+
+void Application::RegisterOverlayInputCaptureRect(ImVec2 min, ImVec2 max,
+                                                  bool capturing) {
+  overlay_input_capture_.RegisterRect(min, max, capturing);
+}
+
+bool Application::IsPointInOverlayCaptureRect(ImVec2 screen_pos) const {
+  return overlay_input_capture_.Contains(screen_pos);
+}
+
 void Application::RenderUI() {
   if (warmup_stage_ != WarmupStage::kComplete) {
     RenderSplashScreen();
@@ -215,7 +233,6 @@ void Application::RenderUI() {
 
   float menu_height = 0.0f;
   RenderMainMenuBar(&menu_height);
-
   ImVec2 display_size = ImGui::GetIO().DisplaySize;
   if (menu_height > display_size.y) {
     menu_height = 0.0f;
@@ -253,6 +270,11 @@ void Application::RenderUI() {
   ImGui::PopStyleVar(3);
   if (current_mode_ == Mode::PROGRAMMING && programming_mode_) {
     RenderPLCDebugPanel();
+  }
+  RenderRtlLibraryPanel();
+  RenderRtlToolchainPanel();
+  if (current_mode_ == Mode::WIRING) {
+    ProcessDeferredCanvasWheelInput();
   }
   RenderPhysicsWarningDialog();
   RenderShortcutHelpDialog();
@@ -320,6 +342,15 @@ void Application::RenderMainMenuBar(float* out_height) {
   if (!ImGui::BeginMainMenuBar()) {
     return;
   }
+  {
+    ImVec2 bar_min = ImGui::GetWindowPos();
+    ImVec2 bar_size = ImGui::GetWindowSize();
+    ImVec2 bar_max(bar_min.x + bar_size.x, bar_min.y + bar_size.y);
+    RegisterOverlayInputCaptureRect(
+        bar_min, bar_max,
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+  }
 
   if (out_height) {
     *out_height = ImGui::GetFrameHeight();
@@ -369,6 +400,16 @@ void Application::RenderMainMenuBar(float* out_height) {
 #else
       LoadProjectPackage("project.plcproj");
 #endif
+    }
+    ImGui::EndMenu();
+  }
+
+  if (ImGui::BeginMenu("RTL")) {
+    if (ImGui::MenuItem(TR("menu.rtl_library", "RTL Library"))) {
+      show_rtl_library_panel_ = true;
+    }
+    if (ImGui::MenuItem(TR("ui.rtl.toolchain", "RTL Toolchain"))) {
+      show_rtl_toolchain_panel_ = true;
     }
     ImGui::EndMenu();
   }
@@ -535,6 +576,15 @@ void Application::RenderHeader() {
 
   if (ImGui::BeginChild("Header", ImVec2(0, 80 * layout_scale), true,
                         ImGuiWindowFlags_NoScrollbar)) {
+    {
+      ImVec2 window_min = ImGui::GetWindowPos();
+      ImVec2 window_size = ImGui::GetWindowSize();
+      ImVec2 window_max(window_min.x + window_size.x, window_min.y + window_size.y);
+      RegisterOverlayInputCaptureRect(
+          window_min, window_max,
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
+              ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+    }
     ImGui::Columns(3, "HeaderColumns", false);
 
     ImGui::SetColumnWidth(0, 300 * layout_scale);
@@ -688,6 +738,15 @@ void Application::RenderToolbar() {
 
   if (ImGui::BeginChild("Toolbar", ImVec2(0, 60 * layout_scale), true,
                         ImGuiWindowFlags_NoScrollbar)) {
+    {
+      ImVec2 window_min = ImGui::GetWindowPos();
+      ImVec2 window_size = ImGui::GetWindowSize();
+      ImVec2 window_max(window_min.x + window_size.x, window_min.y + window_size.y);
+      RegisterOverlayInputCaptureRect(
+          window_min, window_max,
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
+              ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+    }
     ImGui::SetCursorPos(ImVec2(20 * layout_scale, 15 * layout_scale));
 
     const char* toolNames[] = {
@@ -857,6 +916,15 @@ void Application::RenderMainArea() {
 
   if (ImGui::BeginChild("StatusBar", ImVec2(0, status_bar_height), true,
                         ImGuiWindowFlags_NoScrollbar)) {
+    {
+      ImVec2 window_min = ImGui::GetWindowPos();
+      ImVec2 window_size = ImGui::GetWindowSize();
+      ImVec2 window_max(window_min.x + window_size.x, window_min.y + window_size.y);
+      RegisterOverlayInputCaptureRect(
+          window_min, window_max,
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
+              ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+    }
     ImGui::SetCursorPosY(5 * layout_scale);
     ImGui::SetCursorPosX(10 * layout_scale);
 
@@ -912,6 +980,12 @@ void Application::RenderShortcutHelpDialog() {
   bool popup_open = true;
   if (ImGui::BeginPopupModal(popup_id, &popup_open,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
+    {
+      ImVec2 window_min = ImGui::GetWindowPos();
+      ImVec2 window_size = ImGui::GetWindowSize();
+      ImVec2 window_max(window_min.x + window_size.x, window_min.y + window_size.y);
+      RegisterOverlayInputCaptureRect(window_min, window_max, true);
+    }
     ImGui::TextUnformatted(
         TR("ui.help.shortcuts.title", "Shortcut Guide"));
     ImGui::Separator();
@@ -1007,7 +1081,7 @@ void Application::RenderShortcutHelpDialog() {
     }
     for (int i = 0; i < io.InputQueueCharacters.Size; ++i) {
       ImWchar wc = io.InputQueueCharacters[i];
-      if (wc >= 0 && wc <= 127 &&
+      if (wc <= 127 &&
           std::isalpha(static_cast<unsigned char>(wc))) {
         secret_buffer.push_back(
             static_cast<char>(std::tolower(static_cast<unsigned char>(wc))));

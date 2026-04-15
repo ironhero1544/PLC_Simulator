@@ -14,6 +14,7 @@
 #include "plc_emulator/components/processing_cylinder_def.h"
 #include "plc_emulator/components/power_supply_def.h"
 #include "plc_emulator/components/ring_sensor_def.h"
+#include "plc_emulator/components/rtl_module_def.h"
 #include "plc_emulator/components/sensor_def.h"
 #include "plc_emulator/components/tower_lamp_def.h"
 #include "plc_emulator/components/valve_double_def.h"
@@ -45,6 +46,7 @@ const ComponentDefinition* const kDefinitions[] = {
     GetBoxDefinition(),
     GetTowerLampDefinition(),
     GetEmergencyStopDefinition(),
+    GetRtlModuleDefinition(),
 };
 
 int GetDefinitionCount() {

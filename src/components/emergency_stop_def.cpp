@@ -1,6 +1,7 @@
 #include "plc_emulator/components/emergency_stop_def.h"
 
 #include "imgui.h"
+#include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 
 #include <cmath>
@@ -71,8 +72,7 @@ void RenderEmergencyStop(ImDrawList* draw_list,
                          const PlacedComponent& comp,
                          ImVec2 pos,
                          float zoom) {
-  bool is_pressed = comp.internalStates.count(state_keys::kIsPressed) &&
-                    comp.internalStates.at(state_keys::kIsPressed) > 0.5f;
+  bool is_pressed = component_input::IsEmergencyStopPressed(comp);
   draw_list->AddRectFilled(pos, {pos.x + 80 * zoom, pos.y + 100 * zoom},
                            IM_COL32(240, 240, 240, 255));
   draw_list->AddRect(pos, {pos.x + 80 * zoom, pos.y + 100 * zoom},
@@ -121,7 +121,7 @@ void InitEmergencyStopDefaults(PlacedComponent* comp) {
   if (!comp) {
     return;
   }
-  comp->internalStates[state_keys::kIsPressed] = 0.0f;
+  component_input::SetEmergencyStopPressed(comp, false);
 }
 
 const ComponentDefinition kDefinition = {

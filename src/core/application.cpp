@@ -265,6 +265,15 @@ void Application::RenderPLCDebugPanel() {
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse;
 
   if (ImGui::Begin("PLC Engine Status", nullptr, flags)) {
+    {
+      ImVec2 window_min = ImGui::GetWindowPos();
+      ImVec2 window_size = ImGui::GetWindowSize();
+      ImVec2 window_max(window_min.x + window_size.x, window_min.y + window_size.y);
+      RegisterOverlayInputCaptureRect(
+          window_min, window_max,
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
+              ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+    }
 
     const char* engineType = programming_mode_->GetEngineType();
 
