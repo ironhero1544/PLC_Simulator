@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PLCSimulator VERSION 1.0.4)
+project(PLCSimulator VERSION 1.1.0)
 
 cmake_policy(SET CMP0077 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
