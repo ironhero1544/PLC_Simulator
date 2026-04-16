@@ -111,7 +111,7 @@ This project aims to:
 | Rendering/UI | OpenGL, GLFW, GLAD, Dear ImGui |
 | Physics | Custom in-house multi-domain physics engine (electrical/pneumatic/mechanical) + Box2D |
 | PLC/Ladder | OpenPLC-compatible LD conversion and execution pipeline |
-| RTL | Icarus Verilog, GTKWave (external toolchain, managed from the app) |
+| RTL | verilator (external toolchain, managed from the app) |
 | Data/IO | nlohmann/json, miniz, XML serializer |
 
 This project uses a custom in-house simulation engine as its core, not a general-purpose external game engine.
