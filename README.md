@@ -59,7 +59,7 @@ This project aims to:
 - integrated Verilog RTL editor with syntax highlighting
 - RTL module management: create, rename, delete, and organize modules in the RTL library
 - analyze, build, and testbench workflows with dedicated log panels
-- RTL toolchain management: one-click setup, verification, and removal of Icarus Verilog / GTKWave
+- RTL toolchain management: one-click setup, verification, and removal of verilator
 - `.plccomp` component packages: export/import reusable RTL modules with optional Verilog source or runtime-only bundles
 - RTL runtime artifacts are bundled inside `.plcproj` project packages for cross-machine portability
 
