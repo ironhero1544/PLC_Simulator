@@ -16,6 +16,7 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -241,6 +242,12 @@ class ProgrammingMode {
     LadderInstructionType instructionType = LadderInstructionType::EMPTY;
     int rungIndex = -1;
   };
+  struct CellSelectionBounds {
+    int minRung = 0;
+    int maxRung = 0;
+    int minCell = 0;
+    int maxCell = 0;
+  };
   PendingAction pending_action_;
   void ExecutePendingAction();
 
@@ -278,6 +285,27 @@ class ProgrammingMode {
   void UpdateHorizontalLines(int rungIndex);
   void AddVerticalConnection();
   void ConfirmVerticalConnection();
+  void SelectSingleRung(int rungIndex);
+  void ExtendRungSelectionTo(int rungIndex);
+  void ToggleRungSelection(int rungIndex);
+  void SelectSingleCell(int rungIndex, int cellIndex, bool startDrag = false);
+  void UpdateCellSelection(int rungIndex, int cellIndex);
+  void ClearCellSelection();
+  bool HasCellSelection() const;
+  bool GetCellSelectionBounds(CellSelectionBounds* bounds) const;
+  bool IsCellInSelection(int rungIndex, int cellIndex) const;
+  bool HasMultiSelectedRung(int rungIndex) const;
+  bool HasAnySelectedRungs() const;
+  std::vector<int> GetSortedSelectedRungs() const;
+  void CopySelectedCellsToClipboard();
+  void PasteCellClipboard();
+  void CopySelectedRungsToClipboard();
+  void PasteRungClipboard();
+  void MoveSelectedRungsBefore(int targetRungIndex);
+  void ClearVerticalConnectionsInRange(
+      int minRung, int maxRung, int minCell, int maxCell);
+  void DeleteSelectedCells();
+  void DeleteSelectedRungs();
 
   void SimulateLadderProgram();
   void SyncFromExternalPlc();
@@ -321,6 +349,27 @@ class ProgrammingMode {
   LadderProgram ladder_program_;
   int selected_rung_;
   int selected_cell_;
+  bool rung_selection_mode_ = false;
+  int rung_selection_anchor_ = 0;
+  bool rung_selection_drag_active_ = false;
+  bool cell_selection_active_ = false;
+  int cell_selection_anchor_rung_ = 0;
+  int cell_selection_anchor_cell_ = 0;
+  int cell_selection_end_rung_ = 0;
+  int cell_selection_end_cell_ = 0;
+  bool cell_selection_drag_active_ = false;
+  bool cell_box_select_pending_ = false;
+  bool cell_box_selecting_ = false;
+  bool cell_box_selection_has_hits_ = false;
+  ImVec2 cell_box_select_start_screen_ = ImVec2(0.0f, 0.0f);
+  ImVec2 cell_box_select_current_screen_ = ImVec2(0.0f, 0.0f);
+  ImVec2 cell_box_select_press_screen_ = ImVec2(0.0f, 0.0f);
+  CellSelectionBounds cell_box_selection_bounds_;
+  std::set<int> selected_rungs_;
+  std::vector<std::vector<LadderInstruction>> cell_clipboard_;
+  std::vector<VerticalConnection> cell_clipboard_connections_;
+  std::vector<Rung> rung_clipboard_;
+  std::vector<VerticalConnection> rung_clipboard_connections_;
   bool is_monitor_mode_;
   bool monitor_external_plc_ = false;
 
@@ -395,6 +444,14 @@ class ProgrammingMode {
     LadderProgram program;
     int selected_rung = 0;
     int selected_cell = 0;
+    bool rung_selection_mode = false;
+    int rung_selection_anchor = 0;
+    std::set<int> selected_rungs;
+    bool cell_selection_active = false;
+    int cell_selection_anchor_rung = 0;
+    int cell_selection_anchor_cell = 0;
+    int cell_selection_end_rung = 0;
+    int cell_selection_end_cell = 0;
   };
 
   static constexpr size_t kProgrammingUndoLimit = 50;

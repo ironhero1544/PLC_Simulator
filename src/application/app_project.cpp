@@ -5,6 +5,7 @@
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/components/component_registry.h"
 #include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/programming/ladder_program_utils.h"
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 #include "plc_emulator/project/ld_to_ladder_converter.h"
 #include "plc_emulator/project/openplc_compiler_integration.h"
@@ -22,6 +23,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -399,6 +401,7 @@ LadderProgram BuildProgramForSave(ProgrammingMode* programming_mode) {
     }
   }
 
+  CanonicalizeLadderProgram(&current_program);
   return current_program;
 }
 
@@ -470,6 +473,7 @@ void Application::SyncLadderProgramFromProgrammingMode() {
 
 
   loaded_ladder_program_ = programming_mode_->GetLadderProgram();
+  CanonicalizeLadderProgram(&loaded_ladder_program_);
 
   plc_device_states_ = programming_mode_->GetDeviceStates();
 
@@ -903,6 +907,7 @@ void Application::LoadLadderProgramFromLD(const std::string& filepath) {
 
 
   loaded_ladder_program_ = loadedProgram;
+  CanonicalizeLadderProgram(&loaded_ladder_program_);
 
 
 
@@ -916,9 +921,7 @@ void Application::LoadLadderProgramFromLD(const std::string& filepath) {
               << std::endl;
 
 
-
-
-
+    programming_mode_->SetLadderProgram(loadedProgram);
   }
 
 
@@ -1293,6 +1296,7 @@ void Application::CreateDefaultTestLadderProgram() {
   endRung.isEndRung = true;
 
   loaded_ladder_program_.rungs.push_back(endRung);
+  CanonicalizeLadderProgram(&loaded_ladder_program_);
 
 
 
@@ -1417,13 +1421,13 @@ bool Application::SaveProjectPackage(const std::string& filePath,
     std::string rtlLibraryJson =
         rtl_project_manager_ ? rtl_project_manager_->SerializeProjectRtlJson() : "";
 
-    std::map<std::string, std::string> rtlArtifacts;
+    std::map<std::string, std::map<std::string, std::string>> rtlArtifacts;
     if (rtl_project_manager_) {
       for (const auto& entry : rtl_project_manager_->GetLibrary()) {
         if (entry.buildSuccess) {
-          std::string data = rtl_project_manager_->GetBuildArtifactData(entry.moduleId);
-          if (!data.empty()) {
-            rtlArtifacts[entry.moduleId] = data;
+          auto files = rtl_project_manager_->GetBuildArtifactBundle(entry.moduleId);
+          if (!files.empty()) {
+            rtlArtifacts[entry.moduleId] = std::move(files);
           }
         }
       }
@@ -1504,6 +1508,7 @@ bool Application::LoadProject(const std::string& filePath) {
 
 
     loaded_ladder_program_ = result.program;
+    CanonicalizeLadderProgram(&loaded_ladder_program_);
 
 
 
@@ -1631,8 +1636,8 @@ bool Application::LoadProjectPackage(const std::string& filePath) {
         rtl_project_manager_->DeserializeLibraryJson(result.rtlLibraryJson, true);
         
         // Restore artifacts first so HasBuildArtifact returns true
-        for (const auto& [moduleId, data] : result.rtlArtifacts) {
-          rtl_project_manager_->RestoreBuildArtifact(moduleId, data);
+        for (const auto& [moduleId, files] : result.rtlArtifacts) {
+          rtl_project_manager_->RestoreBuildArtifactBundle(moduleId, files);
         }
 
         for (auto& entry : rtl_project_manager_->GetLibrary()) {
@@ -1658,6 +1663,7 @@ bool Application::LoadProjectPackage(const std::string& filePath) {
     }
 
     loaded_ladder_program_ = result.program;
+    CanonicalizeLadderProgram(&loaded_ladder_program_);
     if (rtl_project_manager_) {
       for (auto& comp : placed_components_) {
         if (comp.type == ComponentType::RTL_MODULE) {

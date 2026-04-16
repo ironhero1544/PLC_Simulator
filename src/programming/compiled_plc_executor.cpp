@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <regex>
 #include <sstream>
@@ -595,7 +597,9 @@ bool CompiledPLCExecutor::ExecuteInstruction(
       }
       if (memory_.accumulator) {
         memory_.C[idx] = 0;
-        counter_last_power_[idx] = false;
+        // Keep the powered state latched so the next scan does not treat
+        // a still-true rung as a fresh rising edge immediately after reset.
+        counter_last_power_[idx] = true;
       }
       return true;
     }
@@ -710,11 +714,6 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
   replace_all(expr, "OR", "||");
   replace_all(expr, "NOT", "!");
 
-  // Treat bare NOT as accumulator negation.
-  if (expr == "!") {
-    return !memory_.accumulator;
-  }
-
   auto timer_done = [&](int idx) -> bool {
     if (idx < 0 || idx >= 256)
       return false;
@@ -752,45 +751,151 @@ bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
     return true;
   };
 
-  // Direct variable access.
-  if (expr.find("&&") == std::string::npos &&
-      expr.find("||") == std::string::npos &&
-      (expr.empty() || expr[0] != '!')) {
+  auto parse_bool_literal = [](std::string token, bool* out) -> bool {
+    if (!out) {
+      return false;
+    }
+    std::transform(token.begin(), token.end(), token.begin(), ::toupper);
+    if (token == "TRUE") {
+      *out = true;
+      return true;
+    }
+    if (token == "FALSE") {
+      *out = false;
+      return true;
+    }
+    return false;
+  };
+
+  auto parse_special_relay = [](std::string token, bool* out) -> bool {
+    if (!out) {
+      return false;
+    }
+    std::transform(token.begin(), token.end(), token.begin(), ::toupper);
+    if (token == "M8000" || token == "SM400" || token == "SM8000") {
+      *out = true;
+      return true;
+    }
+    return false;
+  };
+
+  if (expr.empty()) {
+    return false;
+  }
+  if (expr == "!") {
+    return !memory_.accumulator;
+  }
+
+  size_t pos = 0;
+
+  std::function<void()> skip_spaces = [&]() {
+    while (pos < expr.size() &&
+           std::isspace(static_cast<unsigned char>(expr[pos]))) {
+      ++pos;
+    }
+  };
+
+  std::function<bool()> parse_or;
+  std::function<bool()> parse_and;
+  std::function<bool()> parse_unary;
+  std::function<bool()> parse_primary;
+
+  parse_primary = [&]() -> bool {
+    skip_spaces();
+    if (pos >= expr.size()) {
+      return false;
+    }
+
+    if (expr[pos] == '(') {
+      ++pos;
+      bool value = parse_or();
+      skip_spaces();
+      if (pos < expr.size() && expr[pos] == ')') {
+        ++pos;
+      }
+      return value;
+    }
+
+    size_t start = pos;
+    while (pos < expr.size()) {
+      const char ch = expr[pos];
+      if (ch == '(' || ch == ')' || ch == '!' ||
+          (ch == '&' && pos + 1 < expr.size() && expr[pos + 1] == '&') ||
+          (ch == '|' && pos + 1 < expr.size() && expr[pos + 1] == '|')) {
+        break;
+      }
+      ++pos;
+    }
+
+    std::string token = expr.substr(start, pos - start);
+    if (token.empty()) {
+      return false;
+    }
+
+    bool literal = false;
+    if (parse_bool_literal(token, &literal)) {
+      return literal;
+    }
+    if (parse_special_relay(token, &literal)) {
+      return literal;
+    }
+
     int idx = -1;
-    if (parse_tc_index(expr, 'T', &idx)) {
+    if (parse_tc_index(token, 'T', &idx)) {
       return timer_done(idx);
     }
-    if (parse_tc_index(expr, 'C', &idx)) {
+    if (parse_tc_index(token, 'C', &idx)) {
       return counter_done(idx);
     }
-    bool* varPtr = GetVariablePointer(expr);
+    bool* varPtr = GetVariablePointer(token);
     return varPtr ? *varPtr : false;
-  }
+  };
 
-  // NOT has highest precedence.
-  if (!expr.empty() && expr[0] == '!') {
-    std::string innerExpr = expr.substr(1);
-    return !EvaluateExpression(innerExpr);
-  }
+  parse_unary = [&]() -> bool {
+    skip_spaces();
+    if (pos < expr.size() && expr[pos] == '!') {
+      ++pos;
+      return !parse_unary();
+    }
+    return parse_primary();
+  };
 
-  // AND has medium precedence.
-  size_t andPos = expr.find("&&");
-  if (andPos != std::string::npos) {
-    std::string left = expr.substr(0, andPos);
-    std::string right = expr.substr(andPos + 2);
-    return EvaluateExpression(left) && EvaluateExpression(right);
-  }
+  parse_and = [&]() -> bool {
+    bool value = parse_unary();
+    while (true) {
+      skip_spaces();
+      if (pos + 1 < expr.size() && expr[pos] == '&' && expr[pos + 1] == '&') {
+        pos += 2;
+        bool rhs = parse_unary();
+        value = value && rhs;
+        continue;
+      }
+      break;
+    }
+    return value;
+  };
 
-  // OR has lowest precedence.
-  size_t orPos = expr.find("||");
-  if (orPos != std::string::npos) {
-    std::string left = expr.substr(0, orPos);
-    std::string right = expr.substr(orPos + 2);
-    return EvaluateExpression(left) || EvaluateExpression(right);
-  }
+  parse_or = [&]() -> bool {
+    bool value = parse_and();
+    while (true) {
+      skip_spaces();
+      if (pos + 1 < expr.size() && expr[pos] == '|' && expr[pos + 1] == '|') {
+        pos += 2;
+        bool rhs = parse_and();
+        value = value || rhs;
+        continue;
+      }
+      break;
+    }
+    return value;
+  };
 
-  // Return false for unparseable expressions.
-  return false;
+  bool result = parse_or();
+  skip_spaces();
+  if (pos != expr.size()) {
+    return false;
+  }
+  return result;
 }
 
 int CompiledPLCExecutor::ExtractNumber(const std::string& str) {

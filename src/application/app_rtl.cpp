@@ -32,6 +32,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <fstream>
 #include <filesystem>
 #include <map>
@@ -133,6 +134,46 @@ bool WriteFile(const std::string& path, const std::string& content) {
   return true;
 }
 
+std::string SanitizePackageFileName(const std::string& text) {
+  std::string sanitized = text.empty() ? "rtl_component" : text;
+  for (char& ch : sanitized) {
+    switch (ch) {
+      case '<':
+      case '>':
+      case ':':
+      case '"':
+      case '/':
+      case '\\':
+      case '|':
+      case '?':
+      case '*':
+        ch = '_';
+        break;
+      default:
+        break;
+    }
+  }
+  return sanitized;
+}
+
+std::string EnsureFileExtension(const std::string& path,
+                                const std::string& extension) {
+  std::filesystem::path filePath(path);
+  std::string currentExtension = filePath.extension().string();
+  std::string normalizedCurrent = currentExtension;
+  std::string normalizedDesired = extension;
+  std::transform(normalizedCurrent.begin(), normalizedCurrent.end(),
+                 normalizedCurrent.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  std::transform(normalizedDesired.begin(), normalizedDesired.end(),
+                 normalizedDesired.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  if (normalizedCurrent != normalizedDesired) {
+    filePath.replace_extension(extension);
+  }
+  return filePath.string();
+}
+
 struct RtlEditorTheme {
   ImVec4 frame_bg = ImVec4(0.16f, 0.18f, 0.22f, 1.0f);
   ImVec4 border = ImVec4(0.28f, 0.31f, 0.36f, 1.0f);
@@ -159,8 +200,10 @@ struct RtlEditorDiagnosticMarker {
 
 struct CachedRtlEditorDiagnostics {
   std::string sourcePath;
-  std::string analyzeDiagnostics;
-  std::string buildDiagnostics;
+  size_t analyzeDiagnosticsHash = 0;
+  size_t analyzeDiagnosticsSize = 0;
+  size_t buildDiagnosticsHash = 0;
+  size_t buildDiagnosticsSize = 0;
   std::vector<RtlEditorDiagnosticMarker> markers;
 };
 
@@ -369,6 +412,10 @@ std::string ExpandTabs(const std::string& line) {
   return expanded;
 }
 
+size_t HashRtlText(const std::string& text) {
+  return std::hash<std::string>{}(text);
+}
+
 size_t CountOccurrences(const std::string& text, const std::string& needle) {
   if (needle.empty()) {
     return 0;
@@ -380,6 +427,45 @@ size_t CountOccurrences(const std::string& text, const std::string& needle) {
     pos += needle.size();
   }
   return count;
+}
+
+void InvalidateRtlTestbenchSummary(RtlLibraryEntry* entry) {
+  if (!entry) {
+    return;
+  }
+  entry->testbenchErrorCount = 0;
+  entry->testbenchWarningCount = 0;
+  entry->testbenchLogSummaryValid = false;
+}
+
+void ClearRtlTestbenchResult(RtlLibraryEntry* entry) {
+  if (!entry) {
+    return;
+  }
+  entry->testbenchSuccess = false;
+  entry->testbenchDiagnostics.clear();
+  entry->testbenchBuildLog.clear();
+  entry->testbenchRunLog.clear();
+  entry->testbenchVcdPath.clear();
+  InvalidateRtlTestbenchSummary(entry);
+}
+
+void EnsureRtlTestbenchSummary(RtlLibraryEntry* entry) {
+  if (!entry || entry->testbenchLogSummaryValid) {
+    return;
+  }
+
+  entry->testbenchErrorCount =
+      CountOccurrences(entry->testbenchRunLog, "$error") +
+      CountOccurrences(entry->testbenchRunLog, "%Error") +
+      CountOccurrences(entry->testbenchRunLog, "$fatal") +
+      CountOccurrences(entry->testbenchRunLog, "Assertion failed") +
+      CountOccurrences(entry->testbenchRunLog, "assertion failed");
+  entry->testbenchWarningCount =
+      CountOccurrences(entry->testbenchRunLog, "%Warning") +
+      CountOccurrences(entry->testbenchRunLog, " warning:") +
+      CountOccurrences(entry->testbenchRunLog, "Warning:");
+  entry->testbenchLogSummaryValid = true;
 }
 
 std::string NormalizeSourcePath(std::string path);
@@ -450,16 +536,25 @@ const std::vector<RtlEditorDiagnosticMarker>& GetCachedRtlEditorDiagnostics(
     const std::string& source_path,
     const std::string& analyze_diagnostics,
     const std::string& build_diagnostics) {
+  const size_t analyze_hash = HashRtlText(analyze_diagnostics);
+  const size_t build_hash = HashRtlText(build_diagnostics);
   if (g_cached_rtl_editor_diagnostics.sourcePath == source_path &&
-      g_cached_rtl_editor_diagnostics.analyzeDiagnostics ==
-          analyze_diagnostics &&
-      g_cached_rtl_editor_diagnostics.buildDiagnostics == build_diagnostics) {
+      g_cached_rtl_editor_diagnostics.analyzeDiagnosticsHash == analyze_hash &&
+      g_cached_rtl_editor_diagnostics.analyzeDiagnosticsSize ==
+          analyze_diagnostics.size() &&
+      g_cached_rtl_editor_diagnostics.buildDiagnosticsHash == build_hash &&
+      g_cached_rtl_editor_diagnostics.buildDiagnosticsSize ==
+          build_diagnostics.size()) {
     return g_cached_rtl_editor_diagnostics.markers;
   }
 
   g_cached_rtl_editor_diagnostics.sourcePath = source_path;
-  g_cached_rtl_editor_diagnostics.analyzeDiagnostics = analyze_diagnostics;
-  g_cached_rtl_editor_diagnostics.buildDiagnostics = build_diagnostics;
+  g_cached_rtl_editor_diagnostics.analyzeDiagnosticsHash = analyze_hash;
+  g_cached_rtl_editor_diagnostics.analyzeDiagnosticsSize =
+      analyze_diagnostics.size();
+  g_cached_rtl_editor_diagnostics.buildDiagnosticsHash = build_hash;
+  g_cached_rtl_editor_diagnostics.buildDiagnosticsSize =
+      build_diagnostics.size();
   g_cached_rtl_editor_diagnostics.markers =
       ParseRtlDiagnosticsForSource(source_path, analyze_diagnostics);
   std::vector<RtlEditorDiagnosticMarker> build_markers =
@@ -517,6 +612,9 @@ bool AddNewRtlSource(RtlProjectManager* manager,
                      std::string* selected_path,
                      std::string* editor_buffer) {
   if (!manager || !entry || !selected_path || !editor_buffer) {
+    return false;
+  }
+  if (entry->sourceFiles.empty()) {
     return false;
   }
   const std::string source_name = BuildUniqueRtlSourceName(*entry);
@@ -592,15 +690,11 @@ void DrawHighlightedToken(ImDrawList* draw_list,
                           float font_size,
                           ImVec2 pos,
                           ImU32 color,
-                          const std::string& text,
-                          ImVec2 clip_min,
-                          ImVec2 clip_max) {
+                          const std::string& text) {
   if (!draw_list || !font || text.empty()) {
     return;
   }
-  draw_list->PushClipRect(clip_min, clip_max, true);
   draw_list->AddText(font, font_size, pos, color, text.c_str());
-  draw_list->PopClipRect();
 }
 
 int CountLines(const std::string& text) {
@@ -722,6 +816,7 @@ void RenderVerilogHighlightOverlay(const std::string& source,
   const ImVec2 origin(rect_min.x + kRtlEditorGutterWidth + 10.0f -
                           scroll_offset.x,
                       rect_min.y + 10.0f - scroll_offset.y);
+  draw_list->PushClipRect(rect_min, rect_max, true);
 
   std::istringstream input(source);
   std::string raw_line;
@@ -743,7 +838,7 @@ void RenderVerilogHighlightOverlay(const std::string& source,
       }
       if (ch == '/' && i + 1 < line.size() && line[i + 1] == '/') {
         DrawHighlightedToken(draw_list, font, font_size, ImVec2(x, y),
-                             theme.comment, line.substr(i), rect_min, rect_max);
+                             theme.comment, line.substr(i));
         break;
       }
       if (ch == '"') {
@@ -759,8 +854,7 @@ void RenderVerilogHighlightOverlay(const std::string& source,
           ++end;
         }
         DrawHighlightedToken(draw_list, font, font_size, ImVec2(x, y),
-                             theme.string, line.substr(i, end - i), rect_min,
-                             rect_max);
+                             theme.string, line.substr(i, end - i));
         i = end;
         continue;
       }
@@ -772,9 +866,7 @@ void RenderVerilogHighlightOverlay(const std::string& source,
           ++end;
         }
         DrawHighlightedToken(draw_list, font, font_size, ImVec2(x, y),
-                             theme.system_task, line.substr(i, end - i),
-                             rect_min,
-                             rect_max);
+                             theme.system_task, line.substr(i, end - i));
         i = end;
         continue;
       }
@@ -787,8 +879,7 @@ void RenderVerilogHighlightOverlay(const std::string& source,
           ++end;
         }
         DrawHighlightedToken(draw_list, font, font_size, ImVec2(x, y),
-                             theme.number, line.substr(i, end - i), rect_min,
-                             rect_max);
+                             theme.number, line.substr(i, end - i));
         i = end;
         continue;
       }
@@ -816,17 +907,17 @@ void RenderVerilogHighlightOverlay(const std::string& source,
           color = theme.signal;
         }
         DrawHighlightedToken(draw_list, font, font_size, ImVec2(x, y), color,
-                             token, rect_min, rect_max);
+                             token);
         i = end;
         continue;
       }
       DrawHighlightedToken(draw_list, font, font_size, ImVec2(x, y),
-                           theme.identifier, std::string(1, ch), rect_min,
-                           rect_max);
+                           theme.identifier, std::string(1, ch));
       ++i;
     }
     ++line_index;
   }
+  draw_list->PopClipRect();
 }
 
 }  // namespace
@@ -866,18 +957,15 @@ void Application::RequestRtlAnalyzeAsync(const std::string& moduleId) {
   InvalidateRtlModuleRuntimeState(moduleId);
   entry->analyzeSuccess = false;
   entry->buildSuccess = false;
-  entry->testbenchSuccess = false;
   entry->diagnostics.clear();
   entry->buildDiagnostics.clear();
   entry->buildHash.clear();
-  entry->testbenchDiagnostics.clear();
-  entry->testbenchBuildLog.clear();
-  entry->testbenchRunLog.clear();
-  entry->testbenchVcdPath.clear();
+  ClearRtlTestbenchResult(entry);
 
   RtlLibraryEntry entryCopy = *entry;
   rtl_async_task_running_ = true;
-  rtl_status_message_ = "Analyzing RTL module...";
+  rtl_status_message_ =
+      TR("ui.rtl.status_analyzing", "Analyzing RTL module...");
   rtl_async_task_future_ =
       std::async(std::launch::async, [this, entryCopy]() mutable {
         RtlAsyncTaskResult result;
@@ -890,15 +978,19 @@ void Application::RequestRtlAnalyzeAsync(const std::string& moduleId) {
         result.entry.testbenchSuccess = false;
 
         if (!rtl_project_manager_) {
-          result.entry.diagnostics = "RTL Project Manager not initialized.";
-          result.statusMessage = "RTL analyze failed.";
+          result.entry.diagnostics =
+              TR("ui.rtl.status_manager_unavailable",
+                 "RTL Project Manager not initialized.");
+          result.statusMessage =
+              TR("ui.rtl.status_analyze_failed", "RTL analyze failed.");
           return result;
         }
 
         RtlToolchainStatus status = rtl_project_manager_->DetectToolchain();
         if (!status.verilatorFound) {
           result.entry.diagnostics = status.description;
-          result.statusMessage = "RTL analyze failed. Check Analyze Log.";
+          result.statusMessage = TR("ui.rtl.status_analyze_failed_check_log",
+                                    "RTL analyze failed. Check Analyze Log.");
           return result;
         }
 
@@ -910,10 +1002,15 @@ void Application::RequestRtlAnalyzeAsync(const std::string& moduleId) {
         }
         result.entry.analyzeSuccess = result.success;
         if (!result.success && result.entry.diagnostics.empty()) {
-          result.entry.diagnostics = "RTL analyze failed.";
+          result.entry.diagnostics =
+              TR("ui.rtl.status_analyze_failed", "RTL analyze failed.");
         }
-        result.statusMessage = result.success ? "RTL analyze completed."
-                                              : "RTL analyze failed. Check Analyze Log.";
+        result.statusMessage =
+            result.success
+                ? TR("ui.rtl.status_analyze_completed",
+                     "RTL analyze completed.")
+                : TR("ui.rtl.status_analyze_failed_check_log",
+                     "RTL analyze failed. Check Analyze Log.");
         return result;
       });
 }
@@ -931,15 +1028,12 @@ void Application::RequestRtlBuildAsync(const std::string& moduleId) {
   entry->buildSuccess = false;
   entry->buildDiagnostics.clear();
   entry->buildHash.clear();
-  entry->testbenchSuccess = false;
-  entry->testbenchDiagnostics.clear();
-  entry->testbenchBuildLog.clear();
-  entry->testbenchRunLog.clear();
-  entry->testbenchVcdPath.clear();
+  ClearRtlTestbenchResult(entry);
 
   RtlLibraryEntry entryCopy = *entry;
   rtl_async_task_running_ = true;
-  rtl_status_message_ = "Building RTL module...";
+  rtl_status_message_ =
+      TR("ui.rtl.status_building", "Building RTL module...");
   rtl_async_task_future_ =
       std::async(std::launch::async, [this, entryCopy]() mutable {
         RtlAsyncTaskResult result;
@@ -951,15 +1045,22 @@ void Application::RequestRtlBuildAsync(const std::string& moduleId) {
         result.entry.testbenchSuccess = false;
 
         if (!rtl_project_manager_) {
-          result.entry.buildDiagnostics = "RTL Project Manager not initialized.";
-          result.statusMessage = "Build failed.";
+          result.entry.buildDiagnostics =
+              TR("ui.rtl.status_manager_unavailable",
+                 "RTL Project Manager not initialized.");
+          result.statusMessage =
+              TR("ui.rtl.status_build_failed", "RTL build failed.");
           return result;
         }
 
         RtlToolchainStatus status = rtl_project_manager_->DetectToolchain();
         if (!status.verilatorFound || !status.compilerFound) {
           result.entry.buildDiagnostics = status.description;
-          result.statusMessage = "Build failed: " + status.description;
+          char status_buf[1024];
+          plc::FormatString(status_buf, sizeof(status_buf),
+                            "ui.rtl.status_build_failed_detail",
+                            "Build failed: %s", status.description.c_str());
+          result.statusMessage = status_buf;
           return result;
         }
 
@@ -971,10 +1072,20 @@ void Application::RequestRtlBuildAsync(const std::string& moduleId) {
         }
         result.entry.buildSuccess = result.success;
         if (!result.success && result.entry.buildDiagnostics.empty()) {
-          result.entry.buildDiagnostics = "RTL build failed.";
+          result.entry.buildDiagnostics =
+              TR("ui.rtl.status_build_failed", "RTL build failed.");
         }
-        result.statusMessage = result.success ? "RTL build completed."
-                                              : "Build failed: " + result.entry.buildDiagnostics;
+        if (result.success) {
+          result.statusMessage =
+              TR("ui.rtl.status_build_completed", "RTL build completed.");
+        } else {
+          char status_buf[1024];
+          plc::FormatString(status_buf, sizeof(status_buf),
+                            "ui.rtl.status_build_failed_detail",
+                            "Build failed: %s",
+                            result.entry.buildDiagnostics.c_str());
+          result.statusMessage = status_buf;
+        }
         return result;
       });
 }
@@ -987,16 +1098,19 @@ void Application::RequestRtlTestbenchAsync(const std::string& moduleId) {
   if (!entry) {
     return;
   }
+  if (entry->sourceFiles.empty()) {
+    rtl_status_message_ = TR(
+        "ui.rtl.status_component_testbench_blocked",
+        "Source-less RTL components are runtime-only and cannot run a testbench.");
+    return;
+  }
 
-  entry->testbenchSuccess = false;
-  entry->testbenchDiagnostics.clear();
-  entry->testbenchBuildLog.clear();
-  entry->testbenchRunLog.clear();
-  entry->testbenchVcdPath.clear();
+  ClearRtlTestbenchResult(entry);
 
   RtlLibraryEntry entryCopy = *entry;
   rtl_async_task_running_ = true;
-  rtl_status_message_ = "Running RTL testbench...";
+  rtl_status_message_ =
+      TR("ui.rtl.status_testbench_running", "Running RTL testbench...");
   rtl_async_task_future_ =
       std::async(std::launch::async, [this, entryCopy]() mutable {
         RtlAsyncTaskResult result;
@@ -1007,8 +1121,11 @@ void Application::RequestRtlTestbenchAsync(const std::string& moduleId) {
         result.entry.testbenchSuccess = false;
 
         if (!rtl_project_manager_) {
-          result.entry.testbenchDiagnostics = "RTL Project Manager not initialized.";
-          result.statusMessage = "RTL testbench failed.";
+          result.entry.testbenchDiagnostics =
+              TR("ui.rtl.status_manager_unavailable",
+                 "RTL Project Manager not initialized.");
+          result.statusMessage = TR("ui.rtl.status_testbench_failed",
+                                    "RTL testbench failed.");
           return result;
         }
         result.success = rtl_project_manager_->RunTestbench(entryCopy.moduleId);
@@ -1021,10 +1138,15 @@ void Application::RequestRtlTestbenchAsync(const std::string& moduleId) {
         if (!result.success && result.entry.testbenchDiagnostics.empty() &&
             result.entry.testbenchRunLog.empty() &&
             result.entry.testbenchBuildLog.empty()) {
-          result.entry.testbenchDiagnostics = "RTL testbench failed.";
+          result.entry.testbenchDiagnostics = TR(
+              "ui.rtl.status_testbench_failed", "RTL testbench failed.");
         }
-        result.statusMessage = result.success ? "RTL testbench completed."
-                                              : "RTL testbench failed.";
+        result.statusMessage =
+            result.success
+                ? TR("ui.rtl.status_testbench_completed",
+                     "RTL testbench completed.")
+                : TR("ui.rtl.status_testbench_failed",
+                     "RTL testbench failed.");
         return result;
       });
 }
@@ -1060,26 +1182,19 @@ void Application::PollRtlAsyncTask() {
     target->buildSuccess = false;
     target->buildDiagnostics.clear();
     target->buildHash.clear();
-    target->testbenchSuccess = false;
-    target->testbenchDiagnostics.clear();
-    target->testbenchBuildLog.clear();
-    target->testbenchRunLog.clear();
-    target->testbenchVcdPath.clear();
+    ClearRtlTestbenchResult(target);
   } else if (result.taskKind == "build") {
     target->buildSuccess = result.entry.buildSuccess;
     target->buildDiagnostics = result.entry.buildDiagnostics;
     target->buildHash = result.entry.buildHash;
-    target->testbenchSuccess = false;
-    target->testbenchDiagnostics.clear();
-    target->testbenchBuildLog.clear();
-    target->testbenchRunLog.clear();
-    target->testbenchVcdPath.clear();
+    ClearRtlTestbenchResult(target);
   } else if (result.taskKind == "testbench") {
     target->testbenchSuccess = result.entry.testbenchSuccess;
     target->testbenchDiagnostics = result.entry.testbenchDiagnostics;
     target->testbenchBuildLog = result.entry.testbenchBuildLog;
     target->testbenchRunLog = result.entry.testbenchRunLog;
     target->testbenchVcdPath = result.entry.testbenchVcdPath;
+    InvalidateRtlTestbenchSummary(target);
   }
 
   if (result.taskKind == "analyze") {
@@ -1424,7 +1539,8 @@ bool Application::AnalyzeRtlModule(const std::string& moduleId) {
 
   const RtlLibraryEntry* entry = rtl_project_manager_->FindEntryById(moduleId);
   if (ok) {
-    rtl_status_message_ = "RTL analyze completed.";
+    rtl_status_message_ =
+        TR("ui.rtl.status_analyze_completed", "RTL analyze completed.");
     for (auto& comp : placed_components_) {
       if (comp.rtlModuleId == moduleId) {
         RefreshRtlComponentFromLibrary(&comp);
@@ -1432,9 +1548,14 @@ bool Application::AnalyzeRtlModule(const std::string& moduleId) {
     }
   } else {
     if (entry && !entry->diagnostics.empty()) {
-      rtl_status_message_ = "Analyze failed: " + entry->diagnostics;
+      char status_buf[1024];
+      plc::FormatString(status_buf, sizeof(status_buf),
+                        "ui.rtl.status_analyze_failed_detail",
+                        "Analyze failed: %s", entry->diagnostics.c_str());
+      rtl_status_message_ = status_buf;
     } else {
-      rtl_status_message_ = "RTL analyze failed.";
+      rtl_status_message_ =
+          TR("ui.rtl.status_analyze_failed", "RTL analyze failed.");
     }
     for (auto& comp : placed_components_) {
       if (comp.rtlModuleId == moduleId) {
@@ -1454,7 +1575,9 @@ bool Application::BuildRtlModule(const std::string& moduleId) {
   }
   InvalidateRtlModuleRuntimeState(moduleId);
   bool ok = rtl_project_manager_->Build(moduleId);
-  rtl_status_message_ = ok ? "RTL build completed." : "RTL build failed.";
+  rtl_status_message_ =
+      ok ? TR("ui.rtl.status_build_completed", "RTL build completed.")
+         : TR("ui.rtl.status_build_failed", "RTL build failed.");
   return ok;
 }
 
@@ -1477,7 +1600,10 @@ bool Application::ExportRtlSource(const std::string& moduleId,
   }
   std::string content = rtl_project_manager_->ExportSourceFile(moduleId, sourcePath);
   bool ok = WriteFile(ofn.lpstrFile, content);
-  rtl_status_message_ = ok ? "RTL source exported." : "Failed to export RTL source.";
+  rtl_status_message_ =
+      ok ? TR("ui.rtl.status_source_exported", "RTL source exported.")
+         : TR("ui.rtl.status_source_export_failed",
+              "Failed to export RTL source.");
   return ok;
 #else
   (void)moduleId;
@@ -1486,7 +1612,113 @@ bool Application::ExportRtlSource(const std::string& moduleId,
 #endif
 }
 
+bool Application::ExportRtlComponentPackage(const std::string& moduleId,
+                                            bool includeSourceFiles) {
+#ifdef _WIN32
+  if (!rtl_project_manager_ || !project_file_manager_) {
+    return false;
+  }
+  const RtlLibraryEntry* entry = rtl_project_manager_->FindEntryById(moduleId);
+  if (!entry) {
+    return false;
+  }
+
+  OPENFILENAMEA ofn;
+  CHAR szFile[260] = {0};
+  const std::string defaultName =
+      SanitizePackageFileName(entry->displayName.empty() ? entry->moduleId
+                                                         : entry->displayName) +
+      ".plccomp";
+  std::strncpy(szFile, defaultName.c_str(), sizeof(szFile) - 1);
+  ZeroMemory(&ofn, sizeof(ofn));
+  ofn.lStructSize = sizeof(ofn);
+  ofn.hwndOwner = glfwGetWin32Window(window_);
+  ofn.lpstrFile = szFile;
+  ofn.nMaxFile = sizeof(szFile);
+  ofn.lpstrFilter =
+      "PLC RTL Component (*.plccomp)\0*.plccomp\0All Files (*.*)\0*.*\0";
+  ofn.nFilterIndex = 1;
+  ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+  if (GetSaveFileNameA(&ofn) != TRUE) {
+    return false;
+  }
+
+  const std::string packagePath = EnsureFileExtension(ofn.lpstrFile, ".plccomp");
+  const std::string entryJson =
+      rtl_project_manager_->SerializeEntryJson(*entry, includeSourceFiles);
+  std::map<std::string, std::string> artifactFiles;
+  if (entry->buildSuccess) {
+    artifactFiles = rtl_project_manager_->GetBuildArtifactBundle(entry->moduleId);
+  }
+  if (!includeSourceFiles && artifactFiles.empty()) {
+    rtl_status_message_ = TR(
+        "ui.rtl.status_component_runtime_required",
+        "Source-less RTL component packages must include a bundled runtime executable.");
+    return false;
+  }
+
+  const auto result = project_file_manager_->SaveRtlComponentPackage(
+      entryJson, artifactFiles, packagePath, entry->displayName);
+  rtl_status_message_ =
+      result.success
+          ? TR("ui.rtl.status_component_exported",
+               "RTL component package exported.")
+          : TR("ui.rtl.status_component_export_failed",
+               "Failed to export RTL component package.");
+  return result.success;
+#else
+  (void)moduleId;
+  (void)includeSourceFiles;
+  return false;
+#endif
+}
+
+void Application::InvalidateRtlSourceTreeCache() {
+  rtl_source_tree_cache_dirty_ = true;
+  rtl_source_tree_cache_module_id_.clear();
+  rtl_source_tree_cache_file_count_ = 0;
+  rtl_source_tree_root_indices_.clear();
+  rtl_source_tree_groups_.clear();
+}
+
+void Application::RebuildCachedRtlSourceTree(const RtlLibraryEntry& entry) {
+  std::map<std::string, std::vector<int>> grouped_files;
+  for (size_t i = 0; i < entry.sourceFiles.size(); ++i) {
+    grouped_files[SourceDirectory(entry.sourceFiles[i].path)].push_back(
+        static_cast<int>(i));
+  }
+
+  rtl_source_tree_root_indices_.clear();
+  rtl_source_tree_groups_.clear();
+  auto root_it = grouped_files.find("");
+  if (root_it != grouped_files.end()) {
+    rtl_source_tree_root_indices_ = root_it->second;
+    grouped_files.erase(root_it);
+  }
+
+  rtl_source_tree_groups_.reserve(grouped_files.size());
+  for (const auto& [directory, file_indices] : grouped_files) {
+    rtl_source_tree_groups_.push_back({directory, file_indices});
+  }
+
+  rtl_source_tree_cache_module_id_ = entry.moduleId;
+  rtl_source_tree_cache_file_count_ = entry.sourceFiles.size();
+  rtl_source_tree_cache_dirty_ = false;
+}
+
 bool Application::ImportRtlSources(const std::string& moduleId) {
+  RtlLibraryEntry* entry =
+      rtl_project_manager_ ? rtl_project_manager_->FindEntryById(moduleId)
+                           : nullptr;
+  if (!entry) {
+    return false;
+  }
+  if (entry->sourceFiles.empty()) {
+    rtl_status_message_ = TR(
+        "ui.rtl.status_component_sources_locked",
+        "Source-less RTL components are runtime-only and cannot add source files.");
+    return false;
+  }
 #ifdef _WIN32
   OPENFILENAMEA ofn;
   CHAR szFile[260] = {0};
@@ -1503,7 +1735,8 @@ bool Application::ImportRtlSources(const std::string& moduleId) {
   }
   std::string content = ReadFile(ofn.lpstrFile);
   if (content.empty()) {
-    rtl_status_message_ = "Failed to read RTL source.";
+    rtl_status_message_ =
+        TR("ui.rtl.status_source_read_failed", "Failed to read RTL source.");
     return false;
   }
   std::string path = ofn.lpstrFile;
@@ -1512,7 +1745,13 @@ bool Application::ImportRtlSources(const std::string& moduleId) {
     path = path.substr(slash + 1);
   }
   bool ok = rtl_project_manager_->ImportSourceFile(moduleId, path, content);
-  rtl_status_message_ = ok ? "RTL source imported." : "Failed to import RTL source.";
+  if (ok) {
+    InvalidateRtlSourceTreeCache();
+  }
+  rtl_status_message_ =
+      ok ? TR("ui.rtl.status_source_imported", "RTL source imported.")
+         : TR("ui.rtl.status_source_import_failed",
+              "Failed to import RTL source.");
   return ok;
 #else
   (void)moduleId;
@@ -1520,21 +1759,125 @@ bool Application::ImportRtlSources(const std::string& moduleId) {
 #endif
 }
 
-bool Application::InstallRtlToolchain() {
-  if (!rtl_project_manager_) {
+bool Application::ImportRtlComponentPackage() {
+#ifdef _WIN32
+  if (!rtl_project_manager_ || !project_file_manager_) {
     return false;
   }
+
+  OPENFILENAMEA ofn;
+  CHAR szFile[260] = {0};
+  ZeroMemory(&ofn, sizeof(ofn));
+  ofn.lStructSize = sizeof(ofn);
+  ofn.hwndOwner = glfwGetWin32Window(window_);
+  ofn.lpstrFile = szFile;
+  ofn.nMaxFile = sizeof(szFile);
+  ofn.lpstrFilter =
+      "PLC RTL Component (*.plccomp)\0*.plccomp\0All Files (*.*)\0*.*\0";
+  ofn.nFilterIndex = 1;
+  ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+  if (GetOpenFileNameA(&ofn) != TRUE) {
+    return false;
+  }
+
+  const auto package = project_file_manager_->LoadRtlComponentPackage(ofn.lpstrFile);
+  if (!package.success) {
+    rtl_status_message_ = TR("ui.rtl.status_component_import_failed",
+                             "Failed to import RTL component package.");
+    return false;
+  }
+
+  RtlLibraryEntry importedEntry;
+  if (!rtl_project_manager_->DeserializeEntryJson(package.entryJson,
+                                                  &importedEntry)) {
+    rtl_status_message_ = TR("ui.rtl.status_component_import_failed",
+                             "Failed to import RTL component package.");
+    return false;
+  }
+  const bool sourceLessPackage = importedEntry.sourceFiles.empty();
+  if (sourceLessPackage && package.artifactFiles.empty()) {
+    rtl_status_message_ = TR(
+        "ui.rtl.status_component_runtime_required",
+        "Source-less RTL component packages must include a bundled runtime executable.");
+    return false;
+  }
+
+  RtlLibraryEntry* imported = rtl_project_manager_->ImportEntry(importedEntry);
+  if (!imported) {
+    rtl_status_message_ = TR("ui.rtl.status_component_import_failed",
+                             "Failed to import RTL component package.");
+    return false;
+  }
+
+  bool restoredArtifact = false;
+  if (!package.artifactFiles.empty()) {
+    restoredArtifact = rtl_project_manager_->RestoreBuildArtifactBundle(
+        imported->moduleId, package.artifactFiles);
+  }
+  if (sourceLessPackage) {
+    if (!restoredArtifact || !rtl_project_manager_->HasBuildArtifact(*imported)) {
+      rtl_project_manager_->DeleteEntry(imported->moduleId);
+      rtl_status_message_ = TR(
+          "ui.rtl.status_component_runtime_required",
+          "Source-less RTL component packages must include a bundled runtime executable.");
+      return false;
+    }
+    imported->buildSuccess = true;
+    imported->analyzeSuccess = !imported->ports.empty();
+    imported->buildDiagnostics.clear();
+    imported->testbenchDiagnostics.clear();
+    imported->testbenchBuildLog.clear();
+    imported->testbenchRunLog.clear();
+  } else if (imported->buildSuccess &&
+             !rtl_project_manager_->HasBuildArtifact(*imported)) {
+    imported->buildSuccess = false;
+    if (imported->buildDiagnostics.empty()) {
+      imported->buildDiagnostics = TR(
+          "ui.rtl.status_missing_component_artifact",
+          "RTL component package did not include a usable runtime artifact. Rebuild the module.");
+    } else {
+      imported->buildDiagnostics += "\n";
+      imported->buildDiagnostics += TR(
+          "ui.rtl.status_missing_component_artifact",
+          "RTL component package did not include a usable runtime artifact. Rebuild the module.");
+    }
+  }
+  rtl_project_manager_->SaveGlobalLibrary();
+
+  selected_rtl_module_id_ = imported->moduleId;
+  if (!imported->sourceFiles.empty()) {
+    SelectRtlSource(imported->sourceFiles.front(), &selected_rtl_source_path_,
+                    &rtl_editor_buffer_);
+  } else {
+    selected_rtl_source_path_.clear();
+    rtl_editor_buffer_.clear();
+  }
+  InvalidateRtlSourceTreeCache();
+  rtl_status_message_ = TR("ui.rtl.status_component_imported",
+                           "RTL component package imported.");
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool Application::RunRtlToolScript(const std::string& script_name,
+                                   const std::string& launch_status,
+                                   const std::string& success_status,
+                                   const std::string& failure_status) {
 #ifdef _WIN32
   namespace fs = std::filesystem;
 
-  // DetectToolchain() 결과에 의존하지 말고 직접 tools 루트를 찾기
-  // tools\setup_tools.ps1이 기준점
   fs::path tools_dir = fs::current_path() / "tools";
-  fs::path script_path = tools_dir / "setup_tools.ps1";
+  fs::path script_path = tools_dir / script_name;
 
   if (!fs::exists(script_path)) {
-    rtl_status_message_ =
-        "setup_tools.ps1 not found: " + script_path.string();
+    char status_buf[1024];
+    plc::FormatString(status_buf, sizeof(status_buf),
+                      "ui.rtl.status_script_missing",
+                      "%s not found: %s", script_name.c_str(),
+                      script_path.string().c_str());
+    rtl_status_message_ = status_buf;
     return false;
   }
 
@@ -1542,29 +1885,9 @@ bool Application::InstallRtlToolchain() {
       "-NoProfile -ExecutionPolicy Bypass -File \"" + script_path.string() + "\"";
   std::string tools_dir_str = tools_dir.string();
 
-  rtl_status_message_ = "Starting setup_tools.ps1...";
+  rtl_status_message_ = launch_status;
 
-  std::thread([this, params, tools_dir_str]() {
-    // 1. pwsh 존재 확인
-    int has_pwsh = system("where pwsh >nul 2>nul");
-    
-    if (has_pwsh != 0) {
-      // 2. pwsh 없으면 winget으로 설치
-      rtl_status_message_ = "Installing PowerShell 7...";
-
-      int install_result = system(
-          "winget install --id Microsoft.PowerShell "
-          "--source winget --accept-package-agreements "
-          "--accept-source-agreements -h");
-
-      if (install_result != 0) {
-        rtl_status_message_ =
-            "Failed to install PowerShell 7 (winget required).";
-        return;
-      }
-    }
-
-    // 3. pwsh로 setup_tools.ps1 실행
+  std::thread([this, params, tools_dir_str, success_status, failure_status]() {
     HINSTANCE result = ShellExecuteA(
         nullptr,
         "open",
@@ -1587,17 +1910,24 @@ bool Application::InstallRtlToolchain() {
     }
 
     rtl_status_message_ = ok
-        ? "Running setup_tools.ps1 with PowerShell."
-        : ("Failed to launch PowerShell. ShellExecute code=" +
+        ? success_status
+        : (failure_status + " ShellExecute code=" +
            std::to_string(reinterpret_cast<intptr_t>(result)));
   }).detach();
 
   return true;
 #else
-  rtl_status_message_ =
-      "RTL toolchain install is only supported on Windows.";
+  rtl_status_message_ = TR("ui.rtl.status_tools_windows_only",
+                           "RTL tool scripts are only supported on Windows.");
   return false;
 #endif
+}
+
+bool Application::InstallRtlToolchain() {
+  return RunRtlToolScript("setup_tools.ps1",
+                          "Starting setup_tools.ps1...",
+                          "Running setup_tools.ps1 with PowerShell.",
+                          "Failed to launch setup_tools.ps1.");
 }
   
 void Application::RenderRtlToolchainPanel() {
@@ -1696,7 +2026,21 @@ void Application::RenderRtlToolchainPanel() {
                        "Install Native RTL Toolchain"))) {
     InstallRtlToolchain();
     rtl_toolchain_status_valid_ = false;
-    RequestRtlToolchainRefresh();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(TR("ui.rtl.verify_toolchain", "Verify Setup"))) {
+    RunRtlToolScript("verify_setup.ps1",
+                     "Starting verify_setup.ps1...",
+                     "Running verify_setup.ps1 with PowerShell.",
+                     "Failed to launch verify_setup.ps1.");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(TR("ui.rtl.delete_toolchain", "Delete Tools"))) {
+    RunRtlToolScript("Delete_setup.ps1",
+                     "Starting Delete_setup.ps1...",
+                     "Running Delete_setup.ps1 with PowerShell.",
+                     "Failed to launch Delete_setup.ps1.");
+    rtl_toolchain_status_valid_ = false;
   }
 
   ImGui::End();
@@ -1721,13 +2065,9 @@ void Application::RenderRtlEditor() {
       entry->topModule = updatedTopModule;
       entry->analyzeSuccess = false;
       entry->buildSuccess = false;
-      entry->testbenchSuccess = false;
       entry->buildHash.clear();
       entry->buildDiagnostics.clear();
-      entry->testbenchDiagnostics.clear();
-      entry->testbenchBuildLog.clear();
-      entry->testbenchRunLog.clear();
-      entry->testbenchVcdPath.clear();
+      ClearRtlTestbenchResult(entry);
       InvalidateRtlModuleRuntimeState(entry->moduleId);
     }
   }
@@ -1735,21 +2075,25 @@ void Application::RenderRtlEditor() {
   char testbenchTopModuleBuf[128] = {0};
   std::strncpy(testbenchTopModuleBuf, entry->testbenchTopModule.c_str(),
                 sizeof(testbenchTopModuleBuf) - 1);
+  const bool hasSourceFiles = !entry->sourceFiles.empty();
+  if (!hasSourceFiles) {
+    ImGui::BeginDisabled();
+  }
   if (ImGui::InputText("##RtlTestbenchTopModule", testbenchTopModuleBuf,
                         sizeof(testbenchTopModuleBuf))) {
     std::string updatedTopModule = TrimCopy(testbenchTopModuleBuf);
     if (entry->testbenchTopModule != updatedTopModule) {
       entry->testbenchTopModule = updatedTopModule;
-      entry->testbenchSuccess = false;
-      entry->testbenchDiagnostics.clear();
-      entry->testbenchBuildLog.clear();
-      entry->testbenchRunLog.clear();
-      entry->testbenchVcdPath.clear();
+      ClearRtlTestbenchResult(entry);
     }
   }
-  if (entry->sourceFiles.empty()) {
-    entry->sourceFiles.push_back({entry->topFile.empty() ? "top.v" : entry->topFile,
-                                   ""});
+  if (!hasSourceFiles) {
+    ImGui::EndDisabled();
+  }
+  if (rtl_source_tree_cache_dirty_ ||
+      rtl_source_tree_cache_module_id_ != entry->moduleId ||
+      rtl_source_tree_cache_file_count_ != entry->sourceFiles.size()) {
+    RebuildCachedRtlSourceTree(*entry);
   }
   char displayNameBuf[128] = {0};
   std::strncpy(displayNameBuf, entry->displayName.c_str(),
@@ -1760,29 +2104,45 @@ void Application::RenderRtlEditor() {
     if (updatedDisplayName.empty()) {
       updatedDisplayName = TR("ui.rtl.new_module", "RTL Module");
     }
-    if (entry->displayName != updatedDisplayName) {
-      entry->displayName = updatedDisplayName;
+    if (entry->displayName != updatedDisplayName && rtl_project_manager_) {
+      rtl_project_manager_->RenameEntryDisplayName(entry->moduleId,
+                                                   updatedDisplayName);
     }
   }
-  if (selected_rtl_source_path_.empty() ||
-      std::none_of(entry->sourceFiles.begin(), entry->sourceFiles.end(),
-                   [&](const RtlSourceFile& file) {
-                     return file.path == selected_rtl_source_path_;
-                   })) {
+  if (!hasSourceFiles) {
+    selected_rtl_source_path_.clear();
+    rtl_editor_buffer_.clear();
+  } else if (selected_rtl_source_path_.empty() ||
+             std::none_of(entry->sourceFiles.begin(), entry->sourceFiles.end(),
+                          [&](const RtlSourceFile& file) {
+                            return file.path == selected_rtl_source_path_;
+                          })) {
     SelectRtlSource(entry->sourceFiles.front(), &selected_rtl_source_path_,
                     &rtl_editor_buffer_);
+  }
+  if (!hasSourceFiles) {
+    ImGui::BeginDisabled();
   }
   if (ImGui::Button(TR("ui.rtl.import", "Import"))) {
     if (ImportRtlSources(entry->moduleId)) {
       InvalidateRtlModuleRuntimeState(entry->moduleId);
     }
   }
+  if (!hasSourceFiles) {
+    ImGui::EndDisabled();
+  }
   ImGui::SameLine();
+  if (!hasSourceFiles) {
+    ImGui::BeginDisabled();
+  }
   if (ImGui::Button(TR("ui.rtl.export", "Export"))) {
     ExportRtlSource(entry->moduleId, selected_rtl_source_path_);
   }
+  if (!hasSourceFiles) {
+    ImGui::EndDisabled();
+  }
   ImGui::SameLine();
-  if (rtl_async_task_running_) {
+  if (rtl_async_task_running_ || !hasSourceFiles) {
     ImGui::BeginDisabled();
   }
   if (ImGui::Button(TR("ui.rtl.analyze", "Analyze"))) {
@@ -1809,7 +2169,7 @@ void Application::RenderRtlEditor() {
     RequestRtlTestbenchAsync(entry->moduleId);
   }
 
-  if (rtl_async_task_running_) {
+  if (rtl_async_task_running_ || !hasSourceFiles) {
     ImGui::EndDisabled();
   }
 
@@ -1825,11 +2185,12 @@ void Application::RenderRtlEditor() {
                     ImGuiWindowFlags_HorizontalScrollbar);
   ImGui::TextDisabled("%s", TR("ui.rtl.sources", "Sources"));
   ImGui::Separator();
-  std::map<std::string, std::vector<const RtlSourceFile*>> grouped_files;
-  for (const auto& file : entry->sourceFiles) {
-    grouped_files[SourceDirectory(file.path)].push_back(&file);
-  }
-  auto render_source_entry = [&](const RtlSourceFile& file) {
+  auto render_source_entry = [&](int file_index) {
+    if (file_index < 0 ||
+        file_index >= static_cast<int>(entry->sourceFiles.size())) {
+      return;
+    }
+    const RtlSourceFile& file = entry->sourceFiles[static_cast<size_t>(file_index)];
     ImGui::PushID(file.path.c_str());
     bool selected = selected_rtl_source_path_ == file.path;
     std::string file_label = SourceBaseName(file.path);
@@ -1843,17 +2204,24 @@ void Application::RenderRtlEditor() {
       SelectRtlSource(file, &selected_rtl_source_path_, &rtl_editor_buffer_);
     }
     if (ImGui::BeginPopupContextItem("RtlSourceContext")) {
+      if (!hasSourceFiles) {
+        ImGui::BeginDisabled();
+      }
       if (ImGui::MenuItem(TR("ui.rtl.add_file", "Add File"))) {
         if (AddNewRtlSource(rtl_project_manager_.get(), entry,
                             &selected_rtl_source_path_,
                             &rtl_editor_buffer_)) {
+          InvalidateRtlSourceTreeCache();
           InvalidateRtlModuleRuntimeState(entry->moduleId);
         }
+      }
+      if (!hasSourceFiles) {
+        ImGui::EndDisabled();
       }
       if (ImGui::MenuItem(TR("ui.rtl.rename", "Rename"))) {
         rtl_rename_source_path_ = file.path;
         rtl_rename_source_buffer_ = SourceBaseName(file.path);
-        ImGui::OpenPopup("Rename RTL Source");
+        ImGui::OpenPopup(TR("ui.rtl.rename_title", "Rename RTL Source"));
       }
       const bool can_delete = entry->sourceFiles.size() > 1U;
       if (!can_delete) {
@@ -1861,6 +2229,7 @@ void Application::RenderRtlEditor() {
       }
       if (ImGui::MenuItem(TR("ui.rtl.delete", "Delete"))) {
         rtl_project_manager_->RemoveSourceFile(entry->moduleId, file.path);
+        InvalidateRtlSourceTreeCache();
         InvalidateRtlModuleRuntimeState(entry->moduleId);
         if (selected_rtl_source_path_ == file.path &&
             !entry->sourceFiles.empty()) {
@@ -1875,18 +2244,15 @@ void Application::RenderRtlEditor() {
     }
     ImGui::PopID();
   };
-  auto root_it = grouped_files.find("");
-  if (root_it != grouped_files.end()) {
-    for (const RtlSourceFile* file : root_it->second) {
-      render_source_entry(*file);
-      ImGui::Spacing();
-    }
-    grouped_files.erase(root_it);
+  for (int file_index : rtl_source_tree_root_indices_) {
+    render_source_entry(file_index);
+    ImGui::Spacing();
   }
-  for (const auto& group : grouped_files) {
-    if (ImGui::TreeNodeEx(group.first.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-      for (const RtlSourceFile* file : group.second) {
-        render_source_entry(*file);
+  for (const auto& group : rtl_source_tree_groups_) {
+    if (ImGui::TreeNodeEx(group.directory.c_str(),
+                          ImGuiTreeNodeFlags_DefaultOpen)) {
+      for (int file_index : group.fileIndices) {
+        render_source_entry(file_index);
         ImGui::Spacing();
       }
       ImGui::TreePop();
@@ -1895,21 +2261,30 @@ void Application::RenderRtlEditor() {
   if (ImGui::BeginPopupContextWindow("RtlSourceSidebarContext",
                                      ImGuiPopupFlags_NoOpenOverItems |
                                          ImGuiPopupFlags_MouseButtonRight)) {
+    if (!hasSourceFiles) {
+      ImGui::BeginDisabled();
+    }
     if (ImGui::MenuItem(TR("ui.rtl.add_file", "Add File"))) {
       if (AddNewRtlSource(rtl_project_manager_.get(), entry,
                           &selected_rtl_source_path_,
                           &rtl_editor_buffer_)) {
+        InvalidateRtlSourceTreeCache();
         InvalidateRtlModuleRuntimeState(entry->moduleId);
       }
+    }
+    if (!hasSourceFiles) {
+      ImGui::EndDisabled();
+    }
+    if (!hasSourceFiles) {
+      ImGui::BeginDisabled();
     }
     if (!entry->testbenchTopFile.empty() &&
         ImGui::MenuItem(TR("ui.rtl.clear_tb_file", "Clear TB File"))) {
       entry->testbenchTopFile.clear();
-      entry->testbenchSuccess = false;
-      entry->testbenchDiagnostics.clear();
-      entry->testbenchBuildLog.clear();
-      entry->testbenchRunLog.clear();
-      entry->testbenchVcdPath.clear();
+      ClearRtlTestbenchResult(entry);
+    }
+    if (!hasSourceFiles) {
+      ImGui::EndDisabled();
     }
     ImGui::EndPopup();
   }
@@ -1933,8 +2308,7 @@ void Application::RenderRtlEditor() {
       entry->buildSuccess = false;
       entry->buildHash.clear();
       entry->buildDiagnostics.clear();
-      entry->testbenchBuildLog.clear();
-      entry->testbenchRunLog.clear();
+      ClearRtlTestbenchResult(entry);
       InvalidateRtlModuleRuntimeState(entry->moduleId);
     }
     if (is_top) {
@@ -1942,18 +2316,14 @@ void Application::RenderRtlEditor() {
     }
     ImGui::SameLine();
     bool is_tb = entry->testbenchTopFile == selected_source->path;
-    if (is_tb) {
+    if (is_tb || !hasSourceFiles) {
       ImGui::BeginDisabled();
     }
     if (ImGui::Button(TR("ui.rtl.set_as_tb", "Set As TB"))) {
       entry->testbenchTopFile = selected_source->path;
-      entry->testbenchSuccess = false;
-      entry->testbenchDiagnostics.clear();
-      entry->testbenchBuildLog.clear();
-      entry->testbenchRunLog.clear();
-      entry->testbenchVcdPath.clear();
+      ClearRtlTestbenchResult(entry);
     }
-    if (is_tb) {
+    if (is_tb || !hasSourceFiles) {
       ImGui::EndDisabled();
     }
   }
@@ -1975,17 +2345,24 @@ void Application::RenderRtlEditor() {
       SelectRtlSource(file, &selected_rtl_source_path_, &rtl_editor_buffer_);
     }
     if (ImGui::BeginPopupContextItem("RtlSourceTabContext")) {
+      if (!hasSourceFiles) {
+        ImGui::BeginDisabled();
+      }
       if (ImGui::MenuItem(TR("ui.rtl.add_file", "Add File"))) {
         if (AddNewRtlSource(rtl_project_manager_.get(), entry,
                             &selected_rtl_source_path_,
                             &rtl_editor_buffer_)) {
+          InvalidateRtlSourceTreeCache();
           InvalidateRtlModuleRuntimeState(entry->moduleId);
         }
+      }
+      if (!hasSourceFiles) {
+        ImGui::EndDisabled();
       }
       if (ImGui::MenuItem(TR("ui.rtl.rename", "Rename"))) {
         rtl_rename_source_path_ = file.path;
         rtl_rename_source_buffer_ = SourceBaseName(file.path);
-        ImGui::OpenPopup("Rename RTL Source");
+        ImGui::OpenPopup(TR("ui.rtl.rename_title", "Rename RTL Source"));
       }
       const bool can_delete = entry->sourceFiles.size() > 1U;
       if (!can_delete) {
@@ -1993,6 +2370,7 @@ void Application::RenderRtlEditor() {
       }
       if (ImGui::MenuItem(TR("ui.rtl.delete", "Delete"))) {
         rtl_project_manager_->RemoveSourceFile(entry->moduleId, file.path);
+        InvalidateRtlSourceTreeCache();
         InvalidateRtlModuleRuntimeState(entry->moduleId);
         if (selected_rtl_source_path_ == file.path && !entry->sourceFiles.empty()) {
           SelectRtlSource(entry->sourceFiles.front(), &selected_rtl_source_path_,
@@ -2043,9 +2421,20 @@ void Application::RenderRtlEditor() {
   if (rtl_editor_font_) {
     ImGui::PushFont(rtl_editor_font_);
   }
-  bool editorChanged =
-      InputTextMultilineString("##RtlEditor", &rtl_editor_buffer_,
-                               ImVec2(-1.0f, available_height));
+  bool editorChanged = false;
+  if (current_source) {
+    editorChanged =
+        InputTextMultilineString("##RtlEditor", &rtl_editor_buffer_,
+                                 ImVec2(-1.0f, available_height));
+  } else {
+    ImGui::BeginChild("##RtlEditorPlaceholder", ImVec2(-1.0f, available_height),
+                      false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::TextWrapped(
+        "%s",
+        TR("ui.rtl.no_sources_hint",
+           "This package is a non-editable RTL component because it does not include source files."));
+    ImGui::EndChild();
+  }
   ImVec2 editor_scroll(0.0f, 0.0f);
   if (ImGuiWindow* frame_window = ImGui::GetCurrentWindow();
       frame_window && frame_window->DC.ChildWindows.Size > 0) {
@@ -2057,19 +2446,21 @@ void Application::RenderRtlEditor() {
   }
   ImVec2 editor_min = ImGui::GetItemRectMin();
   ImVec2 editor_max = ImGui::GetItemRectMax();
-  RenderLineNumberGutter(rtl_editor_buffer_, editor_min, editor_max,
-                         rtl_editor_font_ ? rtl_editor_font_ : ImGui::GetFont(),
-                         editor_theme, editor_scroll);
-  if (editor_markers && !editor_markers->empty()) {
-    RenderDiagnosticMarkers(*editor_markers, editor_min, editor_max,
-                            rtl_editor_font_ ? rtl_editor_font_
-                                             : ImGui::GetFont(),
-                            editor_scroll);
+  if (current_source) {
+    RenderLineNumberGutter(rtl_editor_buffer_, editor_min, editor_max,
+                           rtl_editor_font_ ? rtl_editor_font_ : ImGui::GetFont(),
+                           editor_theme, editor_scroll);
+    if (editor_markers && !editor_markers->empty()) {
+      RenderDiagnosticMarkers(*editor_markers, editor_min, editor_max,
+                              rtl_editor_font_ ? rtl_editor_font_
+                                               : ImGui::GetFont(),
+                              editor_scroll);
+    }
+    RenderVerilogHighlightOverlay(rtl_editor_buffer_, editor_min, editor_max,
+                                  rtl_editor_font_ ? rtl_editor_font_
+                                                   : ImGui::GetFont(),
+                                  editor_theme, editor_scroll);
   }
-  RenderVerilogHighlightOverlay(rtl_editor_buffer_, editor_min, editor_max,
-                                rtl_editor_font_ ? rtl_editor_font_
-                                                 : ImGui::GetFont(),
-                                editor_theme, editor_scroll);
   if (rtl_editor_font_) {
     ImGui::PopFont();
   }
@@ -2110,7 +2501,7 @@ void Application::RenderRtlEditor() {
                      grip_color, 1.5f);
   ImGui::EndChild();
   ImGui::EndChild();
-  if (editorChanged) {
+  if (editorChanged && current_source) {
     rtl_project_manager_->UpdateSourceFile(entry->moduleId,
                                            selected_rtl_source_path_,
                                            rtl_editor_buffer_);
@@ -2123,28 +2514,39 @@ void Application::RenderRtlEditor() {
     cursor_line_col = ComputeLineColumnForOffset(
         rtl_editor_buffer_, static_cast<size_t>(state->GetCursorPos()));
   }
-  ImGui::TextDisabled("Ln %.0f, Col %.0f | %zu chars",
-                      cursor_line_col.x, cursor_line_col.y,
-                      rtl_editor_buffer_.size());
+  if (current_source) {
+    char editor_info[256];
+    plc::FormatString(editor_info, sizeof(editor_info), "ui.rtl.editor_info",
+                      "Ln %.0f, Col %.0f | %zu chars", cursor_line_col.x,
+                      cursor_line_col.y, rtl_editor_buffer_.size());
+    ImGui::TextDisabled("%s", editor_info);
+  } else {
+    ImGui::TextDisabled("%s",
+                        TR("ui.rtl.no_sources_status",
+                           "This component cannot be edited."));
+  }
 
   if (!rtl_rename_source_path_.empty()) {
-    ImGui::OpenPopup("Rename RTL Source");
+    ImGui::OpenPopup(TR("ui.rtl.rename_title", "Rename RTL Source"));
   }
-  if (ImGui::BeginPopupModal("Rename RTL Source", nullptr,
+  if (ImGui::BeginPopupModal(TR("ui.rtl.rename_title", "Rename RTL Source"),
+                             nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     char rename_buf[256] = {0};
     std::strncpy(rename_buf, rtl_rename_source_buffer_.c_str(),
                  sizeof(rename_buf) - 1);
-    if (ImGui::InputText("New Name", rename_buf, sizeof(rename_buf))) {
+    if (ImGui::InputText(TR("ui.rtl.new_name", "New Name"), rename_buf,
+                         sizeof(rename_buf))) {
       rtl_rename_source_buffer_ = rename_buf;
     }
-    if (ImGui::Button("Rename")) {
+    if (ImGui::Button(TR("ui.rtl.rename", "Rename"))) {
       const std::string new_path = BuildRenamedSourcePath(
           rtl_rename_source_path_, rtl_rename_source_buffer_);
       if (!new_path.empty() &&
           rtl_project_manager_->RenameSourceFile(entry->moduleId,
                                                  rtl_rename_source_path_,
                                                  new_path)) {
+        InvalidateRtlSourceTreeCache();
         if (selected_rtl_source_path_ == rtl_rename_source_path_) {
           selected_rtl_source_path_ = new_path;
         }
@@ -2155,7 +2557,7 @@ void Application::RenderRtlEditor() {
       }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
+    if (ImGui::Button(TR("ui.common.cancel", "Cancel"))) {
       rtl_rename_source_path_.clear();
       rtl_rename_source_buffer_.clear();
       ImGui::CloseCurrentPopup();
@@ -2171,20 +2573,30 @@ void Application::RenderRtlEditor() {
     ImGui::Separator();
   }
 
-  if (entry->analyzeSuccess) {
-    ImGui::TextColored(ImVec4(0.15f, 0.65f, 0.22f, 1.0f),
-                       "%s", TR("ui.rtl.analyze_status_ok", "Analyze Status: Success"));
-  } else if (!entry->diagnostics.empty()) {
-    ImGui::TextColored(ImVec4(0.80f, 0.18f, 0.18f, 1.0f),
-                       "%s", TR("ui.rtl.analyze_status_fail", "Analyze Status: Failed"));
-  }
+  if (hasSourceFiles) {
+    if (entry->analyzeSuccess) {
+      ImGui::TextColored(ImVec4(0.15f, 0.65f, 0.22f, 1.0f),
+                         "%s", TR("ui.rtl.analyze_status_ok", "Analyze Status: Success"));
+    } else if (!entry->diagnostics.empty()) {
+      ImGui::TextColored(ImVec4(0.80f, 0.18f, 0.18f, 1.0f),
+                         "%s", TR("ui.rtl.analyze_status_fail", "Analyze Status: Failed"));
+    }
 
-  if (entry->buildSuccess) {
-    ImGui::TextColored(ImVec4(0.15f, 0.65f, 0.22f, 1.0f),
-                       "%s", TR("ui.rtl.build_status_ok", "Build Status: Success"));
+    if (entry->buildSuccess) {
+      ImGui::TextColored(ImVec4(0.15f, 0.65f, 0.22f, 1.0f),
+                         "%s", TR("ui.rtl.build_status_ok", "Build Status: Success"));
+    } else if (!entry->buildDiagnostics.empty()) {
+      ImGui::TextColored(ImVec4(0.80f, 0.18f, 0.18f, 1.0f),
+                         "%s", TR("ui.rtl.build_status_fail", "Build Status: Failed"));
+    }
+  } else if (entry->buildSuccess) {
+    ImGui::TextColored(
+        ImVec4(0.15f, 0.65f, 0.22f, 1.0f), "%s",
+        TR("ui.rtl.runtime_package_ready",
+           "Packaged runtime loaded. Build is not required."));
   } else if (!entry->buildDiagnostics.empty()) {
-    ImGui::TextColored(ImVec4(0.80f, 0.18f, 0.18f, 1.0f),
-                       "%s", TR("ui.rtl.build_status_fail", "Build Status: Failed"));
+    ImGui::TextColored(ImVec4(0.80f, 0.18f, 0.18f, 1.0f), "%s",
+                       entry->buildDiagnostics.c_str());
   }
   const TestbenchVerdict testbench_verdict = GetTestbenchVerdict(*entry);
   if (testbench_verdict != TestbenchVerdict::kNotRun) {
@@ -2196,7 +2608,9 @@ void Application::RenderRtlEditor() {
                        "%s", verdictBuf);
   }
 
-  bool canEnableComponent = entry->analyzeSuccess && entry->buildSuccess;
+  bool canEnableComponent =
+      entry->buildSuccess &&
+      (hasSourceFiles ? entry->analyzeSuccess : !entry->ports.empty());
   if (!canEnableComponent) {
     ImGui::BeginDisabled();
   }
@@ -2246,22 +2660,14 @@ void Application::RenderRtlEditor() {
   }
 
   if (testbench_verdict != TestbenchVerdict::kNotRun) {
-    const size_t error_count =
-        CountOccurrences(entry->testbenchRunLog, "$error") +
-        CountOccurrences(entry->testbenchRunLog, "%Error") +
-        CountOccurrences(entry->testbenchRunLog, "$fatal") +
-        CountOccurrences(entry->testbenchRunLog, "Assertion failed") +
-        CountOccurrences(entry->testbenchRunLog, "assertion failed");
-    const size_t warning_count =
-        CountOccurrences(entry->testbenchRunLog, "%Warning") +
-        CountOccurrences(entry->testbenchRunLog, " warning:") +
-        CountOccurrences(entry->testbenchRunLog, "Warning:");
+    EnsureRtlTestbenchSummary(entry);
 
     char summaryBuf[512];
     plc::FormatString(summaryBuf, sizeof(summaryBuf), "ui.rtl.testbench_summary_fmt",
                       "%s | Errors: %zu | Warnings: %zu",
                       GetTestbenchVerdictLabel(testbench_verdict),
-                      error_count, warning_count);
+                      entry->testbenchErrorCount,
+                      entry->testbenchWarningCount);
     std::string summary = summaryBuf;
     if (!entry->testbenchVcdPath.empty()) {
       summary += TR("ui.rtl.waveform_ready", " | Waveform ready");
@@ -2387,8 +2793,40 @@ void Application::RenderRtlLibraryPanel() {
     }
   }
   ImGui::SameLine();
+  if (ImGui::Button(TR("ui.rtl.import_component", "Import Component"))) {
+    ImportRtlComponentPackage();
+  }
+  ImGui::SameLine();
+  if (!selected_rtl_module_id_.empty() &&
+      ImGui::Button(TR("ui.rtl.export_component", "Export Component"))) {
+    rtl_component_export_include_sources_ = true;
+    ImGui::OpenPopup(
+        TR("ui.rtl.export_component_title", "Export RTL Component"));
+  }
+  ImGui::SameLine();
   if (ImGui::Button(TR("ui.rtl.toolchain", "Toolchain"))) {
     show_rtl_toolchain_panel_ = true;
+  }
+  if (ImGui::BeginPopupModal(
+          TR("ui.rtl.export_component_title", "Export RTL Component"), nullptr,
+          ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextWrapped(
+        "%s",
+        TR("ui.rtl.export_component_description",
+           "Export the selected RTL module as a reusable component package."));
+    ImGui::Checkbox(TR("ui.rtl.export_include_sources",
+                       "Include Verilog source files"),
+                    &rtl_component_export_include_sources_);
+    if (ImGui::Button(TR("ui.common.ok", "OK"))) {
+      ExportRtlComponentPackage(selected_rtl_module_id_,
+                                rtl_component_export_include_sources_);
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(TR("ui.common.cancel", "Cancel"))) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
   }
   ImGui::Separator();
 
@@ -2400,6 +2838,9 @@ void Application::RenderRtlLibraryPanel() {
       if (!entry.sourceFiles.empty()) {
         SelectRtlSource(entry.sourceFiles.front(), &selected_rtl_source_path_,
                         &rtl_editor_buffer_);
+      } else {
+        selected_rtl_source_path_.clear();
+        rtl_editor_buffer_.clear();
       }
     }
     char statusBuf[128];
@@ -2417,19 +2858,6 @@ void Application::RenderRtlLibraryPanel() {
   ImGui::BeginChild("RtlEditorPanel", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
   RenderRtlEditor();
   ImGui::EndChild();
-
-  // Status Bar at the bottom
-  if (!rtl_status_message_.empty()) {
-    ImGui::Separator();
-    ImVec4 color = ImVec4(0.2f, 0.7f, 0.2f, 1.0f); // Success green
-    if (rtl_status_message_.find("failed") != std::string::npos || 
-        rtl_status_message_.find("Failed") != std::string::npos) {
-      color = ImVec4(0.9f, 0.3f, 0.3f, 1.0f); // Error red
-    } else if (rtl_status_message_.find("...") != std::string::npos) {
-      color = ImVec4(0.3f, 0.6f, 0.9f, 1.0f); // Info blue
-    }
-    ImGui::TextColored(color, "%s", rtl_status_message_.c_str());
-  }
 
   ImGui::End();
 }

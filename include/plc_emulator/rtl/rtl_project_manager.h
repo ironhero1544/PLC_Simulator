@@ -11,6 +11,7 @@
 
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace plc {
@@ -59,6 +60,9 @@ struct RtlLibraryEntry {
   bool buildSuccess = false;
   bool testbenchSuccess = false;
   bool componentEnabled = false;
+  size_t testbenchErrorCount = 0;
+  size_t testbenchWarningCount = 0;
+  bool testbenchLogSummaryValid = false;
 };
 
 struct RtlToolchainStatus {
@@ -101,6 +105,9 @@ class RtlProjectManager {
   const RtlLibraryEntry* FindEntryById(const std::string& moduleId) const;
 
   RtlLibraryEntry* CreateEntry(const std::string& displayName);
+  RtlLibraryEntry* ImportEntry(const RtlLibraryEntry& entry);
+  bool RenameEntryDisplayName(const std::string& moduleId,
+                              const std::string& displayName);
   bool DeleteEntry(const std::string& moduleId);
   bool DuplicateEntry(const std::string& moduleId);
 
@@ -133,8 +140,17 @@ class RtlProjectManager {
 
   std::string SerializeLibraryJson() const;
   std::string SerializeProjectRtlJson() const;
+  std::string SerializeEntryJson(const RtlLibraryEntry& entry,
+                                 bool includeSourceFiles = true) const;
   bool DeserializeLibraryJson(const std::string& jsonText, bool merge = false);
+  bool DeserializeEntryJson(const std::string& jsonText,
+                            RtlLibraryEntry* entry) const;
 
+  std::map<std::string, std::string> GetBuildArtifactBundle(
+      const std::string& moduleId) const;
+  bool RestoreBuildArtifactBundle(
+      const std::string& moduleId,
+      const std::map<std::string, std::string>& files);
   std::string GetBuildArtifactData(const std::string& moduleId) const;
   bool RestoreBuildArtifact(const std::string& moduleId, const std::string& data);
 
@@ -145,6 +161,14 @@ class RtlProjectManager {
 
  private:
   std::vector<RtlLibraryEntry> library_;
+  mutable std::unordered_map<std::string, size_t> libraryIndexById_;
+  mutable bool libraryIndexValid_ = false;
+
+  void InvalidateLibraryIndex();
+  void RebuildLibraryIndex() const;
+  std::string BuildUniqueDisplayName(
+      const std::string& displayName,
+      const std::string& ignoredModuleId = "") const;
 
     bool RunCommandCapture(const std::string& command,
                            std::string* output,

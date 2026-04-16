@@ -3,10 +3,12 @@
 // Ladder editing functions.
 
 #include "plc_emulator/programming/programming_mode.h"
+#include "plc_emulator/programming/ladder_program_utils.h"
 
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <map>
 #include <set>
@@ -90,7 +92,7 @@ bool TryParseDevicePreset(const char* text,
 }
 
 bool TryParseBkrstCommand(const char* text, std::string* device,
-                          std::string* preset, bool* is_pulse) {
+                           std::string* preset, bool* is_pulse) {
   if (!text || !device || !preset) {
     return false;
   }
@@ -184,6 +186,46 @@ bool TryParseBkrstCommand(const char* text, std::string* device,
   *preset = "K" + std::to_string(count);
   return true;
 }
+
+void AppendVerticalConnectionComponents(int x,
+                                        const std::vector<int>& source_rungs,
+                                        int rung_offset,
+                                        int x_offset,
+                                        std::vector<VerticalConnection>* out) {
+  if (!out) {
+    return;
+  }
+
+  std::vector<int> rungs = source_rungs;
+  std::sort(rungs.begin(), rungs.end());
+  rungs.erase(std::unique(rungs.begin(), rungs.end()), rungs.end());
+
+  std::vector<int> component;
+  auto flush_component = [&]() {
+    if (component.size() < 2) {
+      component.clear();
+      return;
+    }
+
+    VerticalConnection connection;
+    connection.x = x + x_offset;
+    connection.rungs.reserve(component.size());
+    for (int rung : component) {
+      connection.rungs.push_back(rung + rung_offset);
+    }
+    out->push_back(connection);
+    component.clear();
+  };
+
+  for (int rung : rungs) {
+    if (!component.empty() && rung != component.back() + 1) {
+      flush_component();
+    }
+    component.push_back(rung);
+  }
+  flush_component();
+}
+
 }  // namespace
 
 void to_upper(char* str) {
@@ -247,6 +289,22 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
   }
 
   if (ctrlPressed) {
+    if (!is_monitor_mode_ && key == ImGuiKey_C) {
+      if (rung_selection_mode_) {
+        CopySelectedRungsToClipboard();
+      } else {
+        CopySelectedCellsToClipboard();
+      }
+      return;
+    }
+    if (!is_monitor_mode_ && key == ImGuiKey_V) {
+      if (rung_selection_mode_) {
+        PasteRungClipboard();
+      } else {
+        PasteCellClipboard();
+      }
+      return;
+    }
     if (key == ImGuiKey_Z) {
       if (shiftPressed) {
         RedoProgrammingState();
@@ -294,8 +352,18 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
         }
         return;
       case ImGuiKey_Delete:
-        if (!onEndRung)
-          pending_action_.type = PendingActionType::DELETE_INSTRUCTION;
+        if (!onEndRung) {
+          if (!rung_selection_mode_ && HasCellSelection()) {
+            DeleteSelectedCells();
+          } else if ((rung_selection_mode_ &&
+               HasMultiSelectedRung(selected_rung_)) ||
+              GetSortedSelectedRungs().size() > 1) {
+            pending_action_.type = PendingActionType::DELETE_RUNG;
+            pending_action_.rungIndex = selected_rung_;
+          } else {
+            pending_action_.type = PendingActionType::DELETE_INSTRUCTION;
+          }
+        }
         return;
       case ImGuiKey_Insert:
         pending_action_.type = PendingActionType::ADD_NEW_RUNG;
@@ -310,23 +378,30 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
 
   int prev_rung = selected_rung_;
   int prev_cell = selected_cell_;
+  const int maxSelectableRung =
+      std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2);
 
   switch (key) {
     case ImGuiKey_LeftArrow:
-      if (selected_cell_ > 0)
-        selected_cell_--;
+      selected_cell_ = (selected_cell_ > 0) ? (selected_cell_ - 1) : 11;
+      rung_selection_mode_ = false;
       break;
     case ImGuiKey_RightArrow:
-      if (selected_cell_ < 11)
-        selected_cell_++;
+      selected_cell_ = (selected_cell_ < 11) ? (selected_cell_ + 1) : 0;
+      rung_selection_mode_ = false;
       break;
     case ImGuiKey_UpArrow:
       if (selected_rung_ > 0)
         selected_rung_--;
       break;
     case ImGuiKey_DownArrow:
-      if (selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1)
+      if (shiftPressed) {
+        if (selected_rung_ < maxSelectableRung) {
+          selected_rung_++;
+        }
+      } else if (selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
         selected_rung_++;
+      }
       break;
     case ImGuiKey_F2:
       if (!is_monitor_mode_) {
@@ -339,6 +414,24 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
     case ImGuiKey_F3:
       is_monitor_mode_ = false;
       break;
+  }
+
+  if (shiftPressed && prev_rung != selected_rung_ &&
+      selected_rung_ >= 0 && selected_rung_ <= maxSelectableRung) {
+    ExtendRungSelectionTo(selected_rung_);
+  } else if (!ctrlPressed) {
+    if (!rung_selection_mode_ &&
+        (prev_rung != selected_rung_ || prev_cell != selected_cell_) &&
+        selected_rung_ >= 0 && selected_rung_ <= maxSelectableRung &&
+        selected_cell_ >= 0 && selected_cell_ < 12) {
+      SelectSingleCell(selected_rung_, selected_cell_, false);
+    }
+    selected_rungs_.clear();
+    if (selected_rung_ >= 0 &&
+        selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+      rung_selection_anchor_ = selected_rung_;
+      selected_rungs_.insert(selected_rung_);
+    }
   }
 
   if (ctrlPressed && !is_monitor_mode_ &&
@@ -455,6 +548,626 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
       ladder_program_.verticalConnections = rebuilt;
     }
   }
+}
+
+void ProgrammingMode::SelectSingleRung(int rungIndex) {
+  if (rungIndex < 0 ||
+      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    return;
+  }
+
+  ClearCellSelection();
+  selected_rung_ = rungIndex;
+  selected_cell_ = 0;
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = rungIndex;
+  selected_rungs_.clear();
+  selected_rungs_.insert(rungIndex);
+}
+
+void ProgrammingMode::ExtendRungSelectionTo(int rungIndex) {
+  if (rungIndex < 0 ||
+      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    return;
+  }
+
+  ClearCellSelection();
+  const int anchor = std::max(
+      0, std::min(rung_selection_anchor_,
+                  static_cast<int>(ladder_program_.rungs.size()) - 2));
+  const int first = std::min(anchor, rungIndex);
+  const int last = std::max(anchor, rungIndex);
+
+  selected_rung_ = rungIndex;
+  selected_cell_ = 0;
+  rung_selection_mode_ = true;
+  selected_rungs_.clear();
+  for (int index = first; index <= last; ++index) {
+    selected_rungs_.insert(index);
+  }
+}
+
+void ProgrammingMode::ToggleRungSelection(int rungIndex) {
+  if (rungIndex < 0 ||
+      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    return;
+  }
+
+  ClearCellSelection();
+  selected_rung_ = rungIndex;
+  selected_cell_ = 0;
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = rungIndex;
+
+  const auto existing = selected_rungs_.find(rungIndex);
+  if (existing == selected_rungs_.end()) {
+    selected_rungs_.insert(rungIndex);
+    return;
+  }
+
+  if (selected_rungs_.size() == 1) {
+    return;
+  }
+
+  selected_rungs_.erase(existing);
+  if (!selected_rungs_.empty()) {
+    selected_rung_ = *selected_rungs_.begin();
+  }
+}
+
+void ProgrammingMode::SelectSingleCell(int rungIndex,
+                                       int cellIndex,
+                                       bool startDrag) {
+  if (rungIndex < 0 ||
+      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1 ||
+      cellIndex < 0 || cellIndex >= 12) {
+    return;
+  }
+
+  selected_rung_ = rungIndex;
+  selected_cell_ = cellIndex;
+  rung_selection_mode_ = false;
+  rung_selection_drag_active_ = false;
+  cell_selection_active_ = true;
+  cell_selection_anchor_rung_ = rungIndex;
+  cell_selection_anchor_cell_ = cellIndex;
+  cell_selection_end_rung_ = rungIndex;
+  cell_selection_end_cell_ = cellIndex;
+  cell_selection_drag_active_ = startDrag;
+  selected_rungs_.clear();
+  selected_rungs_.insert(rungIndex);
+}
+
+void ProgrammingMode::UpdateCellSelection(int rungIndex, int cellIndex) {
+  if (!cell_selection_active_ ||
+      rungIndex < 0 ||
+      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1 ||
+      cellIndex < 0 || cellIndex >= 12) {
+    return;
+  }
+
+  selected_rung_ = rungIndex;
+  selected_cell_ = cellIndex;
+  rung_selection_mode_ = false;
+  cell_selection_end_rung_ = rungIndex;
+  cell_selection_end_cell_ = cellIndex;
+  selected_rungs_.clear();
+
+  CellSelectionBounds bounds;
+  if (!GetCellSelectionBounds(&bounds)) {
+    return;
+  }
+  for (int row = bounds.minRung; row <= bounds.maxRung; ++row) {
+    selected_rungs_.insert(row);
+  }
+}
+
+void ProgrammingMode::ClearCellSelection() {
+  cell_selection_active_ = false;
+  cell_selection_drag_active_ = false;
+  cell_selection_anchor_rung_ = selected_rung_;
+  cell_selection_anchor_cell_ = selected_cell_;
+  cell_selection_end_rung_ = selected_rung_;
+  cell_selection_end_cell_ = selected_cell_;
+}
+
+bool ProgrammingMode::HasCellSelection() const {
+  CellSelectionBounds bounds;
+  return GetCellSelectionBounds(&bounds);
+}
+
+bool ProgrammingMode::GetCellSelectionBounds(CellSelectionBounds* bounds) const {
+  if (!bounds || !cell_selection_active_ || rung_selection_mode_ ||
+      ladder_program_.rungs.size() <= 1) {
+    return false;
+  }
+
+  const int maxRung =
+      std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2);
+  bounds->minRung = std::max(
+      0, std::min(std::min(cell_selection_anchor_rung_, cell_selection_end_rung_),
+                  maxRung));
+  bounds->maxRung = std::max(
+      0, std::min(std::max(cell_selection_anchor_rung_, cell_selection_end_rung_),
+                  maxRung));
+  bounds->minCell =
+      std::max(0, std::min(cell_selection_anchor_cell_, cell_selection_end_cell_));
+  bounds->maxCell =
+      std::max(0, std::min(std::max(cell_selection_anchor_cell_, cell_selection_end_cell_), 11));
+  return bounds->minRung <= bounds->maxRung &&
+         bounds->minCell <= bounds->maxCell;
+}
+
+bool ProgrammingMode::IsCellInSelection(int rungIndex, int cellIndex) const {
+  CellSelectionBounds bounds;
+  if (!GetCellSelectionBounds(&bounds)) {
+    return selected_rung_ == rungIndex && selected_cell_ == cellIndex &&
+           !rung_selection_mode_;
+  }
+
+  return rungIndex >= bounds.minRung && rungIndex <= bounds.maxRung &&
+         cellIndex >= bounds.minCell && cellIndex <= bounds.maxCell;
+}
+
+bool ProgrammingMode::HasMultiSelectedRung(int rungIndex) const {
+  return rungIndex >= 0 &&
+         rungIndex < static_cast<int>(ladder_program_.rungs.size()) - 1 &&
+         selected_rungs_.count(rungIndex) > 0;
+}
+
+bool ProgrammingMode::HasAnySelectedRungs() const {
+  return !GetSortedSelectedRungs().empty();
+}
+
+std::vector<int> ProgrammingMode::GetSortedSelectedRungs() const {
+  std::vector<int> result;
+  const int maxRung = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  for (int rungIndex : selected_rungs_) {
+    if (rungIndex >= 0 && rungIndex < maxRung) {
+      result.push_back(rungIndex);
+    }
+  }
+  std::sort(result.begin(), result.end());
+  return result;
+}
+
+void ProgrammingMode::CopySelectedCellsToClipboard() {
+  CellSelectionBounds bounds;
+  if (!GetCellSelectionBounds(&bounds)) {
+    return;
+  }
+
+  const int height = bounds.maxRung - bounds.minRung + 1;
+  const int width = bounds.maxCell - bounds.minCell + 1;
+  cell_clipboard_.assign(
+      static_cast<size_t>(height),
+      std::vector<LadderInstruction>(static_cast<size_t>(width)));
+  cell_clipboard_connections_.clear();
+
+  for (int row = 0; row < height; ++row) {
+    for (int col = 0; col < width; ++col) {
+      cell_clipboard_[static_cast<size_t>(row)][static_cast<size_t>(col)] =
+          ladder_program_.rungs[static_cast<size_t>(bounds.minRung + row)]
+              .cells[static_cast<size_t>(bounds.minCell + col)];
+    }
+  }
+
+  for (const auto& connection : ladder_program_.verticalConnections) {
+    if (connection.x < bounds.minCell || connection.x > bounds.maxCell) {
+      continue;
+    }
+
+    std::vector<int> copiedRungs;
+    for (int rungIndex : connection.rungs) {
+      if (rungIndex >= bounds.minRung && rungIndex <= bounds.maxRung) {
+        copiedRungs.push_back(rungIndex);
+      }
+    }
+
+    AppendVerticalConnectionComponents(connection.x, copiedRungs, -bounds.minRung,
+                                       -bounds.minCell,
+                                       &cell_clipboard_connections_);
+  }
+}
+
+void ProgrammingMode::PasteCellClipboard() {
+  if (is_monitor_mode_ || rung_selection_mode_ || cell_clipboard_.empty() ||
+      cell_clipboard_.front().empty() || ladder_program_.rungs.empty()) {
+    return;
+  }
+
+  int targetRung = selected_rung_;
+  int targetCell = selected_cell_;
+  CellSelectionBounds targetBounds;
+  if (GetCellSelectionBounds(&targetBounds)) {
+    targetRung = targetBounds.minRung;
+    targetCell = targetBounds.minCell;
+  }
+
+  const int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  if (targetRung < 0 || targetRung >= endIndex || targetCell < 0 ||
+      targetCell >= 12) {
+    return;
+  }
+
+  const int height = static_cast<int>(cell_clipboard_.size());
+  const int width = static_cast<int>(cell_clipboard_.front().size());
+  if (targetCell + width > 12) {
+    std::cout << "[WARN] Cell clipboard paste exceeds ladder width" << std::endl;
+    return;
+  }
+
+  PushProgrammingUndoState();
+
+  while (targetRung + height >
+         static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    ladder_program_.rungs.insert(ladder_program_.rungs.end() - 1, Rung());
+  }
+
+  ClearVerticalConnectionsInRange(targetRung, targetRung + height - 1,
+                                  targetCell, targetCell + width - 1);
+
+  for (int row = 0; row < height; ++row) {
+    auto& destinationRung =
+        ladder_program_.rungs[static_cast<size_t>(targetRung + row)];
+    for (int col = 0; col < width; ++col) {
+      destinationRung.cells[static_cast<size_t>(targetCell + col)] =
+          cell_clipboard_[static_cast<size_t>(row)][static_cast<size_t>(col)];
+    }
+    UpdateHorizontalLines(targetRung + row);
+  }
+
+  for (const auto& connection : cell_clipboard_connections_) {
+    VerticalConnection pasted = connection;
+    pasted.x += targetCell;
+    for (int& rungIndex : pasted.rungs) {
+      rungIndex += targetRung;
+    }
+    ladder_program_.verticalConnections.push_back(pasted);
+  }
+
+  CanonicalizeLadderProgram(&ladder_program_);
+
+  selected_rung_ = targetRung;
+  selected_cell_ = targetCell;
+  cell_selection_active_ = true;
+  cell_selection_anchor_rung_ = targetRung;
+  cell_selection_anchor_cell_ = targetCell;
+  cell_selection_end_rung_ = targetRung + height - 1;
+  cell_selection_end_cell_ = targetCell + width - 1;
+  cell_selection_drag_active_ = false;
+  selected_rungs_.clear();
+  for (int row = cell_selection_anchor_rung_; row <= cell_selection_end_rung_;
+       ++row) {
+    selected_rungs_.insert(row);
+  }
+  MarkDirty();
+}
+
+void ProgrammingMode::CopySelectedRungsToClipboard() {
+  if (!rung_selection_mode_) {
+    return;
+  }
+
+  std::vector<int> selected = GetSortedSelectedRungs();
+  const int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  if (selected.empty() && selected_rung_ >= 0 && selected_rung_ < endIndex) {
+    selected.push_back(selected_rung_);
+  }
+  if (selected.empty()) {
+    return;
+  }
+
+  rung_clipboard_.clear();
+  rung_clipboard_connections_.clear();
+
+  std::map<int, int> remap;
+  for (size_t i = 0; i < selected.size(); ++i) {
+    remap[selected[i]] = static_cast<int>(i);
+    rung_clipboard_.push_back(ladder_program_.rungs[selected[i]]);
+  }
+
+  for (const auto& connection : ladder_program_.verticalConnections) {
+    VerticalConnection copied;
+    copied.x = connection.x;
+    for (int rungIndex : connection.rungs) {
+      const auto it = remap.find(rungIndex);
+      if (it != remap.end()) {
+        copied.rungs.push_back(it->second);
+      }
+    }
+    if (copied.rungs.size() >= 2) {
+      std::sort(copied.rungs.begin(), copied.rungs.end());
+      copied.rungs.erase(
+          std::unique(copied.rungs.begin(), copied.rungs.end()),
+          copied.rungs.end());
+      rung_clipboard_connections_.push_back(copied);
+    }
+  }
+}
+
+void ProgrammingMode::PasteRungClipboard() {
+  if (is_monitor_mode_ || !rung_selection_mode_ || rung_clipboard_.empty() ||
+      ladder_program_.rungs.empty()) {
+    return;
+  }
+
+  const int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  int insertIndex = endIndex;
+  if (selected_rung_ >= 0 && selected_rung_ < endIndex) {
+    insertIndex = selected_rung_ + 1;
+  }
+
+  PushProgrammingUndoState();
+
+  const int addedCount = static_cast<int>(rung_clipboard_.size());
+  for (auto& connection : ladder_program_.verticalConnections) {
+    for (int& rungIndex : connection.rungs) {
+      if (rungIndex >= insertIndex) {
+        rungIndex += addedCount;
+      }
+    }
+  }
+
+  ladder_program_.rungs.insert(ladder_program_.rungs.begin() + insertIndex,
+                               rung_clipboard_.begin(), rung_clipboard_.end());
+
+  for (const auto& clipboardConnection : rung_clipboard_connections_) {
+    VerticalConnection inserted = clipboardConnection;
+    for (int& rungIndex : inserted.rungs) {
+      rungIndex += insertIndex;
+    }
+    ladder_program_.verticalConnections.push_back(inserted);
+  }
+
+  CanonicalizeLadderProgram(&ladder_program_);
+
+  ClearCellSelection();
+  selected_rung_ = insertIndex;
+  selected_cell_ = 0;
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = insertIndex;
+  selected_rungs_.clear();
+  for (int i = 0; i < addedCount; ++i) {
+    selected_rungs_.insert(insertIndex + i);
+  }
+  MarkDirty();
+}
+
+void ProgrammingMode::MoveSelectedRungsBefore(int targetRungIndex) {
+  if (is_monitor_mode_ || ladder_program_.rungs.size() <= 1) {
+    return;
+  }
+
+  std::vector<int> selected = GetSortedSelectedRungs();
+  const int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  if (selected.empty() && selected_rung_ >= 0 && selected_rung_ < endIndex) {
+    selected.push_back(selected_rung_);
+  }
+  if (selected.empty()) {
+    return;
+  }
+
+  if (targetRungIndex < 0) {
+    targetRungIndex = 0;
+  }
+  if (targetRungIndex > endIndex) {
+    targetRungIndex = endIndex;
+  }
+  if (std::find(selected.begin(), selected.end(), targetRungIndex) !=
+      selected.end()) {
+    return;
+  }
+
+  std::vector<int> remaining;
+  remaining.reserve(endIndex - static_cast<int>(selected.size()));
+  for (int rungIndex = 0; rungIndex < endIndex; ++rungIndex) {
+    if (!std::binary_search(selected.begin(), selected.end(), rungIndex)) {
+      remaining.push_back(rungIndex);
+    }
+  }
+
+  int insertionPos = 0;
+  if (targetRungIndex >= endIndex) {
+    insertionPos = static_cast<int>(remaining.size());
+  } else {
+    insertionPos = static_cast<int>(std::count_if(
+        remaining.begin(), remaining.end(),
+        [targetRungIndex](int rungIndex) { return rungIndex < targetRungIndex; }));
+  }
+
+  std::vector<int> newOrder = remaining;
+  newOrder.insert(newOrder.begin() + insertionPos, selected.begin(),
+                  selected.end());
+
+  std::map<int, int> remap;
+  for (size_t newIndex = 0; newIndex < newOrder.size(); ++newIndex) {
+    remap[newOrder[newIndex]] = static_cast<int>(newIndex);
+  }
+
+  PushProgrammingUndoState();
+
+  std::vector<Rung> reordered;
+  reordered.reserve(ladder_program_.rungs.size());
+  for (int originalIndex : newOrder) {
+    reordered.push_back(ladder_program_.rungs[originalIndex]);
+  }
+  reordered.push_back(ladder_program_.rungs.back());
+  ladder_program_.rungs.swap(reordered);
+
+  std::vector<VerticalConnection> remappedConnections;
+  remappedConnections.reserve(ladder_program_.verticalConnections.size());
+  for (const auto& connection : ladder_program_.verticalConnections) {
+    VerticalConnection remappedConnection;
+    remappedConnection.x = connection.x;
+    for (int rungIndex : connection.rungs) {
+      const auto it = remap.find(rungIndex);
+      if (it != remap.end()) {
+        remappedConnection.rungs.push_back(it->second);
+      }
+    }
+    if (remappedConnection.rungs.size() >= 2) {
+      std::sort(remappedConnection.rungs.begin(),
+                remappedConnection.rungs.end());
+      remappedConnection.rungs.erase(
+          std::unique(remappedConnection.rungs.begin(),
+                      remappedConnection.rungs.end()),
+          remappedConnection.rungs.end());
+      remappedConnections.push_back(remappedConnection);
+    }
+  }
+  ladder_program_.verticalConnections.swap(remappedConnections);
+  CanonicalizeLadderProgram(&ladder_program_);
+
+  ClearCellSelection();
+  selected_rung_ = insertionPos;
+  selected_cell_ = 0;
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = insertionPos;
+  selected_rungs_.clear();
+  for (size_t i = 0; i < selected.size(); ++i) {
+    selected_rungs_.insert(insertionPos + static_cast<int>(i));
+  }
+  MarkDirty();
+}
+
+void ProgrammingMode::ClearVerticalConnectionsInRange(int minRung,
+                                                      int maxRung,
+                                                      int minCell,
+                                                      int maxCell) {
+  std::vector<VerticalConnection> updatedConnections;
+  updatedConnections.reserve(ladder_program_.verticalConnections.size());
+
+  for (const auto& connection : ladder_program_.verticalConnections) {
+    if (connection.x < minCell || connection.x > maxCell) {
+      updatedConnections.push_back(connection);
+      continue;
+    }
+
+    std::vector<int> remainingRungs;
+    for (int rungIndex : connection.rungs) {
+      if (rungIndex < minRung || rungIndex > maxRung) {
+        remainingRungs.push_back(rungIndex);
+      }
+    }
+
+    AppendVerticalConnectionComponents(connection.x, remainingRungs, 0, 0,
+                                       &updatedConnections);
+  }
+
+  ladder_program_.verticalConnections.swap(updatedConnections);
+}
+
+void ProgrammingMode::DeleteSelectedCells() {
+  CellSelectionBounds bounds;
+  if (!GetCellSelectionBounds(&bounds)) {
+    DeleteCurrentInstruction();
+    return;
+  }
+
+  PushProgrammingUndoState();
+
+  for (int rungIndex = bounds.minRung; rungIndex <= bounds.maxRung; ++rungIndex) {
+    auto& cells = ladder_program_.rungs[static_cast<size_t>(rungIndex)].cells;
+    for (int cellIndex = bounds.minCell; cellIndex <= bounds.maxCell; ++cellIndex) {
+      cells[static_cast<size_t>(cellIndex)] = LadderInstruction();
+    }
+    UpdateHorizontalLines(rungIndex);
+  }
+
+  ClearVerticalConnectionsInRange(bounds.minRung, bounds.maxRung, bounds.minCell,
+                                  bounds.maxCell);
+  CanonicalizeLadderProgram(&ladder_program_);
+
+  selected_rung_ = bounds.minRung;
+  selected_cell_ = bounds.minCell;
+  rung_selection_mode_ = false;
+  rung_selection_drag_active_ = false;
+  cell_selection_active_ = true;
+  cell_selection_anchor_rung_ = bounds.minRung;
+  cell_selection_anchor_cell_ = bounds.minCell;
+  cell_selection_end_rung_ = bounds.maxRung;
+  cell_selection_end_cell_ = bounds.maxCell;
+  cell_selection_drag_active_ = false;
+  selected_rungs_.clear();
+  for (int rungIndex = bounds.minRung; rungIndex <= bounds.maxRung; ++rungIndex) {
+    selected_rungs_.insert(rungIndex);
+  }
+  MarkDirty();
+}
+
+void ProgrammingMode::DeleteSelectedRungs() {
+  std::vector<int> selected = GetSortedSelectedRungs();
+  if (selected.empty()) {
+    if (selected_rung_ >= 0 &&
+        selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+      DeleteRung(selected_rung_);
+    }
+    return;
+  }
+  if (selected.size() == 1) {
+    DeleteRung(selected.front());
+    return;
+  }
+
+  const int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
+  if (endIndex <= 0) {
+    return;
+  }
+
+  PushProgrammingUndoState();
+
+  std::set<int> selectedSet(selected.begin(), selected.end());
+  std::vector<Rung> remaining;
+  remaining.reserve(ladder_program_.rungs.size());
+  std::map<int, int> remap;
+
+  int nextIndex = 0;
+  for (int rungIndex = 0; rungIndex < endIndex; ++rungIndex) {
+    if (selectedSet.count(rungIndex) > 0) {
+      continue;
+    }
+    remap[rungIndex] = nextIndex++;
+    remaining.push_back(ladder_program_.rungs[static_cast<size_t>(rungIndex)]);
+  }
+  remaining.push_back(ladder_program_.rungs.back());
+  ladder_program_.rungs.swap(remaining);
+
+  std::vector<VerticalConnection> updatedConnections;
+  updatedConnections.reserve(ladder_program_.verticalConnections.size());
+  for (const auto& connection : ladder_program_.verticalConnections) {
+    VerticalConnection updated;
+    updated.x = connection.x;
+    for (int rungIndex : connection.rungs) {
+      const auto it = remap.find(rungIndex);
+      if (it != remap.end()) {
+        updated.rungs.push_back(it->second);
+      }
+    }
+    if (updated.rungs.size() >= 2) {
+      std::sort(updated.rungs.begin(), updated.rungs.end());
+      updated.rungs.erase(
+          std::unique(updated.rungs.begin(), updated.rungs.end()),
+          updated.rungs.end());
+      updatedConnections.push_back(updated);
+    }
+  }
+  ladder_program_.verticalConnections.swap(updatedConnections);
+  CanonicalizeLadderProgram(&ladder_program_);
+
+  ClearCellSelection();
+  selected_rung_ = std::max(
+      0, std::min(selected.front(),
+                  static_cast<int>(ladder_program_.rungs.size()) - 2));
+  selected_cell_ = 0;
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = std::max(0, selected_rung_);
+  selected_rungs_.clear();
+  if (selected_rung_ >= 0 &&
+      selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    selected_rungs_.insert(selected_rung_);
+  }
+  MarkDirty();
 }
 
 void ProgrammingMode::HandleEditAction(LadderInstructionType type) {
@@ -588,8 +1301,13 @@ void ProgrammingMode::AddNewRung() {
   if (ladder_program_.rungs.empty()) {
     PushProgrammingUndoState();
     ladder_program_.rungs.push_back(Rung());
+    CanonicalizeLadderProgram(&ladder_program_);
     selected_rung_ = 0;
     selected_cell_ = 0;
+    rung_selection_mode_ = true;
+    rung_selection_anchor_ = 0;
+    selected_rungs_.clear();
+    selected_rungs_.insert(0);
     MarkDirty();
     return;
   }
@@ -635,12 +1353,13 @@ void ProgrammingMode::AddNewRung() {
                        conn.rungs.end());
     }
   }
-
+  CanonicalizeLadderProgram(&ladder_program_);
   selected_rung_ = insertIndex;
   selected_cell_ = 0;
-  for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
-    ladder_program_.rungs[i].number = i;
-  }
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = insertIndex;
+  selected_rungs_.clear();
+  selected_rungs_.insert(insertIndex);
   MarkDirty();
 }
 
@@ -677,24 +1396,24 @@ void ProgrammingMode::DeleteRung(int rungIndexToDelete) {
       updatedConnections.push_back(newConn);
     }
   }
-  // Apply updated connections.
-  ladder_program_.verticalConnections = updatedConnections;
-
   // Remove the rung.
   ladder_program_.rungs.erase(ladder_program_.rungs.begin() +
                               rungIndexToDelete);
+  ladder_program_.verticalConnections = updatedConnections;
+  CanonicalizeLadderProgram(&ladder_program_);
 
   // Adjust selection index.
   if (selected_rung_ >= rungIndexToDelete && selected_rung_ > 0) {
     selected_rung_--;
   }
-
-  // Renumber remaining rungs.
-  if (!ladder_program_.rungs.empty()) {
-    for (size_t i = 0; i < ladder_program_.rungs.size() - 1; ++i) {
-      ladder_program_.rungs[i].number = i;
-    }
+  rung_selection_mode_ = true;
+  rung_selection_anchor_ = std::max(0, selected_rung_);
+  selected_rungs_.clear();
+  if (selected_rung_ >= 0 &&
+      selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    selected_rungs_.insert(selected_rung_);
   }
+
   MarkDirty();
 }
 
@@ -770,7 +1489,7 @@ void ProgrammingMode::ConfirmVerticalConnection() {
 
   int startRung = selected_rung_;
   int endRung = startRung + vertical_line_count_;
-  int maxRung = ladder_program_.rungs.size() - 2;
+  int maxRung = std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2);
 
   if (endRung > maxRung)
     return;
@@ -778,6 +1497,7 @@ void ProgrammingMode::ConfirmVerticalConnection() {
   PushProgrammingUndoState();
   VerticalConnection newConnection(selected_cell_, startRung, endRung);
   ladder_program_.verticalConnections.push_back(newConnection);
+  CanonicalizeLadderProgram(&ladder_program_);
 
   show_vertical_dialog_ = false;
   MarkDirty();

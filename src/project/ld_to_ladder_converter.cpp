@@ -5,6 +5,7 @@
 #include "plc_emulator/project/ld_to_ladder_converter.h"
 
 #include "plc_emulator/core/data_types.h"
+#include "plc_emulator/programming/ladder_program_utils.h"
 #include "plc_emulator/programming/programming_mode.h"
 
 #include <algorithm>
@@ -190,6 +191,7 @@ bool LDToLadderConverter::ConvertNetworksToLadder(
   ladderProgram.rungs.push_back(endRung);
 
   GenerateVerticalConnections(ladderProgram);
+  CanonicalizeLadderProgram(&ladderProgram);
 
   LogDebug("✅ Converted to " + std::to_string(ladderProgram.rungs.size()) +
            " rungs with " +

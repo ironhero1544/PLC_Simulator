@@ -3,6 +3,7 @@
 // Implementation of XML serializer.
 
 #include "plc_emulator/project/xml_serializer.h"
+#include "plc_emulator/programming/ladder_program_utils.h"
 
 #include <chrono>
 #include <fstream>
@@ -25,6 +26,8 @@ XMLSerializer::SerializationResult XMLSerializer::SerializeToXML(
 
   try {
     std::stringstream xml;
+    LadderProgram canonical_program = program;
+    CanonicalizeLadderProgram(&canonical_program);
 
     // XML header.
     xml << GenerateXMLHeader();
@@ -34,10 +37,10 @@ XMLSerializer::SerializationResult XMLSerializer::SerializeToXML(
     xml << GenerateMetadata();
 
     // Serialize rungs.
-    xml << SerializeRungs(program.rungs);
+    xml << SerializeRungs(canonical_program.rungs);
 
     // Serialize vertical connections.
-    xml << SerializeVerticalConnections(program.verticalConnections);
+    xml << SerializeVerticalConnections(canonical_program.verticalConnections);
 
     xml << "</LadderProgram>\n";
 
@@ -94,6 +97,7 @@ XMLSerializer::DeserializationResult XMLSerializer::DeserializeFromXML(
       return result;
     }
 
+    CanonicalizeLadderProgram(&result.program);
     result.success = true;
     LogDebug("✅ XML deserialization completed: " +
              std::to_string(result.program.rungs.size()) + " rungs, " +

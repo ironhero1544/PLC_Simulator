@@ -382,12 +382,104 @@ std::string OpenPLCCompilerIntegration::GenerateExecutionCode(
   code << "    // === PLC Ladder Logic Execution ===\n";
   code << "    \n";
 
+  auto is_logic_instruction = [](LDInstruction::Type type) -> bool {
+    switch (type) {
+      case LDInstruction::LD:
+      case LDInstruction::LDN:
+      case LDInstruction::AND:
+      case LDInstruction::ANDN:
+      case LDInstruction::OR:
+      case LDInstruction::ORN:
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  auto build_logic_term = [](const LDInstruction& instruction) -> std::string {
+    switch (instruction.type) {
+      case LDInstruction::LDN:
+      case LDInstruction::ANDN:
+      case LDInstruction::ORN:
+        return "!" + instruction.operand;
+      case LDInstruction::LD:
+      case LDInstruction::AND:
+      case LDInstruction::OR:
+      default:
+        return instruction.operand;
+    }
+  };
+
+  auto build_logic_expression =
+      [&](const std::vector<LDInstruction>& logic_instructions) -> std::string {
+    if (logic_instructions.empty()) {
+      return "false";
+    }
+
+    std::vector<std::string> branch_expressions;
+    std::vector<std::string> branch_terms;
+    auto flush_branch = [&]() {
+      if (branch_terms.empty()) {
+        return;
+      }
+
+      std::string branch = branch_terms.front();
+      for (size_t i = 1; i < branch_terms.size(); ++i) {
+        branch += " && " + branch_terms[i];
+      }
+      if (branch_terms.size() > 1) {
+        branch = "(" + branch + ")";
+      }
+      branch_expressions.push_back(branch);
+      branch_terms.clear();
+    };
+
+    for (const auto& instruction : logic_instructions) {
+      if ((instruction.type == LDInstruction::OR ||
+           instruction.type == LDInstruction::ORN) &&
+          !branch_terms.empty()) {
+        flush_branch();
+      }
+      branch_terms.push_back(build_logic_term(instruction));
+    }
+    flush_branch();
+
+    if (branch_expressions.empty()) {
+      return "false";
+    }
+
+    std::string expression = branch_expressions.front();
+    for (size_t i = 1; i < branch_expressions.size(); ++i) {
+      expression += " || " + branch_expressions[i];
+    }
+    return expression;
+  };
+
+  std::vector<LDInstruction> pending_logic;
+  auto flush_logic = [&](int line_number) {
+    if (pending_logic.empty()) {
+      return;
+    }
+
+    code << "    accumulator = " << build_logic_expression(pending_logic)
+         << "; // Line " << line_number << "\n";
+    pending_logic.clear();
+  };
+
   for (const auto& instruction : instructions) {
+    if (is_logic_instruction(instruction.type)) {
+      pending_logic.push_back(instruction);
+      continue;
+    }
+
+    flush_logic(instruction.lineNumber);
     std::string line = TranslateInstruction(instruction);
     if (!line.empty()) {
       code << "    " << line << " // Line " << instruction.lineNumber << "\n";
     }
   }
+
+  flush_logic(0);
 
   code << "    \n";
   code << "    // Update scan time\n";

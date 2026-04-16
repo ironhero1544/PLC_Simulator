@@ -3,10 +3,13 @@
 // Implementation of project file manager.
 
 #include "plc_emulator/project/project_file_manager.h"
+#include "plc_emulator/programming/ladder_program_utils.h"
 
 #include "miniz.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <limits>
@@ -19,13 +22,181 @@
 
 #if __cplusplus >= 201703L
 #include <filesystem>
-namespace fs = std::filesystem;
 #else
 #include <sys/stat.h>
 #endif
 
 #ifdef _WIN32
 #include <windows.h>
+
+std::string NormalizeWindowsPath(std::string path) {
+  for (char& ch : path) {
+    if (ch == '/') {
+      ch = '\\';
+    }
+  }
+  return path;
+}
+
+bool EnsureDirectoryExistsRecursive(const std::string& directory_path) {
+  if (directory_path.empty()) {
+    return true;
+  }
+
+  const std::string normalized = NormalizeWindowsPath(directory_path);
+  if (normalized.empty()) {
+    return true;
+  }
+
+  DWORD attrs = GetFileAttributesA(normalized.c_str());
+  if (attrs != INVALID_FILE_ATTRIBUTES) {
+    return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+  }
+
+  std::string current;
+  size_t index = 0;
+  if (normalized.size() >= 2 && normalized[1] == ':') {
+    current = normalized.substr(0, 2);
+    index = 2;
+    if (index < normalized.size() &&
+        (normalized[index] == '\\' || normalized[index] == '/')) {
+      current.push_back('\\');
+      ++index;
+    }
+  } else if (!normalized.empty() &&
+             (normalized[0] == '\\' || normalized[0] == '/')) {
+    current = "\\";
+    index = 1;
+  }
+
+  while (index < normalized.size()) {
+    size_t next = normalized.find('\\', index);
+    std::string part = normalized.substr(
+        index, next == std::string::npos ? std::string::npos : next - index);
+    if (!part.empty()) {
+      if (!current.empty() && current.back() != '\\') {
+        current.push_back('\\');
+      }
+      current += part;
+      if (!CreateDirectoryA(current.c_str(), nullptr)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_ALREADY_EXISTS) {
+          return false;
+        }
+      }
+    }
+    if (next == std::string::npos) {
+      break;
+    }
+    index = next + 1;
+  }
+
+  return true;
+}
+
+bool DeleteDirectoryTreeRecursive(const std::string& directory_path) {
+  const std::string normalized = NormalizeWindowsPath(directory_path);
+  WIN32_FIND_DATAA find_data;
+  const std::string search_path = normalized + "\\*";
+  HANDLE find_handle = FindFirstFileA(search_path.c_str(), &find_data);
+  if (find_handle != INVALID_HANDLE_VALUE) {
+    do {
+      const char* name = find_data.cFileName;
+      if (std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0) {
+        continue;
+      }
+
+      const std::string child_path = normalized + "\\" + name;
+      if ((find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        DeleteDirectoryTreeRecursive(child_path);
+      } else {
+        DeleteFileA(child_path.c_str());
+      }
+    } while (FindNextFileA(find_handle, &find_data) != 0);
+    FindClose(find_handle);
+  }
+
+  DWORD attrs = GetFileAttributesA(normalized.c_str());
+  if (attrs != INVALID_FILE_ATTRIBUTES &&
+      (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+    RemoveDirectoryA(normalized.c_str());
+  }
+  return true;
+}
+
+bool ReadDirectoryTreeRecursive(const std::string& root_path,
+                                const std::string& relative_path,
+                                std::map<std::string, std::string>& files) {
+  const std::string current_path = relative_path.empty()
+                                       ? NormalizeWindowsPath(root_path)
+                                       : NormalizeWindowsPath(root_path + "\\" +
+                                                              relative_path);
+
+  WIN32_FIND_DATAA find_data;
+  const std::string search_path = current_path + "\\*";
+  HANDLE find_handle = FindFirstFileA(search_path.c_str(), &find_data);
+  if (find_handle == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+
+  do {
+    const char* name = find_data.cFileName;
+    if (std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0) {
+      continue;
+    }
+
+    const std::string child_relative =
+        relative_path.empty() ? std::string(name)
+                              : (relative_path + "\\" + name);
+    const std::string child_full =
+        NormalizeWindowsPath(root_path + "\\" + child_relative);
+    if ((find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+      ReadDirectoryTreeRecursive(root_path, child_relative, files);
+      continue;
+    }
+
+    std::ifstream file(child_full, std::ios::binary);
+    if (!file.is_open()) {
+      continue;
+    }
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+    std::string normalized_relative = child_relative;
+    for (char& ch : normalized_relative) {
+      if (ch == '\\') {
+        ch = '/';
+      }
+    }
+    files[normalized_relative] = content;
+  } while (FindNextFileA(find_handle, &find_data) != 0);
+
+  FindClose(find_handle);
+  return true;
+}
+
+std::string ParentDirectoryOf(const std::string& path) {
+  const std::string normalized = NormalizeWindowsPath(path);
+  size_t pos = normalized.find_last_of("\\");
+  if (pos == std::string::npos) {
+    return "";
+  }
+  return normalized.substr(0, pos);
+}
+
+std::string JoinWindowsPath(const std::string& left, const std::string& right) {
+  if (left.empty()) {
+    return NormalizeWindowsPath(right);
+  }
+  if (right.empty()) {
+    return NormalizeWindowsPath(left);
+  }
+  std::string joined = NormalizeWindowsPath(left);
+  if (joined.back() != '\\') {
+    joined.push_back('\\');
+  }
+  joined += NormalizeWindowsPath(right);
+  return joined;
+}
 
 
 int ExecuteHiddenPowerShell(const std::string& command) {
@@ -68,34 +239,60 @@ int ExecuteHiddenPowerShell(const std::string& command) {
   return static_cast<int>(exitCode);
 }
 
+std::string CreateUniqueTempDirectory(const char* prefix) {
+  char temp_dir[MAX_PATH] = {0};
+  if (GetTempPathA(MAX_PATH, temp_dir) == 0) {
+    return "";
+  }
+
+  char temp_file[MAX_PATH] = {0};
+  if (GetTempFileNameA(temp_dir, prefix, 0, temp_file) == 0) {
+    return "";
+  }
+
+  DeleteFileA(temp_file);
+  if (!CreateDirectoryA(temp_file, nullptr) &&
+      GetLastError() != ERROR_ALREADY_EXISTS) {
+    return "";
+  }
+  return temp_file;
+}
+
 bool CreateZipFileWindows(const std::string& zipPath,
                           const std::map<std::string, std::string>& files) {
-  char tempDir[MAX_PATH];
-  GetTempPathA(MAX_PATH, tempDir);
-  std::string tempPath = std::string(tempDir) + "PLCProject_temp\\";
-  CreateDirectoryA(tempPath.c_str(), nullptr);
+  const std::string tempPath = CreateUniqueTempDirectory("PCZ");
+  if (tempPath.empty()) {
+    return false;
+  }
+
+  auto cleanup_temp = [&tempPath]() {
+    DeleteDirectoryTreeRecursive(tempPath);
+  };
 
   for (const auto& [fileName, content] : files) {
-    std::string tempFilePath = tempPath + fileName;
+    const std::string tempFilePath = JoinWindowsPath(tempPath, fileName);
+    if (!EnsureDirectoryExistsRecursive(ParentDirectoryOf(tempFilePath))) {
+      cleanup_temp();
+      return false;
+    }
+
     std::ofstream tempFile(tempFilePath, std::ios::binary);
     if (tempFile.is_open()) {
       tempFile << content;
       tempFile.close();
     } else {
+      cleanup_temp();
       return false;
     }
   }
 
   auto ensure_parent_dir = [](const std::string& path) {
-    size_t pos = path.find_last_of("/\\");
-    if (pos != std::string::npos) {
-      std::string dir = path.substr(0, pos);
-      if (!dir.empty()) {
-        CreateDirectoryA(dir.c_str(), nullptr);
-      }
-    }
+    return EnsureDirectoryExistsRecursive(ParentDirectoryOf(path));
   };
-  ensure_parent_dir(zipPath);
+  if (!ensure_parent_dir(zipPath)) {
+    cleanup_temp();
+    return false;
+  }
 
   char shortZipPath[MAX_PATH] = {0};
   char shortTempPath[MAX_PATH] = {0};
@@ -126,21 +323,21 @@ bool CreateZipFileWindows(const std::string& zipPath,
   int result = ExecuteHiddenPowerShell(finalCmd);
   printf("[DEBUG] PowerShell Result: %d\n", result);
 
-  for (const auto& [fileName, content] : files) {
-    std::string tempFilePath = tempPath + fileName;
-    DeleteFileA(tempFilePath.c_str());
-  }
-  RemoveDirectoryA(tempPath.c_str());
+  cleanup_temp();
 
   return (result == 0);
 }
 
 bool ExtractZipFileWindows(const std::string& zipPath,
                            std::map<std::string, std::string>& files) {
-  char tempDir[MAX_PATH];
-  GetTempPathA(MAX_PATH, tempDir);
-  std::string extractPath = std::string(tempDir) + "PLCProject_extract\\";
-  CreateDirectoryA(extractPath.c_str(), nullptr);
+  const std::string extractPath = CreateUniqueTempDirectory("PCX");
+  if (extractPath.empty()) {
+    return false;
+  }
+
+  auto cleanup_extract = [&extractPath]() {
+    DeleteDirectoryTreeRecursive(extractPath);
+  };
 
   char shortZipPath[MAX_PATH] = {0};
   char shortExtractPath[MAX_PATH] = {0};
@@ -168,49 +365,17 @@ bool ExtractZipFileWindows(const std::string& zipPath,
 
   if (result == 0) {
     printf("[DEBUG] PowerShell extraction successful, reading files from: %s\n",
-           extractPath.c_str());
-
-    WIN32_FIND_DATAA findData;
-    std::string searchPath = extractPath + "*";
-    HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
-
-    if (hFind != INVALID_HANDLE_VALUE) {
-      printf("[DEBUG] Found files in extract directory:\n");
-      do {
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-          std::string fileName = findData.cFileName;
-          std::string fullPath = extractPath + fileName;
-          printf("[DEBUG]   - %s (%lu bytes)\n", fileName.c_str(),
-                 findData.nFileSizeLow);
-
-          std::ifstream file(fullPath, std::ios::binary);
-          if (file.is_open()) {
-            std::string content((std::istreambuf_iterator<char>(file)),
-                                std::istreambuf_iterator<char>());
-            files[fileName] = content;
-            printf("[DEBUG]   - Successfully read %s (%zu bytes)\n",
-                   fileName.c_str(), content.size());
-            file.close();
-          } else {
-            printf("[DEBUG]   - Failed to open %s\n", fullPath.c_str());
-          }
-          DeleteFileA(fullPath.c_str());
-        }
-      } while (FindNextFileA(hFind, &findData));
-      FindClose(hFind);
-    } else {
-      printf("[DEBUG] No files found in extract directory: %s\n",
-             extractPath.c_str());
-    }
+            extractPath.c_str());
+    ReadDirectoryTreeRecursive(extractPath, "", files);
 
     printf("[DEBUG] Total files extracted: %zu\n", files.size());
-    RemoveDirectoryA(extractPath.c_str());
+    cleanup_extract();
     return true;
   } else {
     printf("[DEBUG] PowerShell extraction failed with code: %d\n", result);
   }
 
-  RemoveDirectoryA(extractPath.c_str());
+  cleanup_extract();
   return false;
 }
 #endif
@@ -334,6 +499,15 @@ std::string BuildRungMemoNote(const std::string& memo) {
   return "RUNG_MEMO=" + memo;
 }
 
+std::string BuildOrGroupNote(int x, int outputBranchIndex) {
+  std::ostringstream oss;
+  oss << "VCX=" << x;
+  if (outputBranchIndex >= 0) {
+    oss << ";OUTB=" << outputBranchIndex;
+  }
+  return oss.str();
+}
+
 bool ParseRungMemoNote(const std::string& note, std::string* memo) {
   static const std::string kMemoPrefix = "RUNG_MEMO=";
   if (note.rfind(kMemoPrefix, 0) != 0) {
@@ -345,8 +519,44 @@ bool ParseRungMemoNote(const std::string& note, std::string* memo) {
   return true;
 }
 
+void ParseOrGroupNote(const std::string& note,
+                      int* x,
+                      int* outputBranchIndex) {
+  if (x) {
+    *x = -1;
+  }
+  if (outputBranchIndex) {
+    *outputBranchIndex = 0;
+  }
+  if (note.empty()) {
+    return;
+  }
+
+  std::stringstream ss(note);
+  std::string token;
+  while (std::getline(ss, token, ';')) {
+    token = TrimField(token);
+    if (token.rfind("VCX=", 0) == 0) {
+      int value = 0;
+      if (TryParseInt(token.substr(4), &value) && x) {
+        *x = value;
+      }
+      continue;
+    }
+    if (token.rfind("OUTB=", 0) == 0) {
+      int value = 0;
+      if (TryParseInt(token.substr(5), &value) && outputBranchIndex) {
+        *outputBranchIndex = std::max(0, value);
+      }
+    }
+  }
+}
+
 std::string BuildGX2CSV(const plc::LadderProgram& program,
                         const std::string& projectName) {
+  plc::LadderProgram canonical_program = program;
+  plc::CanonicalizeLadderProgram(&canonical_program);
+
   std::vector<std::string> lines;
   std::string name = projectName.empty() ? "Untitled Project" : projectName;
   lines.push_back(JoinCSVLine({"(" + name + ")"}));
@@ -393,6 +603,7 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
       if (cell.type == plc::LadderInstructionType::OTE ||
           cell.type == plc::LadderInstructionType::SET ||
           cell.type == plc::LadderInstructionType::RST ||
+          cell.type == plc::LadderInstructionType::RST_TMR_CTR ||
           cell.type == plc::LadderInstructionType::TON ||
           cell.type == plc::LadderInstructionType::CTU ||
           cell.type == plc::LadderInstructionType::BKRST) {
@@ -406,22 +617,44 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
   struct OrGroup {
     int x = 0;
     std::vector<int> rungs;
+    size_t sourceIndex = 0;
   };
 
-  std::set<int> groupedRungs;
   std::vector<OrGroup> groups;
-  groups.reserve(program.verticalConnections.size());
-  for (const auto& conn : program.verticalConnections) {
+  groups.reserve(canonical_program.verticalConnections.size());
+  for (const auto& conn : canonical_program.verticalConnections) {
     if (!conn.rungs.empty()) {
       OrGroup group;
       group.x = conn.x;
       group.rungs = conn.rungs;
+      group.sourceIndex = groups.size();
+      std::sort(group.rungs.begin(), group.rungs.end());
+      group.rungs.erase(std::unique(group.rungs.begin(), group.rungs.end()),
+                        group.rungs.end());
       groups.push_back(group);
-      for (int rungIndex : conn.rungs) {
-        groupedRungs.insert(rungIndex);
-      }
     }
   }
+  std::stable_sort(groups.begin(), groups.end(),
+                   [](const OrGroup& lhs, const OrGroup& rhs) {
+               int lhs_start = lhs.rungs.empty() ? std::numeric_limits<int>::max()
+                                                 : lhs.rungs.front();
+               int rhs_start = rhs.rungs.empty() ? std::numeric_limits<int>::max()
+                                                 : rhs.rungs.front();
+               if (lhs_start != rhs_start) {
+                 return lhs_start < rhs_start;
+               }
+               const int lhs_end = lhs.rungs.empty() ? std::numeric_limits<int>::min()
+                                                     : lhs.rungs.back();
+               const int rhs_end = rhs.rungs.empty() ? std::numeric_limits<int>::min()
+                                                     : rhs.rungs.back();
+               if (lhs_end != rhs_end) {
+                 return lhs_end < rhs_end;
+               }
+               if (lhs.x != rhs.x) {
+                 return lhs.x < rhs.x;
+               }
+               return lhs.sourceIndex < rhs.sourceIndex;
+             });
 
   auto emit_contacts = [&](const std::vector<plc::LadderInstruction>& contacts,
                            bool isFirstRung,
@@ -503,20 +736,23 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
     }
   };
 
-  for (const auto& group : groups) {
+  auto emit_group = [&](const OrGroup& group) {
     plc::LadderInstruction output;
     bool hasOutput = false;
     bool firstRung = true;
+    int outputBranchIndex = 0;
+    int emittedBranchIndex = 0;
 
     for (int rungIndex : group.rungs) {
-      if (rungIndex < 0 || rungIndex >=
-                              static_cast<int>(program.rungs.size())) {
-        continue;
-      }
-      const auto& rung = program.rungs[static_cast<size_t>(rungIndex)];
-      if (rung.isEndRung) {
-        continue;
-      }
+       if (rungIndex < 0 || rungIndex >=
+                                static_cast<int>(canonical_program.rungs.size())) {
+         continue;
+       }
+       const auto& rung =
+           canonical_program.rungs[static_cast<size_t>(rungIndex)];
+       if (rung.isEndRung) {
+         continue;
+       }
 
       std::vector<plc::LadderInstruction> contacts;
       plc::LadderInstruction rungOutput;
@@ -526,30 +762,57 @@ std::string BuildGX2CSV(const plc::LadderProgram& program,
       if (!hasOutput && rungHasOutput) {
         output = rungOutput;
         hasOutput = true;
+        outputBranchIndex = emittedBranchIndex;
       }
 
       emit_contacts(contacts, firstRung, rung.memo);
       firstRung = false;
+      ++emittedBranchIndex;
     }
 
     if (!hasOutput) {
-      continue;
+      return;
     }
 
     if (group.rungs.size() > 1) {
       add_instruction_with_note("ORB", "",
-                                "VCX=" + std::to_string(group.x));
+                                BuildOrGroupNote(group.x, outputBranchIndex));
     }
     emit_output(output);
-  }
+  };
 
-  for (size_t i = 0; i < program.rungs.size(); ++i) {
-    const auto& rung = program.rungs[i];
+  std::set<int> emittedGroupedRungs;
+  size_t nextGroupIndex = 0;
+  for (size_t i = 0; i < canonical_program.rungs.size(); ++i) {
+    const auto& rung = canonical_program.rungs[i];
     if (rung.isEndRung) {
       break;
     }
 
-    if (groupedRungs.count(static_cast<int>(i)) > 0) {
+    bool emittedGroupAtRung = false;
+    while (nextGroupIndex < groups.size()) {
+      const auto& group = groups[nextGroupIndex];
+      if (group.rungs.empty()) {
+        ++nextGroupIndex;
+        continue;
+      }
+      const int groupStart = group.rungs.front();
+      if (groupStart < static_cast<int>(i)) {
+        ++nextGroupIndex;
+        continue;
+      }
+      if (groupStart != static_cast<int>(i)) {
+        break;
+      }
+
+      emit_group(group);
+      emittedGroupAtRung = true;
+      for (int rungIndex : group.rungs) {
+        emittedGroupedRungs.insert(rungIndex);
+      }
+      ++nextGroupIndex;
+    }
+    if (emittedGroupAtRung || emittedGroupedRungs.count(static_cast<int>(i)) > 0) {
       continue;
     }
 
@@ -591,10 +854,17 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
   std::vector<std::string> branchMemos;
   std::vector<plc::LadderInstruction> current;
   std::string currentBranchMemo;
-  std::vector<plc::LadderInstruction*> pendingPresetTargets;
+  struct PendingPresetTarget {
+    int rungIndex = -1;
+    int cellIndex = -1;
+  };
+  std::vector<PendingPresetTarget> pendingPresetTargets;
   int pending_or_x = -1;
+  int pending_output_branch_index = 0;
 
-  auto flush_output = [&](const plc::LadderInstruction& output, int xHint) {
+  auto flush_output = [&](const plc::LadderInstruction& output,
+                          int xHint,
+                          int outputBranchIndex) {
     if (!current.empty() || !currentBranchMemo.empty()) {
       branches.push_back(current);
       branchMemos.push_back(currentBranchMemo);
@@ -615,6 +885,9 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
     if (maxContacts > outputCol) {
       outputCol = std::min(maxContacts, 11);
     }
+
+    const int clampedOutputBranchIndex = std::max(
+        0, std::min(outputBranchIndex, static_cast<int>(branches.size()) - 1));
 
     std::vector<int> rungIndices;
     for (size_t branchIndex = 0; branchIndex < branches.size();
@@ -637,23 +910,28 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
         cellIndex++;
       }
 
-      for (int col = cellIndex; col < outputCol; ++col) {
-        rung.cells[col].type = plc::LadderInstructionType::HLINE;
+      if (static_cast<int>(branchIndex) == clampedOutputBranchIndex) {
+        for (int col = cellIndex; col < outputCol; ++col) {
+          rung.cells[col].type = plc::LadderInstructionType::HLINE;
+        }
       }
 
-      if (branchIndex == 0 && outputCol < 12) {
+      if (static_cast<int>(branchIndex) == clampedOutputBranchIndex &&
+          outputCol < 12) {
         rung.cells[outputCol] = output;
       }
 
       program.rungs.push_back(rung);
       rungIndices.push_back(rung.number);
 
-      if (branchIndex == 0 && outputCol < 12) {
+      if (static_cast<int>(branchIndex) == clampedOutputBranchIndex &&
+          outputCol < 12) {
         auto& storedCell = program.rungs.back().cells[outputCol];
         if ((storedCell.type == plc::LadderInstructionType::TON ||
              storedCell.type == plc::LadderInstructionType::CTU) &&
             storedCell.preset.empty()) {
-          pendingPresetTargets.push_back(&storedCell);
+          pendingPresetTargets.push_back(
+              {static_cast<int>(program.rungs.size()) - 1, outputCol});
         }
       }
     }
@@ -670,6 +948,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
     current.clear();
     currentBranchMemo.clear();
     pending_or_x = -1;
+    pending_output_branch_index = 0;
   };
 
   while (std::getline(stream, line)) {
@@ -697,9 +976,13 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
       if (!device.empty() && (device[0] == 'K' || device[0] == 'k') &&
           !pendingPresetTargets.empty()) {
         std::string preset = "K" + device.substr(1);
-        for (auto* target : pendingPresetTargets) {
-          if (target) {
-            target->preset = preset;
+        for (const auto& target : pendingPresetTargets) {
+          if (target.rungIndex >= 0 &&
+              target.rungIndex < static_cast<int>(program.rungs.size()) &&
+              target.cellIndex >= 0 && target.cellIndex < 12) {
+            program.rungs[static_cast<size_t>(target.rungIndex)]
+                .cells[static_cast<size_t>(target.cellIndex)]
+                .preset = preset;
           }
         }
         pendingPresetTargets.clear();
@@ -741,16 +1024,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
     }
 
     if (instr == "ORB") {
-      pending_or_x = -1;
-      if (!note.empty()) {
-        const std::string prefix = "VCX=";
-        if (note.rfind(prefix, 0) == 0) {
-          int value = 0;
-          if (TryParseInt(note.substr(prefix.size()), &value)) {
-            pending_or_x = value;
-          }
-        }
-      }
+      ParseOrGroupNote(note, &pending_or_x, &pending_output_branch_index);
       continue;
     }
 
@@ -779,7 +1053,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
       output.address = base.empty() ? device : base;
       output.preset = count_token;
 
-      flush_output(output, pending_or_x);
+      flush_output(output, pending_or_x, pending_output_branch_index);
       continue;
     }
 
@@ -796,12 +1070,14 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
       } else if (instr == "SET") {
         output.type = plc::LadderInstructionType::SET;
       } else if (instr == "RST") {
-        output.type = plc::LadderInstructionType::RST;
+        output.type = (!device.empty() && (device[0] == 'T' || device[0] == 'C'))
+                          ? plc::LadderInstructionType::RST_TMR_CTR
+                          : plc::LadderInstructionType::RST;
       } else {
         output.type = plc::LadderInstructionType::OTE;
       }
 
-      flush_output(output, pending_or_x);
+      flush_output(output, pending_or_x, pending_output_branch_index);
       continue;
     }
   }
@@ -809,6 +1085,7 @@ bool ParseGX2CSV(const std::string& csvContent, plc::LadderProgram& program) {
   plc::Rung endRung;
   endRung.isEndRung = true;
   program.rungs.push_back(endRung);
+  plc::CanonicalizeLadderProgram(&program);
 
   return !program.rungs.empty();
 }
@@ -874,7 +1151,7 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProject(
 ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
     const LadderProgram& program, const std::string& layoutJson,
     const std::string& rtlLibraryJson,
-    const std::map<std::string, std::string>& rtlArtifacts,
+    const std::map<std::string, std::map<std::string, std::string>>& rtlArtifacts,
     const std::string& filePath, const std::string& projectName) {
   SaveResult result;
   last_error_.clear();
@@ -914,9 +1191,12 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
   }
   
   // Pack RTL artifacts
-  for (const auto& [moduleId, data] : rtlArtifacts) {
-    if (!data.empty()) {
-      files["rtl_artifacts/" + moduleId + ".exe"] = data;
+  for (const auto& [moduleId, artifactFiles] : rtlArtifacts) {
+    for (const auto& [fileName, data] : artifactFiles) {
+      if (moduleId.empty() || fileName.empty() || data.empty()) {
+        continue;
+      }
+      files["rtl_artifacts/" + moduleId + "/" + fileName] = data;
     }
   }
 
@@ -943,6 +1223,63 @@ ProjectFileManager::SaveResult ProjectFileManager::SaveProjectPackage(
   result.savedPath = filePath;
   result.compressedSize = saved_size;
   LogDebug("[PKG] Project package saved successfully");
+  return result;
+}
+
+ProjectFileManager::SaveResult ProjectFileManager::SaveRtlComponentPackage(
+    const std::string& entryJson,
+    const std::map<std::string, std::string>& artifactFiles,
+    const std::string& filePath,
+    const std::string& componentName) {
+  SaveResult result;
+  last_error_.clear();
+
+  LogDebug("[RTLCOMP] Starting RTL component package save to: " + filePath);
+
+  if (entryJson.empty()) {
+    result.success = false;
+    result.errorMessage = "RTL component JSON is empty";
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  result.info.projectName =
+      componentName.empty() ? ExtractFileName(filePath) : componentName;
+  result.info.version = "1.0";
+  result.info.createdDate = GetCurrentDateTime();
+  result.info.lastModified = result.info.createdDate;
+  result.info.toolVersion = "PLC Simulator v1.0.4";
+  result.info.schemaVersion = "rtl-component-1.0";
+  result.info.programChecksum = CalculateChecksum(entryJson);
+
+  std::map<std::string, std::string> files;
+  files["rtl_component.json"] = entryJson;
+  for (const auto& [fileName, data] : artifactFiles) {
+    if (!fileName.empty() && !data.empty()) {
+      files["rtl_artifacts/" + fileName] = data;
+    }
+  }
+  files["manifest.json"] = GenerateManifest(result.info);
+
+  if (!CreateZipFile(filePath, files)) {
+    result.success = false;
+    result.errorMessage = GetLastError().empty()
+                              ? "Failed to create RTL component package"
+                              : GetLastError();
+    return result;
+  }
+
+  std::ifstream saved_file(filePath, std::ios::binary | std::ios::ate);
+  if (saved_file.is_open()) {
+    const std::streampos end_pos = saved_file.tellg();
+    if (end_pos > 0) {
+      result.compressedSize = static_cast<size_t>(end_pos);
+    }
+  }
+
+  result.success = true;
+  result.savedPath = filePath;
+  LogDebug("[RTLCOMP] RTL component package saved successfully");
   return result;
 }
 
@@ -1037,12 +1374,25 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProjectPackage(
   // Extract RTL artifacts
   for (const auto& [fileName, content] : files) {
     if (fileName.rfind("rtl_artifacts/", 0) == 0) {
-      std::string moduleId = fileName.substr(14); // remove "rtl_artifacts/"
-      size_t dot_pos = moduleId.find_last_of('.');
-      if (dot_pos != std::string::npos) {
-        moduleId = moduleId.substr(0, dot_pos);
+      std::string relativePath = fileName.substr(14); // remove "rtl_artifacts/"
+      size_t slash_pos = relativePath.find_first_of("/\\");
+      if (slash_pos == std::string::npos) {
+        std::string moduleId = relativePath;
+        size_t dot_pos = moduleId.find_last_of('.');
+        if (dot_pos != std::string::npos) {
+          moduleId = moduleId.substr(0, dot_pos);
+        }
+        if (!moduleId.empty()) {
+          result.rtlArtifacts[moduleId]["rtl_worker.exe"] = content;
+        }
+        continue;
       }
-      result.rtlArtifacts[moduleId] = content;
+
+      std::string moduleId = relativePath.substr(0, slash_pos);
+      std::string artifactName = relativePath.substr(slash_pos + 1);
+      if (!moduleId.empty() && !artifactName.empty()) {
+        result.rtlArtifacts[moduleId][artifactName] = content;
+      }
     }
   }
 
@@ -1059,6 +1409,56 @@ ProjectFileManager::LoadResult ProjectFileManager::LoadProjectPackage(
   }
 
   LogDebug("[PKG] Project package loaded successfully");
+  return result;
+}
+
+ProjectFileManager::RtlComponentLoadResult
+ProjectFileManager::LoadRtlComponentPackage(const std::string& filePath) {
+  RtlComponentLoadResult result;
+  last_error_.clear();
+
+  LogDebug("[RTLCOMP] Starting RTL component package load from: " + filePath);
+
+  std::map<std::string, std::string> files;
+  if (!ExtractZipFile(filePath, files)) {
+    result.errorMessage = GetLastError().empty()
+                              ? "Failed to extract RTL component package"
+                              : GetLastError();
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  auto entry_it = files.find("rtl_component.json");
+  if (entry_it == files.end()) {
+    result.errorMessage =
+        "RTL component package is missing required file: rtl_component.json";
+    SetError(result.errorMessage);
+    return result;
+  }
+
+  result.success = true;
+  result.entryJson = entry_it->second;
+  for (const auto& [fileName, content] : files) {
+    if (fileName.rfind("rtl_artifacts/", 0) == 0) {
+      const std::string artifactName = fileName.substr(14);
+      if (!artifactName.empty()) {
+        result.artifactFiles[artifactName] = content;
+      }
+    }
+  }
+
+  result.info.projectName = ExtractFileName(filePath);
+  result.info.version = "1.0";
+  result.info.toolVersion = "PLC Simulator v1.0.4";
+  result.info.schemaVersion = "rtl-component-1.0";
+  result.info.programChecksum = CalculateChecksum(result.entryJson);
+
+  auto manifest_it = files.find("manifest.json");
+  if (manifest_it != files.end()) {
+    ParseManifest(manifest_it->second, result.info);
+  }
+
+  LogDebug("[RTLCOMP] RTL component package loaded successfully");
   return result;
 }
 

@@ -1,9 +1,11 @@
 #include "plc_emulator/rtl/rtl_runtime_manager.h"
+#include "plc_emulator/core/windows_power_utils.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -16,10 +18,19 @@
 
 // 워커 응답 대기 타임아웃 (ms). 조합 회로는 수μs, 순차 회로도 수ms 이내.
 // 초과 시 해당 프레임은 실패로 처리하고 다음 프레임에서 재시도합니다.
-static constexpr DWORD kRtlWorkerResponseTimeoutMs = 200;
+static constexpr DWORD kRtlWorkerResponseTimeoutMs = 500;
+static constexpr DWORD kRtlWorkerEfficiencyModeTimeoutMs = 1200;
 
 namespace plc {
 namespace {
+
+#ifdef _WIN32
+DWORD GetRtlWorkerResponseTimeoutMs() {
+  return ShouldUseWindowsEfficiencyMode()
+             ? kRtlWorkerEfficiencyModeTimeoutMs
+             : kRtlWorkerResponseTimeoutMs;
+}
+#endif
 
 float GetRtlInputHighThreshold(RtlLogicFamily family) {
   switch (family) {
@@ -134,6 +145,7 @@ std::string GetBundledToolPathPrefix(const RtlToolchainStatus& status) {
 struct RtlRuntimeManager::WorkerProcess {
   int instanceId = -1;
   std::string moduleId;
+  std::unordered_map<std::string, int> outputPortIdsByPinName;
 #ifdef _WIN32
   HANDLE processHandle = nullptr;
   HANDLE threadHandle = nullptr;
@@ -417,9 +429,17 @@ bool RtlRuntimeManager::EnsureProcessStarted(const PlacedComponent& comp,
     return false;
   }
 
+  ApplyWindowsEfficiencyModeCompatibility(process_info.hProcess,
+                                          process_info.hThread);
+
   WorkerProcess process;
   process.instanceId = comp.instanceId;
   process.moduleId = comp.rtlModuleId;
+  for (const auto& binding : comp.rtlPinBindings) {
+    if (!binding.isInput) {
+      process.outputPortIdsByPinName[binding.pinName] = binding.portId;
+    }
+  }
   process.processHandle = process_info.hProcess;
   process.threadHandle = process_info.hThread;
   process.stdinWrite = child_stdin_write;
@@ -446,6 +466,8 @@ bool RtlRuntimeManager::SendEvalRequest(
     return false;
   }
 #ifdef _WIN32
+  ApplyWindowsEfficiencyModeCompatibility(process->processHandle,
+                                          process->threadHandle);
   if (!process->evalPending) {
     std::string command = BuildEvalCommand(comp, voltages);
     command.push_back('\n');
@@ -480,7 +502,7 @@ bool RtlRuntimeManager::SendEvalRequest(
       return false;
     }
     if (available == 0) {
-      if (GetTickCount() - process->startTick > kRtlWorkerResponseTimeoutMs) {
+      if (GetTickCount() - process->startTick > GetRtlWorkerResponseTimeoutMs()) {
         if (diagnostics) {
           *diagnostics = "RTL worker response timed out.";
         }
@@ -538,13 +560,11 @@ bool RtlRuntimeManager::SendEvalRequest(
       } else if (value_text == "Z") {
         value = RtlLogicValue::HIGH_Z;
       }
-      for (const auto& binding : comp.rtlPinBindings) {
-        if (!binding.isInput && binding.pinName == pin_name) {
-          newOutputs[binding.portId] = value;
-          if (output_values) {
-            (*output_values)[binding.portId] = value;
-          }
-          break;
+      auto port_it = process->outputPortIdsByPinName.find(pin_name);
+      if (port_it != process->outputPortIdsByPinName.end()) {
+        newOutputs[port_it->second] = value;
+        if (output_values) {
+          (*output_values)[port_it->second] = value;
         }
       }
     }

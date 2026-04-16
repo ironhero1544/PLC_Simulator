@@ -5,6 +5,7 @@
 #include "plc_emulator/core/application.h"
 #include "plc_emulator/core/win32_input.h"
 #include "plc_emulator/core/win32_haptics.h"
+#include "plc_emulator/core/windows_power_utils.h"
 #include "plc_emulator/lang/lang_manager.h"
 #include "plc_emulator/core/ui_settings.h"
 
@@ -215,6 +216,7 @@ void ApplyWindowsAppIcon(GLFWwindow* window) {
                 reinterpret_cast<LPARAM>(small_icon));
   }
 }
+
 #endif
 
 }  // namespace
@@ -376,6 +378,12 @@ Application::Application(bool enable_debug_mode)
   deferred_canvas_wheel_input_ = Application::DeferredCanvasWheelInput{};
   prev_right_button_down_ = false;
   prev_side_button_down_ = false;
+  pen_component_adjust_active_ = false;
+  pen_component_adjust_component_id_ = -1;
+  pen_component_adjust_command_type_ = ComponentInteractionCommandType::None;
+  pen_component_adjust_start_scalar_ = 0.0f;
+  pen_component_adjust_last_angle_ = 0.0f;
+  pen_component_adjust_start_screen_pos_ = {0.0f, 0.0f};
   ui_settings_ = {};
   SetDefaultUiSettings(&ui_settings_);
 
@@ -414,6 +422,11 @@ Application::~Application() {
 bool Application::Initialize() {
   InitializeLanguage();
   LoadUiSettings(&ui_settings_);
+
+#ifdef _WIN32
+  ApplyWindowsEfficiencyModeCompatibility(GetCurrentProcess(),
+                                          GetCurrentThread());
+#endif
 
 
   if (!InitializeWindow())
@@ -494,6 +507,11 @@ bool Application::Initialize() {
 void Application::Run() {
 
   while (running_ && !glfwWindowShouldClose(window_)) {
+
+#ifdef _WIN32
+    ApplyWindowsEfficiencyModeCompatibility(GetCurrentProcess(),
+                                            GetCurrentThread());
+#endif
 
     ProcessInput();
     BeginFrame();

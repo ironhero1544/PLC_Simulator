@@ -120,6 +120,11 @@ namespace plc {
           std::string statusMessage;
         };
 
+        struct RtlSourceTreeGroup {
+          std::string directory;
+          std::vector<int> fileIndices;
+        };
+
         struct DeferredCanvasWheelInput {
           bool pending = false;
           float vertical_delta = 0.0f;
@@ -705,6 +710,12 @@ namespace plc {
         PlatformInputCollector platform_input_collector_;
         bool prev_right_button_down_;
         bool prev_side_button_down_;
+        bool pen_component_adjust_active_;
+        int pen_component_adjust_component_id_;
+        ComponentInteractionCommandType pen_component_adjust_command_type_;
+        float pen_component_adjust_start_scalar_;
+        float pen_component_adjust_last_angle_;
+        ImVec2 pen_component_adjust_start_screen_pos_;
         bool show_restart_popup_;
         bool show_shortcut_help_popup_;
         bool show_component_context_menu_;
@@ -722,6 +733,12 @@ namespace plc {
         std::string rtl_rename_source_buffer_;
         std::string rtl_editor_buffer_;
         std::string rtl_status_message_;
+        bool rtl_component_export_include_sources_ = true;
+        bool rtl_source_tree_cache_dirty_ = true;
+        std::string rtl_source_tree_cache_module_id_;
+        size_t rtl_source_tree_cache_file_count_ = 0;
+        std::vector<int> rtl_source_tree_root_indices_;
+        std::vector<RtlSourceTreeGroup> rtl_source_tree_groups_;
         float rtl_editor_height_;
         ImFont* rtl_editor_font_;
         int context_menu_component_id_;
@@ -753,6 +770,9 @@ namespace plc {
         void RenderUiSettingsMenu();
 
         void PrintDebugToConsole(const std::string& message);
+        bool PromptSaveProjectPackageDialog(
+            const std::string& default_file_name = "project.plcproj",
+            const std::string& project_name = "PLC_Project");
         bool SaveProjectPackage(const std::string& file_path,
                                 const std::string& project_name = "");
         bool LoadProjectPackage(const std::string& file_path);
@@ -771,8 +791,17 @@ namespace plc {
         void OnElectricalConfigChanged();
         bool ExportRtlSource(const std::string& module_id,
                              const std::string& source_path);
+        bool ExportRtlComponentPackage(const std::string& module_id,
+                                       bool include_source_files);
         bool ImportRtlSources(const std::string& module_id);
+        bool ImportRtlComponentPackage();
+        bool RunRtlToolScript(const std::string& script_name,
+                              const std::string& launch_status,
+                              const std::string& success_status,
+                              const std::string& failure_status);
         bool InstallRtlToolchain();
+        void InvalidateRtlSourceTreeCache();
+        void RebuildCachedRtlSourceTree(const RtlLibraryEntry& entry);
     };
 
 }  /* namespace plc */

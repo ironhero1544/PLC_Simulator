@@ -25,6 +25,13 @@ void Application::ProcessFrameKeyboardInput() {
     show_shortcut_help_popup_ = true;
   }
 
+  if (!io.WantTextInput && io.KeyCtrl &&
+      ImGui::IsKeyPressed(ImGuiKey_S, false) &&
+      (current_mode_ == Mode::PROGRAMMING || current_mode_ == Mode::WIRING)) {
+    PromptSaveProjectPackageDialog();
+    return;
+  }
+
   if (current_mode_ == Mode::PROGRAMMING) {
     if (programming_mode_) {
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -55,6 +62,10 @@ void Application::ProcessFrameKeyboardInput() {
         programming_mode_->HandleKeyboardInput(ImGuiKey_Z);
       if (ImGui::IsKeyPressed(ImGuiKey_Y, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_Y);
+      if (ImGui::IsKeyPressed(ImGuiKey_C, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_C);
+      if (ImGui::IsKeyPressed(ImGuiKey_V, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_V);
       if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))
         programming_mode_->HandleKeyboardInput(ImGuiKey_LeftArrow);
       if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true))

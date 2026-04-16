@@ -75,6 +75,22 @@ void DrawVerticalRailLine(ImDrawList* draw_list, float x, float top_y,
   draw_list->AddLine(ImVec2(x, top_y), ImVec2(x, bottom_y), color, thickness);
 }
 
+ImVec2 MinPoint(const ImVec2& a, const ImVec2& b) {
+  return ImVec2(std::min(a.x, b.x), std::min(a.y, b.y));
+}
+
+ImVec2 MaxPoint(const ImVec2& a, const ImVec2& b) {
+  return ImVec2(std::max(a.x, b.x), std::max(a.y, b.y));
+}
+
+bool RectanglesOverlap(const ImVec2& a_min,
+                       const ImVec2& a_max,
+                       const ImVec2& b_min,
+                       const ImVec2& b_max) {
+  return !(a_max.x < b_min.x || a_min.x > b_max.x || a_max.y < b_min.y ||
+           a_min.y > b_max.y);
+}
+
 void DrawLadderContactSymbol(ImDrawList* draw_list,
                              ImVec2 p_min,
                              ImVec2 p_max,
@@ -393,9 +409,37 @@ void ProgrammingMode::RenderLadderEditor() {
                           (35.0f * layout_scale);
   if (ImGui::BeginChild("LadderEditor", ImVec2(0, availableHeight), true,
                         ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+    const ImGuiIO& io = ImGui::GetIO();
+    if (!is_monitor_mode_ && !io.KeyCtrl && !io.KeyShift &&
+        !cell_box_select_pending_ && !cell_box_selecting_ &&
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+                               ImGuiHoveredFlags_ChildWindows) &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+      cell_box_select_pending_ = true;
+      cell_box_select_start_screen_ = io.MousePos;
+      cell_box_select_current_screen_ = io.MousePos;
+      cell_box_select_press_screen_ = io.MousePos;
+      cell_box_selection_has_hits_ = false;
+      cell_box_selection_bounds_ = CellSelectionBounds();
+    }
+
     RenderColumnHeader();
     RenderLadderDiagram();
-    // ???????????????????????????????? ????????????????????????????????????????????????????????????????????????????????????????????????????
+    if (cell_box_selecting_) {
+      ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+      const ImVec2 clip_min = ImGui::GetWindowPos();
+      const ImVec2 clip_max(clip_min.x + ImGui::GetWindowSize().x,
+                            clip_min.y + ImGui::GetWindowSize().y);
+      const ImVec2 rect_min =
+          MinPoint(cell_box_select_start_screen_, cell_box_select_current_screen_);
+      const ImVec2 rect_max =
+          MaxPoint(cell_box_select_start_screen_, cell_box_select_current_screen_);
+      draw_list->PushClipRect(clip_min, clip_max, true);
+      draw_list->AddRectFilled(rect_min, rect_max, IM_COL32(0, 123, 255, 35));
+      draw_list->AddRect(rect_min, rect_max, IM_COL32(0, 123, 255, 200), 0.0f,
+                         0, 1.5f);
+      draw_list->PopClipRect();
+    }
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
@@ -408,7 +452,8 @@ void ProgrammingMode::RenderColumnHeader() {
   ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
   ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
   if (ImGui::BeginChild("ColumnHeader", ImVec2(0, 50 * layout_scale), true,
-                        ImGuiWindowFlags_NoScrollbar)) {
+                        ImGuiWindowFlags_NoScrollbar |
+                            ImGuiWindowFlags_NoScrollWithMouse)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float rungNumberWidth = 80.0f * layout_scale;
     float railWidth = 22.0f * layout_scale;
@@ -466,12 +511,69 @@ void ProgrammingMode::RenderColumnHeader() {
 }
 
 void ProgrammingMode::RenderLadderDiagram() {
+  const ImGuiIO& io = ImGui::GetIO();
+  if (cell_box_select_pending_ && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    cell_box_select_current_screen_ = io.MousePos;
+    const ImVec2 drag_delta(cell_box_select_current_screen_.x -
+                                cell_box_select_press_screen_.x,
+                            cell_box_select_current_screen_.y -
+                                cell_box_select_press_screen_.y);
+    const float drag_threshold = 6.0f;
+    if (drag_delta.x * drag_delta.x + drag_delta.y * drag_delta.y >=
+        drag_threshold * drag_threshold) {
+      cell_box_select_pending_ = false;
+      cell_box_selecting_ = true;
+    }
+  } else if (cell_box_select_pending_ &&
+             ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    cell_box_select_pending_ = false;
+  }
+
+  if (cell_box_selecting_) {
+    cell_box_select_current_screen_ = io.MousePos;
+    cell_box_selection_has_hits_ = false;
+    cell_box_selection_bounds_ = CellSelectionBounds();
+  }
+
+  if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    rung_selection_drag_active_ = false;
+    cell_selection_drag_active_ = false;
+  }
+
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
   for (size_t i = 0; i < ladder_program_.rungs.size(); ++i) {
     if (ladder_program_.rungs[i].isEndRung) {
       RenderEndRung(i);
     } else {
       RenderRung(i);
+    }
+  }
+
+  if (cell_box_selecting_) {
+    rung_selection_mode_ = false;
+    rung_selection_drag_active_ = false;
+    selected_rungs_.clear();
+
+    if (cell_box_selection_has_hits_) {
+      selected_rung_ = cell_box_selection_bounds_.minRung;
+      selected_cell_ = cell_box_selection_bounds_.minCell;
+      cell_selection_active_ = true;
+      cell_selection_anchor_rung_ = cell_box_selection_bounds_.minRung;
+      cell_selection_anchor_cell_ = cell_box_selection_bounds_.minCell;
+      cell_selection_end_rung_ = cell_box_selection_bounds_.maxRung;
+      cell_selection_end_cell_ = cell_box_selection_bounds_.maxCell;
+      for (int rungIndex = cell_box_selection_bounds_.minRung;
+           rungIndex <= cell_box_selection_bounds_.maxRung; ++rungIndex) {
+        selected_rungs_.insert(rungIndex);
+      }
+    } else {
+      ClearCellSelection();
+    }
+    cell_selection_drag_active_ = false;
+
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+      cell_box_selecting_ = false;
+      cell_box_select_pending_ = false;
     }
   }
   ImGui::PopStyleVar();
@@ -556,7 +658,11 @@ void ProgrammingMode::RenderVerticalConnectionsForRung(int rungIndex,
 void ProgrammingMode::RenderRung(int rungIndex) {
   const float layout_scale = GetLayoutScale();
   ImGui::PushID(rungIndex);
-  bool isSelected = (selected_rung_ == rungIndex);
+  const ImGuiIO& io = ImGui::GetIO();
+  bool isSelected =
+      rung_selection_mode_ &&
+      (HasMultiSelectedRung(rungIndex) ||
+       (!HasAnySelectedRungs() && selected_rung_ == rungIndex));
   bool hasCompileError = IsRungCompileError(rungIndex);
   ImVec4 bgColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
   if (hasCompileError) {
@@ -570,7 +676,8 @@ void ProgrammingMode::RenderRung(int rungIndex) {
 
   if (ImGui::BeginChild("Rung", ImVec2(0, kLadderRungHeight * layout_scale),
                         false,
-                        ImGuiWindowFlags_NoScrollbar)) {
+                        ImGuiWindowFlags_NoScrollbar |
+                            ImGuiWindowFlags_NoScrollWithMouse)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float rungNumberWidth = 80.0f * layout_scale;
     float railWidth = 22.0f * layout_scale;
@@ -590,6 +697,63 @@ void ProgrammingMode::RenderRung(int rungIndex) {
     const float rail_thickness = std::max(2.0f, 2.4f * layout_scale);
     const float rail_overlap = std::max(0.5f, kRailSeamOverlap * layout_scale);
     const ImU32 rail_color = GetLadderRailColor(is_monitor_mode_);
+
+    ImGui::SetCursorPos(ImVec2(6 * layout_scale, 8 * layout_scale));
+    const ImVec2 handleSize(rungNumberWidth - 12 * layout_scale,
+                            kLadderCellHeight * layout_scale);
+    ImGui::InvisibleButton("##RungSelectHandle", handleSize);
+    const bool rungHandleClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+    if (rungHandleClicked) {
+      cell_box_select_pending_ = false;
+      cell_box_selecting_ = false;
+      cell_box_selection_has_hits_ = false;
+      cell_box_selection_bounds_ = CellSelectionBounds();
+      if (io.KeyShift) {
+        rung_selection_drag_active_ = false;
+        ExtendRungSelectionTo(rungIndex);
+      } else if (io.KeyCtrl) {
+        rung_selection_drag_active_ = false;
+        ToggleRungSelection(rungIndex);
+      } else {
+        const bool preserveSelectionForMove = rung_selection_mode_ &&
+                                              HasMultiSelectedRung(rungIndex);
+        if (preserveSelectionForMove) {
+          selected_rung_ = rungIndex;
+          selected_cell_ = 0;
+          rung_selection_anchor_ = rungIndex;
+        } else {
+          SelectSingleRung(rungIndex);
+          rung_selection_drag_active_ = true;
+        }
+      }
+    }
+    if (!is_monitor_mode_ && rung_selection_drag_active_ &&
+        ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+        ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) && !io.KeyCtrl &&
+        !io.KeyShift) {
+      ExtendRungSelectionTo(rungIndex);
+    }
+    if (!is_monitor_mode_ && !rung_selection_drag_active_ &&
+        ImGui::BeginDragDropSource()) {
+      cell_box_select_pending_ = false;
+      cell_box_selecting_ = false;
+      if (!HasMultiSelectedRung(rungIndex)) {
+        SelectSingleRung(rungIndex);
+      }
+      ImGui::SetDragDropPayload("PROGRAM_RUNG_MOVE", &rungIndex,
+                                sizeof(rungIndex));
+      ImGui::TextUnformatted(
+          TR("ui.programming.drag_move_rung", "Move rung"));
+      ImGui::EndDragDropSource();
+    }
+    if (!is_monitor_mode_ && ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload* payload =
+              ImGui::AcceptDragDropPayload("PROGRAM_RUNG_MOVE")) {
+        (void)payload;
+        MoveSelectedRungsBefore(rungIndex);
+      }
+      ImGui::EndDragDropTarget();
+    }
 
     ImGui::SetCursorPos(ImVec2(10 * layout_scale, 15 * layout_scale));
     char num[5];
@@ -643,13 +807,14 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
   const float layout_scale = GetLayoutScale();
   ImGui::PushID(rungIndex);
   ImGui::PushStyleColor(ImGuiCol_ChildBg,
-                        (selected_rung_ == rungIndex)
+                        (rung_selection_mode_ && selected_rung_ == rungIndex)
                             ? ImVec4(1.0f, 1.0f, 0.8f, 1.0f)
                             : ImVec4(0.92f, 0.92f, 0.92f, 1.0f));
 
   if (ImGui::BeginChild("EndRung",
                         ImVec2(0, kLadderRungHeight * layout_scale), false,
-                        ImGuiWindowFlags_NoScrollbar)) {
+                        ImGuiWindowFlags_NoScrollbar |
+                            ImGuiWindowFlags_NoScrollWithMouse)) {
     float availableWidth = ImGui::GetContentRegionAvail().x;
     float rungNumberWidth = 80.0f * layout_scale;
     float railWidth = 22.0f * layout_scale;
@@ -677,8 +842,21 @@ void ProgrammingMode::RenderEndRung(int rungIndex) {
                          rail_thickness);
 
     if (ImGui::InvisibleButton("##EndSelect", ImVec2(-1, -1))) {
+      ClearCellSelection();
       selected_rung_ = rungIndex;
       selected_cell_ = 0;
+      rung_selection_mode_ = true;
+      rung_selection_drag_active_ = false;
+      rung_selection_anchor_ = std::max(0, rungIndex - 1);
+      selected_rungs_.clear();
+    }
+    if (!is_monitor_mode_ && ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload* payload =
+              ImGui::AcceptDragDropPayload("PROGRAM_RUNG_MOVE")) {
+        (void)payload;
+        MoveSelectedRungsBefore(rungIndex);
+      }
+      ImGui::EndDragDropTarget();
     }
 
     ImGui::SetCursorPos(ImVec2(10 * layout_scale, 15 * layout_scale));
@@ -721,16 +899,42 @@ void ProgrammingMode::RenderLadderCell(int rungIndex, int cellIndex,
   const float layout_scale = GetLayoutScale();
   ImGui::PushID(cellIndex);
   const auto& instruction = ladder_program_.rungs[rungIndex].cells[cellIndex];
-  bool isSelected =
-      (selected_rung_ == rungIndex && selected_cell_ == cellIndex);
+  const ImVec2 cell_min = ImGui::GetCursorScreenPos();
+  const ImVec2 cell_max(
+      cell_min.x + cellWidth, cell_min.y + kLadderCellHeight * layout_scale);
+  const bool box_hit =
+      cell_box_selecting_ &&
+      RectanglesOverlap(cell_min, cell_max,
+                        MinPoint(cell_box_select_start_screen_,
+                                 cell_box_select_current_screen_),
+                        MaxPoint(cell_box_select_start_screen_,
+                                 cell_box_select_current_screen_));
+  bool isSelected = IsCellInSelection(rungIndex, cellIndex) || box_hit;
 
   ImGui::PushStyleColor(ImGuiCol_Button,
                         GetInstructionColor(isSelected, instruction.isActive));
 
-  if (ImGui::Button("##cell",
-                    ImVec2(cellWidth, kLadderCellHeight * layout_scale))) {
-    selected_rung_ = rungIndex;
-    selected_cell_ = cellIndex;
+  ImGui::Button("##cell", ImVec2(cellWidth, kLadderCellHeight * layout_scale));
+  if (ImGui::IsItemActivated()) {
+    SelectSingleCell(rungIndex, cellIndex, false);
+  }
+  if (cell_box_selecting_ && box_hit) {
+    if (!cell_box_selection_has_hits_) {
+      cell_box_selection_bounds_.minRung = rungIndex;
+      cell_box_selection_bounds_.maxRung = rungIndex;
+      cell_box_selection_bounds_.minCell = cellIndex;
+      cell_box_selection_bounds_.maxCell = cellIndex;
+      cell_box_selection_has_hits_ = true;
+    } else {
+      cell_box_selection_bounds_.minRung =
+          std::min(cell_box_selection_bounds_.minRung, rungIndex);
+      cell_box_selection_bounds_.maxRung =
+          std::max(cell_box_selection_bounds_.maxRung, rungIndex);
+      cell_box_selection_bounds_.minCell =
+          std::min(cell_box_selection_bounds_.minCell, cellIndex);
+      cell_box_selection_bounds_.maxCell =
+          std::max(cell_box_selection_bounds_.maxCell, cellIndex);
+    }
   }
 
   if (ImGui::IsItemVisible()) {
@@ -982,6 +1186,30 @@ void ProgrammingMode::RenderKeyboardHelp() {
   ImGui::BulletText(
       "%s", TR("ui.programming.shortcut_ctrl_y",
                "Ctrl+Y / Ctrl+Shift+Z: Redo"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_ctrl_s",
+               "Ctrl+S: Save project package"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_ctrl_c",
+               "Ctrl+C: Copy selected rung/cell block"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_ctrl_v",
+               "Ctrl+V: Paste copied rung/cell block"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_drag_rung",
+               "Drag rung number: Reorder selected rung block"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_drag_select_rung",
+               "Drag across rung numbers: Select rung range"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_drag_select_cell",
+               "Drag any ladder area: Select cells inside box"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_shift_click_rung",
+               "Shift+Click rung number: Select rung range"));
+  ImGui::BulletText(
+      "%s", TR("ui.programming.shortcut_shift_arrow_rung",
+               "Shift+Up/Down: Extend rung range selection"));
   ImGui::BulletText(
       "%s", TR("ui.programming.shortcut_memo_popup",
                "`: Open memo popup"));
@@ -1473,7 +1701,8 @@ void ProgrammingMode::RenderVerticalDialog() {
       ImGui::SetKeyboardFocusHere();
     }
 
-    int maxLines = (ladder_program_.rungs.size() - 2) - selected_rung_;
+    int maxLines = std::max(
+        0, static_cast<int>(ladder_program_.rungs.size()) - 2 - selected_rung_);
 
     if (ImGui::InputInt("##linecount", &vertical_line_count_)) {
       if (vertical_line_count_ < 1)

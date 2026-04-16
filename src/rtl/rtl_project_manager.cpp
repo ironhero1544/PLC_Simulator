@@ -5,6 +5,7 @@
  */
 
 #include "plc_emulator/rtl/rtl_project_manager.h"
+#include "plc_emulator/core/windows_power_utils.h"
 
 #include "nlohmann/json.hpp"
 
@@ -17,6 +18,7 @@
 #include <functional>
 #include <iomanip>
 #include <regex>
+#include <set>
 #include <sstream>
 
 #ifdef _WIN32
@@ -43,6 +45,7 @@ static constexpr DWORD kLocalBuildTimeoutMs = 300000;
 static constexpr unsigned int kLocalDefaultTimeoutMs = 30000;
 static constexpr unsigned int kLocalBuildTimeoutMs = 300000;
 #endif
+static constexpr size_t kMaxStoredRtlLogBytes = 256 * 1024;
 
 // --- Internal Utilities (Private Linkage) ---
 
@@ -87,6 +90,132 @@ static std::string LocalTrim(const std::string& text) {
   return text.substr(start, end - start);
 }
 
+static void LocalCapStoredLog(std::string* text) {
+  if (!text || text->size() <= kMaxStoredRtlLogBytes) return;
+  static const std::string kPrefix =
+      "[Log truncated. Showing the most recent output.]\n";
+  size_t keep = kMaxStoredRtlLogBytes > kPrefix.size()
+                    ? kMaxStoredRtlLogBytes - kPrefix.size()
+                    : 0;
+  size_t start = text->size() > keep ? text->size() - keep : 0;
+  *text = kPrefix + text->substr(start);
+}
+
+static void LocalCapEntryLogs(plc::RtlLibraryEntry* entry) {
+  if (!entry) return;
+  LocalCapStoredLog(&entry->diagnostics);
+  LocalCapStoredLog(&entry->buildDiagnostics);
+  LocalCapStoredLog(&entry->testbenchDiagnostics);
+  LocalCapStoredLog(&entry->testbenchBuildLog);
+  LocalCapStoredLog(&entry->testbenchRunLog);
+}
+
+static json LocalSerializePort(const plc::RtlPortDescriptor& port) {
+  return {{"pin_name", port.pinName},
+          {"base_name", port.baseName},
+          {"bit_index", port.bitIndex},
+          {"width", port.width},
+          {"is_input", port.isInput},
+          {"is_clock", port.isClock},
+          {"is_reset", port.isReset},
+          {"port_id", port.portId}};
+}
+
+static json LocalSerializeEntry(const plc::RtlLibraryEntry& entry,
+                                bool includeSourceFiles) {
+  json item;
+  item["module_id"] = entry.moduleId;
+  item["display_name"] = entry.displayName;
+  item["top_module"] = entry.topModule;
+  item["top_file"] = entry.topFile;
+  item["build_hash"] = entry.buildHash;
+  item["analyze_success"] = entry.analyzeSuccess;
+  item["build_success"] = entry.buildSuccess;
+  item["testbench_top_module"] = entry.testbenchTopModule;
+  item["testbench_top_file"] = entry.testbenchTopFile;
+  item["diagnostics"] = entry.diagnostics;
+  item["build_diagnostics"] = entry.buildDiagnostics;
+  item["testbench_diagnostics"] = entry.testbenchDiagnostics;
+  item["testbench_build_log"] = entry.testbenchBuildLog;
+  item["testbench_run_log"] = entry.testbenchRunLog;
+  item["testbench_vcd_path"] = entry.testbenchVcdPath;
+  item["testbench_success"] = entry.testbenchSuccess;
+  item["component_enabled"] = entry.componentEnabled;
+
+  json sources = json::array();
+  if (includeSourceFiles) {
+    for (const auto& file : entry.sourceFiles) {
+      sources.push_back({{"path", file.path}, {"content", file.content}});
+    }
+  }
+  item["source_files"] = sources;
+
+  json ports = json::array();
+  for (const auto& port : entry.ports) {
+    ports.push_back(LocalSerializePort(port));
+  }
+  item["ports"] = std::move(ports);
+  return item;
+}
+
+static bool LocalDeserializeEntry(const json& item,
+                                  plc::RtlLibraryEntry* entry) {
+  if (!entry || !item.is_object()) {
+    return false;
+  }
+  const std::string moduleId = item.value("module_id", "");
+  if (moduleId.empty()) {
+    return false;
+  }
+
+  plc::RtlLibraryEntry parsed;
+  parsed.moduleId = moduleId;
+  parsed.displayName = item.value("display_name", "RTL Module");
+  parsed.topModule = item.value("top_module", "");
+  parsed.topFile = item.value("top_file", "");
+  parsed.buildHash = item.value("build_hash", "");
+  parsed.analyzeSuccess = item.value("analyze_success", false);
+  parsed.buildSuccess = item.value("build_success", false);
+  parsed.testbenchTopModule = item.value("testbench_top_module", "");
+  parsed.testbenchTopFile = item.value("testbench_top_file", "");
+  parsed.diagnostics = item.value("diagnostics", "");
+  parsed.buildDiagnostics = item.value("build_diagnostics", "");
+  parsed.testbenchDiagnostics = item.value("testbench_diagnostics", "");
+  parsed.testbenchBuildLog = item.value("testbench_build_log", "");
+  parsed.testbenchRunLog = item.value("testbench_run_log", "");
+  parsed.testbenchVcdPath = item.value("testbench_vcd_path", "");
+  parsed.testbenchSuccess = item.value("testbench_success", false);
+  parsed.componentEnabled = item.value("component_enabled", false);
+
+  auto sourcesIt = item.find("source_files");
+  if (sourcesIt != item.end() && sourcesIt->is_array()) {
+    for (const auto& source : *sourcesIt) {
+      parsed.sourceFiles.push_back(
+          {source.value("path", ""), source.value("content", "")});
+    }
+  }
+
+  auto portsIt = item.find("ports");
+  if (portsIt != item.end() && portsIt->is_array()) {
+    for (const auto& port : *portsIt) {
+      plc::RtlPortDescriptor descriptor;
+      descriptor.pinName = port.value("pin_name", "");
+      descriptor.baseName = port.value("base_name", "");
+      descriptor.bitIndex = port.value("bit_index", -1);
+      descriptor.width = port.value("width", 1);
+      descriptor.isInput = port.value("is_input", true);
+      descriptor.isClock = port.value("is_clock", false);
+      descriptor.isReset = port.value("is_reset", false);
+      descriptor.portId = port.value("port_id", -1);
+      parsed.ports.push_back(std::move(descriptor));
+    }
+  }
+
+  LocalCapEntryLogs(&parsed);
+  *entry = std::move(parsed);
+  return true;
+}
+
 static std::vector<std::string> LocalSplitPortDeclarations(const std::string& text) {
   std::vector<std::string> declarations;
   std::string current;
@@ -113,6 +242,54 @@ static bool LocalEqualsIgnoreCase(const std::string& lhs, const std::string& rhs
   for (size_t i = 0; i < lhs.size(); ++i) {
     if (std::tolower(static_cast<unsigned char>(lhs[i])) !=
         std::tolower(static_cast<unsigned char>(rhs[i]))) return false;
+  }
+  return true;
+}
+
+static bool LocalSplitDisplayNameSuffix(const std::string& displayName,
+                                        std::string* baseName,
+                                        int* suffix) {
+  const std::string trimmed = LocalTrim(displayName);
+  if (baseName) {
+    *baseName = trimmed;
+  }
+  if (suffix) {
+    *suffix = 0;
+  }
+
+  static const std::regex kSuffixRegex(R"(^(.*)\s\((\d+)\)$)");
+  std::smatch match;
+  if (!std::regex_match(trimmed, match, kSuffixRegex) || match.size() != 3) {
+    return false;
+  }
+
+  const std::string parsedBase = LocalTrim(match[1].str());
+  if (parsedBase.empty()) {
+    return false;
+  }
+
+  if (baseName) {
+    *baseName = parsedBase;
+  }
+  if (suffix) {
+    *suffix = std::atoi(match[2].str().c_str());
+  }
+  return true;
+}
+
+static bool LocalDisplayNameBelongsToFamily(const std::string& candidate,
+                                            const std::string& familyBase,
+                                            int* suffix) {
+  std::string candidateBase;
+  int candidateSuffix = 0;
+  const bool hasSuffix =
+      LocalSplitDisplayNameSuffix(candidate, &candidateBase, &candidateSuffix);
+  if (!LocalEqualsIgnoreCase(candidateBase, familyBase)) {
+    return false;
+  }
+
+  if (suffix) {
+    *suffix = hasSuffix ? candidateSuffix : 0;
   }
   return true;
 }
@@ -152,12 +329,17 @@ static std::wstring LocalToWide(const std::string& s) {
   if (!res.empty() && res.back() == L'\0') res.pop_back();
   return res;
 }
+
+static DWORD GetPowerAwareTimeout(DWORD timeout) {
+  return plc::GetPowerAwareTimeout(timeout);
+}
 #endif
 
 static bool LocalRunCommand(const std::string& cmd, std::string* out, DWORD timeout) {
   if (out) out->clear();
   if (cmd.empty()) return false;
 #ifdef _WIN32
+  timeout = GetPowerAwareTimeout(timeout);
   SECURITY_ATTRIBUTES sa; memset(&sa, 0, sizeof(sa)); sa.nLength = sizeof(sa); sa.bInheritHandle = TRUE;
   HANDLE rPipe = nullptr, wPipe = nullptr;
   if (!CreatePipe(&rPipe, &wPipe, &sa, 0)) return false;
@@ -179,6 +361,7 @@ static bool LocalRunCommand(const std::string& cmd, std::string* out, DWORD time
     }
     return false;
   }
+  ApplyWindowsEfficiencyModeCompatibility(pi.hProcess, pi.hThread);
   CloseHandle(wPipe); if (nIn != INVALID_HANDLE_VALUE) CloseHandle(nIn);
   std::string captured; DWORD start = GetTickCount(); bool tO = false;
   while (true) {
@@ -300,6 +483,12 @@ static std::string LocalGetTempBasePath(const std::string& suffix) {
   return suffix;
 }
 
+static std::string LocalGetDirectoryName(const std::string& path) {
+  size_t pos = path.find_last_of("\\/");
+  if (pos == std::string::npos) return "";
+  return path.substr(0, pos);
+}
+
 static bool LocalEnsureDirRecursive(const std::string& path) {
   if (path.empty()) return false;
   std::string norm = path; std::replace(norm.begin(), norm.end(), '/', '\\');
@@ -322,6 +511,23 @@ static std::string GetLocalAppDataPathInternal() {
 
 static std::string BuildCacheRootDirectory() {
   return LocalJoinPath(GetLocalAppDataPathInternal(), "PLCSimulator\\rtl_cache");
+}
+
+static std::string LocalReadFileContent(const std::string& path) {
+  std::ifstream f(path, std::ios::binary);
+  if (!f.is_open()) return "";
+  std::ostringstream ss;
+  ss << f.rdbuf();
+  return ss.str();
+}
+
+static const std::vector<std::string>& GetRtlWorkerRuntimeFileNames() {
+  static const std::vector<std::string> kNames = {
+      "libgcc_s_seh-1.dll",
+      "libstdc++-6.dll",
+      "libwinpthread-1.dll",
+  };
+  return kNames;
 }
 
 } // anonymous namespace
@@ -348,34 +554,113 @@ void RtlProjectManager::SaveGlobalLibrary() const {
   std::ofstream f(p, std::ios::binary); if (f.is_open()) f << SerializeLibraryJson();
 }
 
+void RtlProjectManager::InvalidateLibraryIndex() {
+  libraryIndexById_.clear();
+  libraryIndexValid_ = false;
+}
+
+void RtlProjectManager::RebuildLibraryIndex() const {
+  if (libraryIndexValid_) {
+    return;
+  }
+  libraryIndexById_.clear();
+  libraryIndexById_.reserve(library_.size());
+  for (size_t i = 0; i < library_.size(); ++i) {
+    libraryIndexById_[library_[i].moduleId] = i;
+  }
+  libraryIndexValid_ = true;
+}
+
 RtlLibraryEntry* RtlProjectManager::FindEntryById(const std::string& id) {
-  for (auto& e : library_) { if (e.moduleId == id) return &e; } return nullptr;
+  RebuildLibraryIndex();
+  const auto it = libraryIndexById_.find(id);
+  if (it == libraryIndexById_.end() || it->second >= library_.size()) {
+    return nullptr;
+  }
+  return &library_[it->second];
 }
 
 const RtlLibraryEntry* RtlProjectManager::FindEntryById(const std::string& id) const {
-  for (const auto& e : library_) { if (e.moduleId == id) return &e; } return nullptr;
+  RebuildLibraryIndex();
+  const auto it = libraryIndexById_.find(id);
+  if (it == libraryIndexById_.end() || it->second >= library_.size()) {
+    return nullptr;
+  }
+  return &library_[it->second];
 }
 
 RtlLibraryEntry* RtlProjectManager::CreateEntry(const std::string& name) {
-  RtlLibraryEntry e; e.displayName = name.empty() ? "RTL Module" : name;
+  RtlLibraryEntry e;
+  e.displayName = BuildUniqueDisplayName(name.empty() ? "RTL Module" : name);
   e.moduleId = BuildModuleId(e.displayName, library_.size());
   e.topModule = Slugify(e.displayName); if (e.topModule.empty()) e.topModule = "rtl_top";
   e.topFile = e.topModule + ".v";
   e.sourceFiles.push_back({e.topFile, "module " + e.topModule + "(\n  input clk,\n  input rst,\n  output out\n);\nassign out = 0;\nendmodule\n"});
-  library_.push_back(e); SaveGlobalLibrary(); return &library_.back();
+  library_.push_back(e);
+  InvalidateLibraryIndex();
+  SaveGlobalLibrary();
+  return &library_.back();
+}
+
+RtlLibraryEntry* RtlProjectManager::ImportEntry(const RtlLibraryEntry& entry) {
+  RtlLibraryEntry imported = entry;
+  imported.displayName = BuildUniqueDisplayName(imported.displayName);
+  if (imported.topModule.empty()) {
+    imported.topModule = Slugify(imported.displayName);
+    if (imported.topModule.empty()) {
+      imported.topModule = "rtl_top";
+    }
+  }
+  if (imported.moduleId.empty() || FindEntryById(imported.moduleId)) {
+    size_t ordinal = library_.size();
+    do {
+      imported.moduleId = BuildModuleId(imported.displayName, ordinal++);
+    } while (FindEntryById(imported.moduleId));
+  }
+  LocalCapEntryLogs(&imported);
+  library_.push_back(std::move(imported));
+  InvalidateLibraryIndex();
+  SaveGlobalLibrary();
+  return &library_.back();
+}
+
+bool RtlProjectManager::RenameEntryDisplayName(const std::string& moduleId,
+                                               const std::string& displayName) {
+  RtlLibraryEntry* entry = FindEntryById(moduleId);
+  if (!entry) {
+    return false;
+  }
+
+  const std::string uniqueDisplayName =
+      BuildUniqueDisplayName(displayName, moduleId);
+  if (entry->displayName == uniqueDisplayName) {
+    return true;
+  }
+
+  entry->displayName = uniqueDisplayName;
+  SaveGlobalLibrary();
+  return true;
 }
 
 bool RtlProjectManager::DeleteEntry(const std::string& id) {
   auto it = std::remove_if(library_.begin(), library_.end(), [&](const RtlLibraryEntry& e) { return e.moduleId == id; });
   if (it == library_.end()) return false;
-  library_.erase(it, library_.end()); SaveGlobalLibrary(); return true;
+  library_.erase(it, library_.end());
+  InvalidateLibraryIndex();
+  SaveGlobalLibrary();
+  return true;
 }
 
 bool RtlProjectManager::DuplicateEntry(const std::string& id) {
   const auto* e = FindEntryById(id); if (!e) return false;
-  RtlLibraryEntry c = *e; c.moduleId = BuildModuleId(c.displayName, library_.size());
-  c.displayName += " Copy"; c.buildSuccess = c.componentEnabled = false;
-  library_.push_back(c); SaveGlobalLibrary(); return true;
+  RtlLibraryEntry c = *e;
+  c.displayName = BuildUniqueDisplayName(c.displayName);
+  c.moduleId = BuildModuleId(c.displayName, library_.size());
+  c.buildSuccess = c.componentEnabled = false;
+  library_.push_back(c);
+  InvalidateLibraryIndex();
+  SaveGlobalLibrary();
+  return true;
 }
 
 std::string RtlProjectManager::ExportSourceFile(const std::string& id, const std::string& path) const {
@@ -413,12 +698,17 @@ bool RtlProjectManager::UpdateSourceFile(const std::string& id, const std::strin
 bool RtlProjectManager::Analyze(const std::string& id) {
   auto* e = FindEntryById(id); if (!e) return false;
   e->ports.clear(); e->diagnostics.clear(); e->analyzeSuccess = false;
-  if (!AnalyzeWithRegex(e)) { e->diagnostics = "Port parse failed."; return false; }
+  if (!AnalyzeWithRegex(e)) {
+    e->diagnostics = "Port parse failed.";
+    LocalCapEntryLogs(e);
+    return false;
+  }
   auto s = DetectToolchain(); bool ok = true;
   if (s.verilatorFound) {
     std::string d; ok = RunVerilatorLint(*e, s, &d); if (!d.empty()) e->diagnostics = d;
     else if (!ok) e->diagnostics = "Lint failed with no output.";
   } else e->diagnostics = "Lint skipped: " + s.description;
+  LocalCapEntryLogs(e);
   e->analyzeSuccess = !e->ports.empty() && ok; if (e->analyzeSuccess) SaveGlobalLibrary();
   return e->analyzeSuccess;
 }
@@ -426,9 +716,10 @@ bool RtlProjectManager::Analyze(const std::string& id) {
 bool RtlProjectManager::Build(const std::string& id) {
   auto* e = FindEntryById(id); if (!e) return false;
   e->buildSuccess = false; e->buildDiagnostics.clear();
-  auto s = DetectToolchain(); if (!s.verilatorFound || !s.compilerFound) { e->buildDiagnostics = s.description; return false; }
-  if (!e->analyzeSuccess) { e->buildDiagnostics = "Analyze first."; return false; }
+  auto s = DetectToolchain(); if (!s.verilatorFound || !s.compilerFound) { e->buildDiagnostics = s.description; LocalCapEntryLogs(e); return false; }
+  if (!e->analyzeSuccess) { e->buildDiagnostics = "Analyze first."; LocalCapEntryLogs(e); return false; }
   e->buildSuccess = RunVerilatorBuild(e, s, &e->buildDiagnostics);
+  LocalCapEntryLogs(e);
   if (e->buildSuccess) SaveGlobalLibrary();
   return e->buildSuccess;
 }
@@ -447,6 +738,7 @@ bool RtlProjectManager::RunTestbench(const std::string& id) {
   if (e->testbenchTopFile.empty()) {
     e->testbenchDiagnostics =
         "No testbench file set. Right-click a source file and select 'Set As TB'.";
+    LocalCapEntryLogs(e);
     return false;
   }
 
@@ -467,6 +759,7 @@ bool RtlProjectManager::RunTestbench(const std::string& id) {
     }
     if (e->testbenchTopModule.empty()) {
       e->testbenchDiagnostics = "Could not determine testbench top module name.";
+      LocalCapEntryLogs(e);
       return false;
     }
   }
@@ -474,17 +767,15 @@ bool RtlProjectManager::RunTestbench(const std::string& id) {
   auto s = DetectToolchain();
   if (!s.verilatorFound || !s.compilerFound) {
     e->testbenchDiagnostics = s.description;
+    LocalCapEntryLogs(e);
     return false;
   }
   e->testbenchSuccess = RunVerilatorTestbench(e, s, &e->testbenchDiagnostics);
+  LocalCapEntryLogs(e);
   return e->testbenchSuccess;
 }
 
 RtlToolchainStatus RtlProjectManager::DetectToolchain() const {
-  static RtlToolchainStatus cached_st;
-  static bool is_cached = false;
-  if (is_cached) return cached_st;
-  
   RtlToolchainStatus st;
 #ifdef _WIN32
   auto GetExecDir = []() {
@@ -565,8 +856,6 @@ RtlToolchainStatus RtlProjectManager::DetectToolchain() const {
 #else
   st.description = "Windows only.";
 #endif
-  cached_st = st;
-  is_cached = true;
   return st;
 }
 
@@ -604,82 +893,178 @@ std::string RtlProjectManager::GetWorkerLaunchCommand(const RtlLibraryEntry& e, 
 std::string RtlProjectManager::SerializeLibraryJson() const {
   json r; r["version"] = 1; json ents = json::array();
   for (const auto& e : library_) {
-    json i; i["module_id"] = e.moduleId; i["display_name"] = e.displayName;
-    i["top_module"] = e.topModule; i["top_file"] = e.topFile;
-    i["build_hash"] = e.buildHash; i["analyze_success"] = e.analyzeSuccess;
-    i["build_success"] = e.buildSuccess;
-
-    i["testbench_top_module"] = e.testbenchTopModule;
-    i["testbench_top_file"] = e.testbenchTopFile;
-    i["diagnostics"] = e.diagnostics;
-    i["build_diagnostics"] = e.buildDiagnostics;
-    i["testbench_diagnostics"] = e.testbenchDiagnostics;
-    i["testbench_build_log"] = e.testbenchBuildLog;
-    i["testbench_run_log"] = e.testbenchRunLog;
-    i["testbench_vcd_path"] = e.testbenchVcdPath;
-    i["testbench_success"] = e.testbenchSuccess;
-    i["component_enabled"] = e.componentEnabled;
-
-    json srcs = json::array(); for (const auto& f : e.sourceFiles) srcs.push_back({{"path", f.path}, {"content", f.content}});
-    i["source_files"] = srcs;
-    json pts = json::array(); for (const auto& p : e.ports) pts.push_back({{"pin_name", p.pinName}, {"base_name", p.baseName}, {"bit_index", p.bitIndex}, {"width", p.width}, {"is_input", p.isInput}, {"port_id", p.portId}});
-    i["ports"] = pts; ents.push_back(i);
+    ents.push_back(LocalSerializeEntry(e, true));
   }
   r["entries"] = ents; return r.dump(2, ' ', false, json::error_handler_t::replace);
 }
 
 std::string RtlProjectManager::SerializeProjectRtlJson() const { return SerializeLibraryJson(); }
 
+std::string RtlProjectManager::SerializeEntryJson(const RtlLibraryEntry& entry,
+                                                 bool includeSourceFiles) const {
+  return LocalSerializeEntry(entry, includeSourceFiles)
+      .dump(2, ' ', false, json::error_handler_t::replace);
+}
+
 bool RtlProjectManager::DeserializeLibraryJson(const std::string& jText, bool merge) {
   json r = json::parse(jText, nullptr, false); if (r.is_discarded() || !r.is_object()) return false;
-  if (!merge) library_.clear();
-  auto it = r.find("entries"); if (it == r.end() || !it->is_array()) return true;
+  if (!merge) {
+    library_.clear();
+    InvalidateLibraryIndex();
+  }
+  auto it = r.find("entries");
+  if (it == r.end() || !it->is_array()) return true;
   for (const auto& i : *it) {
-    std::string id = i.value("module_id", ""); if (id.empty()) continue;
-    RtlLibraryEntry e; e.moduleId = id; e.displayName = i.value("display_name", "RTL Module");
-    e.topModule = i.value("top_module", ""); e.topFile = i.value("top_file", "");
-    e.buildHash = i.value("build_hash", ""); e.analyzeSuccess = i.value("analyze_success", false);
-    e.buildSuccess = i.value("build_success", false);
-
-    e.testbenchTopModule = i.value("testbench_top_module", "");
-    e.testbenchTopFile = i.value("testbench_top_file", "");
-    e.diagnostics = i.value("diagnostics", "");
-    e.buildDiagnostics = i.value("build_diagnostics", "");
-    e.testbenchDiagnostics = i.value("testbench_diagnostics", "");
-    e.testbenchBuildLog = i.value("testbench_build_log", "");
-    e.testbenchRunLog = i.value("testbench_run_log", "");
-    e.testbenchVcdPath = i.value("testbench_vcd_path", "");
-    e.testbenchSuccess = i.value("testbench_success", false);
-    e.componentEnabled = i.value("component_enabled", false);
-
-    auto sIt = i.find("source_files"); if (sIt != i.end() && sIt->is_array()) {
-      for (const auto& s : *sIt) e.sourceFiles.push_back({s.value("path", ""), s.value("content", "")});
+    RtlLibraryEntry e;
+    if (!LocalDeserializeEntry(i, &e)) {
+      continue;
     }
-    auto pIt = i.find("ports"); if (pIt != i.end() && pIt->is_array()) {
-      for (const auto& p : *pIt) {
-        RtlPortDescriptor d; d.pinName = p.value("pin_name", ""); d.baseName = p.value("base_name", "");
-        d.bitIndex = p.value("bit_index", -1); d.width = p.value("width", 1);
-        d.isInput = p.value("is_input", true); d.portId = p.value("port_id", -1); e.ports.push_back(d);
-      }
+    e.displayName = BuildUniqueDisplayName(e.displayName);
+    if (e.moduleId.empty() || std::any_of(library_.begin(), library_.end(),
+                                          [&](const RtlLibraryEntry& existing) {
+                                            return existing.moduleId == e.moduleId;
+                                          })) {
+      size_t ordinal = library_.size();
+      do {
+        e.moduleId = BuildModuleId(e.displayName, ordinal++);
+      } while (std::any_of(library_.begin(), library_.end(),
+                           [&](const RtlLibraryEntry& existing) {
+                             return existing.moduleId == e.moduleId;
+                           }));
     }
     library_.push_back(e);
   }
+  InvalidateLibraryIndex();
   if (merge) SaveGlobalLibrary();
   return true;
 }
 
+std::string RtlProjectManager::BuildUniqueDisplayName(
+    const std::string& displayName,
+    const std::string& ignoredModuleId) const {
+  std::string desiredName = LocalTrim(displayName);
+  if (desiredName.empty()) {
+    desiredName = "RTL Module";
+  }
+
+  const bool hasExactConflict = std::any_of(
+      library_.begin(), library_.end(),
+      [&](const RtlLibraryEntry& entry) {
+        return entry.moduleId != ignoredModuleId &&
+               LocalEqualsIgnoreCase(entry.displayName, desiredName);
+      });
+  if (!hasExactConflict) {
+    return desiredName;
+  }
+
+  std::string familyBase;
+  LocalSplitDisplayNameSuffix(desiredName, &familyBase, nullptr);
+  if (familyBase.empty()) {
+    familyBase = desiredName;
+  }
+
+  std::set<int> usedSuffixes;
+  for (const RtlLibraryEntry& entry : library_) {
+    if (entry.moduleId == ignoredModuleId) {
+      continue;
+    }
+
+    int suffix = 0;
+    if (!LocalDisplayNameBelongsToFamily(entry.displayName, familyBase,
+                                         &suffix)) {
+      continue;
+    }
+    if (suffix > 0) {
+      usedSuffixes.insert(suffix);
+    }
+  }
+
+  int nextSuffix = 1;
+  while (usedSuffixes.count(nextSuffix) > 0) {
+    ++nextSuffix;
+  }
+  return familyBase + " (" + std::to_string(nextSuffix) + ")";
+}
+
+bool RtlProjectManager::DeserializeEntryJson(const std::string& jsonText,
+                                             RtlLibraryEntry* entry) const {
+  json item = json::parse(jsonText, nullptr, false);
+  if (item.is_discarded() || !item.is_object()) {
+    return false;
+  }
+  return LocalDeserializeEntry(item, entry);
+}
+
+std::map<std::string, std::string> RtlProjectManager::GetBuildArtifactBundle(
+    const std::string& id) const {
+  std::map<std::string, std::string> files;
+  const auto* e = FindEntryById(id);
+  if (!e || !HasBuildArtifact(*e)) return files;
+
+  const std::string cacheDir = GetBuildCacheDirectory(*e);
+  if (cacheDir.empty()) return files;
+
+  const std::string workerPath = LocalJoinPath(cacheDir, "rtl_worker.exe");
+  std::string workerData = LocalReadFileContent(workerPath);
+  if (workerData.empty()) return files;
+  files["rtl_worker.exe"] = std::move(workerData);
+
+  std::string compilerDir;
+  RtlToolchainStatus status = DetectToolchain();
+  if (!status.compilerPath.empty()) {
+    compilerDir = LocalGetDirectoryName(status.compilerPath);
+  }
+
+  for (const auto& fileName : GetRtlWorkerRuntimeFileNames()) {
+    const std::string cachedPath = LocalJoinPath(cacheDir, fileName);
+    std::string data = LocalReadFileContent(cachedPath);
+    if (data.empty() && !compilerDir.empty()) {
+      data = LocalReadFileContent(LocalJoinPath(compilerDir, fileName));
+    }
+    if (!data.empty()) {
+      files[fileName] = std::move(data);
+    }
+  }
+
+  return files;
+}
+
+bool RtlProjectManager::RestoreBuildArtifactBundle(
+    const std::string& id,
+    const std::map<std::string, std::string>& files) {
+  auto* e = FindEntryById(id);
+  if (!e || files.empty()) return false;
+  if (e->buildHash.empty()) e->buildHash = LocalHashHex("art-" + id);
+
+  const std::string cacheDir = GetBuildCacheDirectory(*e);
+  if (cacheDir.empty() || !LocalEnsureDirRecursive(cacheDir)) return false;
+
+  bool restoredWorker = false;
+  for (const auto& [fileName, data] : files) {
+    if (fileName.empty() || data.empty()) continue;
+    if (fileName.find_first_of("\\/") != std::string::npos) continue;
+    const std::string filePath = LocalJoinPath(cacheDir, fileName);
+    if (!LocalWriteFileContent(filePath, data)) continue;
+    if (LocalEqualsIgnoreCase(fileName, "rtl_worker.exe")) {
+      restoredWorker = LocalFileExists(filePath);
+    }
+  }
+
+  if (restoredWorker) {
+    e->buildSuccess = true;
+  }
+  return restoredWorker;
+}
+
 std::string RtlProjectManager::GetBuildArtifactData(const std::string& id) const {
-  const auto* e = FindEntryById(id); if (!e || !HasBuildArtifact(*e)) return "";
-  std::ifstream f(LocalJoinPath(GetBuildCacheDirectory(*e), "rtl_worker.exe"), std::ios::binary);
-  std::ostringstream ss; ss << f.rdbuf(); return ss.str();
+  auto files = GetBuildArtifactBundle(id);
+  auto it = files.find("rtl_worker.exe");
+  return it == files.end() ? std::string() : it->second;
 }
 
 bool RtlProjectManager::RestoreBuildArtifact(const std::string& id, const std::string& data) {
-  auto* e = FindEntryById(id); if (!e || data.empty()) return false;
-  if (e->buildHash.empty()) e->buildHash = LocalHashHex("art-" + id);
-  std::string d = GetBuildCacheDirectory(*e); LocalEnsureDirRecursive(d);
-  std::ofstream f(LocalJoinPath(d, "rtl_worker.exe"), std::ios::binary);
-  if (f.is_open()) { f << data; e->buildSuccess = true; return true; } return false;
+  if (data.empty()) return false;
+  return RestoreBuildArtifactBundle(id, {{"rtl_worker.exe", data}});
 }
 
   std::vector<Port> RtlProjectManager::BuildRuntimePorts(
@@ -1002,6 +1387,18 @@ bool RtlProjectManager::RunVerilatorBuild(RtlLibraryEntry* e, const RtlToolchain
       *diag += out.empty() ? "Process execution failed.\nCommand: " + compileCmd : out;
     }
     return false;
+  }
+
+  const std::string compilerDir = LocalGetDirectoryName(s.compilerPath);
+  if (!compilerDir.empty()) {
+    for (const auto& fileName : GetRtlWorkerRuntimeFileNames()) {
+      const std::string sourcePath = LocalJoinPath(compilerDir, fileName);
+      if (!LocalFileExists(sourcePath)) {
+        continue;
+      }
+      LocalWriteFileContent(LocalJoinPath(d, fileName),
+                            LocalReadFileContent(sourcePath));
+    }
   }
 
   return LocalFileExists(outExe);

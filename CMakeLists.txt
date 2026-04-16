@@ -199,10 +199,11 @@ if(BUILD_MAIN_APP)
             src/application/app_lifecycle.cpp
             src/core/win32_input.cpp
             src/core/win32_haptics_stub.cpp
-            src/core/ui_settings.cpp
-            src/core/data_types.cpp
-            src/core/plc_simulator_core.cpp
-            src/core/window_manager.cpp
+             src/core/ui_settings.cpp
+             src/core/windows_power_utils.cpp
+             src/core/data_types.cpp
+             src/core/plc_simulator_core.cpp
+             src/core/window_manager.cpp
             src/core/render_manager.cpp
             src/core/input_handler.cpp
             src/core/component_manager.cpp
@@ -458,6 +459,19 @@ if(BUILD_MAIN_APP)
                 DESTINATION "resources")
     endif()
 
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tools/setup_tools.ps1")
+        install(FILES "${CMAKE_SOURCE_DIR}/tools/setup_tools.ps1"
+                DESTINATION "tools")
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tools/verify_setup.ps1")
+        install(FILES "${CMAKE_SOURCE_DIR}/tools/verify_setup.ps1"
+                DESTINATION "tools")
+    endif()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/tools/Delete_setup.ps1")
+        install(FILES "${CMAKE_SOURCE_DIR}/tools/Delete_setup.ps1"
+                DESTINATION "tools")
+    endif()
+
     if(EXISTS "${CMAKE_SOURCE_DIR}/README.md")
         install(FILES "${CMAKE_SOURCE_DIR}/README.md"
                 DESTINATION ".")
@@ -520,6 +534,10 @@ if(BUILD_MAIN_APP)
         set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
         set(CPACK_NSIS_MODIFY_PATH ON)
+        set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
+            "IfFileExists \\\"$INSTDIR\\\\tools\\\\Delete_setup.ps1\\\" 0 +4\n"
+            "MessageBox MB_YESNO|MB_ICONQUESTION \\\"Run Delete_setup.ps1 to remove installed RTL toolchain files and PATH entries?\\\" IDNO +2\n"
+            "ExecWait '\\\"$SYSDIR\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -ExecutionPolicy Bypass -File \\\"$INSTDIR\\\\tools\\\\Delete_setup.ps1\\\"'\n")
 
         if(EXISTS "${CMAKE_SOURCE_DIR}/resources/icon/icon.ico")
             set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/resources/icon/icon.ico")

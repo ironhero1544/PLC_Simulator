@@ -3,6 +3,7 @@
 
 #include "plc_emulator/programming/programming_mode.h"
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/programming/ladder_program_utils.h"
 #include "plc_emulator/programming/compiled_plc_executor.h"
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 #include "plc_emulator/project/openplc_compiler_integration.h"
@@ -459,8 +460,12 @@ void ProgrammingMode::ExecutePendingAction() {
     case PendingActionType::DELETE_RUNG:
 
       if (pending_action_.rungIndex != -1) {
-
-        DeleteRung(pending_action_.rungIndex);
+        if (HasMultiSelectedRung(pending_action_.rungIndex) &&
+            GetSortedSelectedRungs().size() > 1) {
+          DeleteSelectedRungs();
+        } else {
+          DeleteRung(pending_action_.rungIndex);
+        }
 
       }
 
@@ -702,6 +707,7 @@ void ProgrammingMode::SetLadderProgram(const LadderProgram& program) {
 
 
   ladder_program_ = program;
+  CanonicalizeLadderProgram(&ladder_program_);
 
 
 
@@ -709,6 +715,23 @@ void ProgrammingMode::SetLadderProgram(const LadderProgram& program) {
   selected_rung_ = 0;
 
   selected_cell_ = 0;
+  rung_selection_mode_ = false;
+  rung_selection_anchor_ = 0;
+  rung_selection_drag_active_ = false;
+  cell_selection_active_ = false;
+  cell_selection_anchor_rung_ = 0;
+  cell_selection_anchor_cell_ = 0;
+  cell_selection_end_rung_ = 0;
+  cell_selection_end_cell_ = 0;
+  cell_selection_drag_active_ = false;
+  cell_box_select_pending_ = false;
+  cell_box_selecting_ = false;
+  cell_box_selection_has_hits_ = false;
+  cell_box_select_start_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_select_current_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_select_press_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_selection_bounds_ = CellSelectionBounds();
+  selected_rungs_.clear();
   memo_edit_rung_ = -1;
   memo_edit_session_active_ = false;
   rung_memo_buffer_[0] = '\0';
@@ -1166,9 +1189,12 @@ size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
 
 
 
-  hash_combine(seed, hi(static_cast<int>(program.rungs.size())));
+  LadderProgram canonical_program = program;
+  CanonicalizeLadderProgram(&canonical_program);
 
-  for (const auto& rung : program.rungs) {
+  hash_combine(seed, hi(static_cast<int>(canonical_program.rungs.size())));
+
+  for (const auto& rung : canonical_program.rungs) {
 
     hash_combine(seed, hi(rung.number));
 
@@ -1188,9 +1214,10 @@ size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
 
   }
 
-  hash_combine(seed, hi(static_cast<int>(program.verticalConnections.size())));
+  hash_combine(
+      seed, hi(static_cast<int>(canonical_program.verticalConnections.size())));
 
-  for (const auto& vc : program.verticalConnections) {
+  for (const auto& vc : canonical_program.verticalConnections) {
 
     hash_combine(seed, hi(vc.x));
 
@@ -1215,6 +1242,14 @@ void ProgrammingMode::PushProgrammingUndoState() {
   state.program = DeepCopyLadderProgram(ladder_program_);
   state.selected_rung = selected_rung_;
   state.selected_cell = selected_cell_;
+  state.rung_selection_mode = rung_selection_mode_;
+  state.rung_selection_anchor = rung_selection_anchor_;
+  state.selected_rungs = selected_rungs_;
+  state.cell_selection_active = cell_selection_active_;
+  state.cell_selection_anchor_rung = cell_selection_anchor_rung_;
+  state.cell_selection_anchor_cell = cell_selection_anchor_cell_;
+  state.cell_selection_end_rung = cell_selection_end_rung_;
+  state.cell_selection_end_cell = cell_selection_end_cell_;
   programming_undo_stack_.push_back(state);
   if (programming_undo_stack_.size() > kProgrammingUndoLimit) {
     programming_undo_stack_.erase(programming_undo_stack_.begin());
@@ -1230,6 +1265,14 @@ void ProgrammingMode::UndoProgrammingState() {
   current.program = DeepCopyLadderProgram(ladder_program_);
   current.selected_rung = selected_rung_;
   current.selected_cell = selected_cell_;
+  current.rung_selection_mode = rung_selection_mode_;
+  current.rung_selection_anchor = rung_selection_anchor_;
+  current.selected_rungs = selected_rungs_;
+  current.cell_selection_active = cell_selection_active_;
+  current.cell_selection_anchor_rung = cell_selection_anchor_rung_;
+  current.cell_selection_anchor_cell = cell_selection_anchor_cell_;
+  current.cell_selection_end_rung = cell_selection_end_rung_;
+  current.cell_selection_end_cell = cell_selection_end_cell_;
   programming_redo_stack_.push_back(current);
 
   ProgrammingUndoState state = programming_undo_stack_.back();
@@ -1239,6 +1282,43 @@ void ProgrammingMode::UndoProgrammingState() {
       0, std::min(state.selected_rung,
                   static_cast<int>(ladder_program_.rungs.size()) - 1));
   selected_cell_ = std::max(0, std::min(state.selected_cell, 11));
+  rung_selection_mode_ = state.rung_selection_mode;
+  rung_selection_anchor_ = std::max(
+      0, std::min(state.rung_selection_anchor,
+                  std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2)));
+  rung_selection_drag_active_ = false;
+  selected_rungs_ = state.selected_rungs;
+  for (auto it = selected_rungs_.begin(); it != selected_rungs_.end();) {
+    if (*it < 0 ||
+        *it >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
+      it = selected_rungs_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (selected_rungs_.empty() && selected_rung_ >= 0 &&
+      selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    selected_rungs_.insert(selected_rung_);
+  }
+  cell_selection_active_ = state.cell_selection_active && !rung_selection_mode_;
+  cell_selection_anchor_rung_ = std::max(
+      0, std::min(state.cell_selection_anchor_rung,
+                  std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2)));
+  cell_selection_anchor_cell_ =
+      std::max(0, std::min(state.cell_selection_anchor_cell, 11));
+  cell_selection_end_rung_ = std::max(
+      0, std::min(state.cell_selection_end_rung,
+                  std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2)));
+  cell_selection_end_cell_ =
+      std::max(0, std::min(state.cell_selection_end_cell, 11));
+  cell_selection_drag_active_ = false;
+  cell_box_select_pending_ = false;
+  cell_box_selecting_ = false;
+  cell_box_selection_has_hits_ = false;
+  cell_box_select_start_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_select_current_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_select_press_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_selection_bounds_ = CellSelectionBounds();
   memo_edit_rung_ = -1;
   memo_edit_session_active_ = false;
   rung_memo_buffer_[0] = '\0';
@@ -1258,6 +1338,14 @@ void ProgrammingMode::RedoProgrammingState() {
   current.program = DeepCopyLadderProgram(ladder_program_);
   current.selected_rung = selected_rung_;
   current.selected_cell = selected_cell_;
+  current.rung_selection_mode = rung_selection_mode_;
+  current.rung_selection_anchor = rung_selection_anchor_;
+  current.selected_rungs = selected_rungs_;
+  current.cell_selection_active = cell_selection_active_;
+  current.cell_selection_anchor_rung = cell_selection_anchor_rung_;
+  current.cell_selection_anchor_cell = cell_selection_anchor_cell_;
+  current.cell_selection_end_rung = cell_selection_end_rung_;
+  current.cell_selection_end_cell = cell_selection_end_cell_;
   programming_undo_stack_.push_back(current);
 
   ProgrammingUndoState state = programming_redo_stack_.back();
@@ -1267,6 +1355,43 @@ void ProgrammingMode::RedoProgrammingState() {
       0, std::min(state.selected_rung,
                   static_cast<int>(ladder_program_.rungs.size()) - 1));
   selected_cell_ = std::max(0, std::min(state.selected_cell, 11));
+  rung_selection_mode_ = state.rung_selection_mode;
+  rung_selection_anchor_ = std::max(
+      0, std::min(state.rung_selection_anchor,
+                  std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2)));
+  rung_selection_drag_active_ = false;
+  selected_rungs_ = state.selected_rungs;
+  for (auto it = selected_rungs_.begin(); it != selected_rungs_.end();) {
+    if (*it < 0 ||
+        *it >= static_cast<int>(ladder_program_.rungs.size()) - 1) {
+      it = selected_rungs_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (selected_rungs_.empty() && selected_rung_ >= 0 &&
+      selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+    selected_rungs_.insert(selected_rung_);
+  }
+  cell_selection_active_ = state.cell_selection_active && !rung_selection_mode_;
+  cell_selection_anchor_rung_ = std::max(
+      0, std::min(state.cell_selection_anchor_rung,
+                  std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2)));
+  cell_selection_anchor_cell_ =
+      std::max(0, std::min(state.cell_selection_anchor_cell, 11));
+  cell_selection_end_rung_ = std::max(
+      0, std::min(state.cell_selection_end_rung,
+                  std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2)));
+  cell_selection_end_cell_ =
+      std::max(0, std::min(state.cell_selection_end_cell, 11));
+  cell_selection_drag_active_ = false;
+  cell_box_select_pending_ = false;
+  cell_box_selecting_ = false;
+  cell_box_selection_has_hits_ = false;
+  cell_box_select_start_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_select_current_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_select_press_screen_ = ImVec2(0.0f, 0.0f);
+  cell_box_selection_bounds_ = CellSelectionBounds();
   memo_edit_rung_ = -1;
   memo_edit_session_active_ = false;
   rung_memo_buffer_[0] = '\0';
@@ -1397,11 +1522,14 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
 
   std::set<std::string> explicit_timers;
   std::set<std::string> explicit_counters;
+  std::set<std::string> retained_timers;
+  std::set<std::string> retained_counters;
 
   auto ensure_timer = [&](const std::string& addr,
 
                           const std::string& presetStr,
                           bool override_preset) {
+    retained_timers.insert(addr);
 
     int preset = 0;
 
@@ -1514,6 +1642,7 @@ void ProgrammingMode::InitializeTimersAndCountersFromProgram() {
     }
 
     auto it = counter_states_.find(addr);
+    retained_counters.insert(addr);
 
     if (it == counter_states_.end()) {
 
@@ -1656,6 +1785,22 @@ for (const auto& rung : ladder_program_.rungs) {
 
     }
 
+  }
+
+  for (auto it = timer_states_.begin(); it != timer_states_.end();) {
+    if (retained_timers.find(it->first) == retained_timers.end()) {
+      it = timer_states_.erase(it);
+      continue;
+    }
+    ++it;
+  }
+
+  for (auto it = counter_states_.begin(); it != counter_states_.end();) {
+    if (retained_counters.find(it->first) == retained_counters.end()) {
+      it = counter_states_.erase(it);
+      continue;
+    }
+    ++it;
   }
 
 }
@@ -1927,51 +2072,6 @@ LadderProgram ProgrammingMode::NormalizeLadderGX2(const LadderProgram& src) {
     return false;
 
   };
-
-
-
-  auto add_or_merge_vc = [&](int x, const std::vector<int>& rungs) {
-
-    //         ?
-
-    for (auto& vc : norm.verticalConnections) {
-
-      if (vc.x == x) {
-
-        // rungs          
-
-        for (int r : rungs) {
-
-          if (std::find(vc.rungs.begin(), vc.rungs.end(), r) ==
-
-              vc.rungs.end()) {
-
-            vc.rungs.push_back(r);
-
-          }
-
-        }
-
-        return;
-
-      }
-
-    }
-
-
-    VerticalConnection newVc;
-
-    newVc.x = x;
-
-    newVc.rungs = rungs;
-
-    norm.verticalConnections.push_back(newVc);
-
-  };
-
-
-
-
   auto find_rightmost_output_col = [&](const Rung& rung) -> int {
 
     int right = -1;
@@ -1985,6 +2085,14 @@ LadderProgram ProgrammingMode::NormalizeLadderGX2(const LadderProgram& src) {
         case LadderInstructionType::SET:
 
         case LadderInstructionType::RST:
+
+        case LadderInstructionType::RST_TMR_CTR:
+
+        case LadderInstructionType::TON:
+
+        case LadderInstructionType::CTU:
+
+        case LadderInstructionType::BKRST:
 
           return c;
 
@@ -2026,44 +2134,23 @@ LadderProgram ProgrammingMode::NormalizeLadderGX2(const LadderProgram& src) {
 
 
 
-    int x_end = -1;
+    for (int rungIdx : vc.rungs) {
+      if (rungIdx < 0 || rungIdx >= static_cast<int>(norm.rungs.size()))
+        continue;
 
-    int anchorRung = -1;
+      const int rungOutputColumn =
+          find_rightmost_output_col(norm.rungs[static_cast<size_t>(rungIdx)]);
+      if (rungOutputColumn < 0) {
+        continue;
+      }
 
-    if (!vc.rungs.empty()) {
-
-      anchorRung = *std::min_element(vc.rungs.begin(), vc.rungs.end());
-
-      if (anchorRung >= 0 && anchorRung < static_cast<int>(norm.rungs.size())) {
-
-        x_end = find_rightmost_output_col(norm.rungs[static_cast<size_t>(anchorRung)]);
-
+      const int l = std::min(x, rungOutputColumn);
+      const int r = std::max(x, rungOutputColumn);
+      for (int col = l + 1; col < r; ++col) {
+        ensure_hline(rungIdx, col);
       }
 
     }
-
-    if (x_end < 0)
-
-      x_end = static_cast<int>(norm.rungs.front().cells.size()) - 1;
-
-
-
-
-    int l = std::min(x, x_end), r = std::max(x, x_end);
-
-    for (int rungIdx : vc.rungs) {
-
-      for (int col = l + 1; col < r; ++col)
-
-        ensure_hline(rungIdx, col);
-
-    }
-
-
-
-
-    add_or_merge_vc(x_end, vc.rungs);
-
   }
 
 
@@ -2081,6 +2168,7 @@ LadderProgram ProgrammingMode::NormalizeLadderGX2(const LadderProgram& src) {
 
 
 
+  CanonicalizeLadderProgram(&norm);
   last_normalization_summary_ = oss.str();
 
   return norm;

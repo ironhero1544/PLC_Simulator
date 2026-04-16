@@ -21,6 +21,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <string>
@@ -216,6 +217,259 @@ bool DoesWireIntersectSelectionRect(const Wire& wire,
                                            max_x, max_y);
 }
 
+struct ComponentBounds {
+  int component_id = -1;
+  float min_x = 0.0f;
+  float min_y = 0.0f;
+  float max_x = 0.0f;
+  float max_y = 0.0f;
+};
+
+ComponentBounds BuildComponentBounds(const PlacedComponent& comp, float padding) {
+  const Size display = GetComponentDisplaySize(comp);
+  ComponentBounds bounds;
+  bounds.component_id = comp.instanceId;
+  bounds.min_x = comp.position.x - padding;
+  bounds.min_y = comp.position.y - padding;
+  bounds.max_x = comp.position.x + display.width + padding;
+  bounds.max_y = comp.position.y + display.height + padding;
+  return bounds;
+}
+
+bool RangesOverlapStrict(float a0, float a1, float b0, float b1, float epsilon) {
+  const float min_a = std::min(a0, a1);
+  const float max_a = std::max(a0, a1);
+  const float min_b = std::min(b0, b1);
+  const float max_b = std::max(b0, b1);
+  return std::max(min_a, min_b) < (std::min(max_a, max_b) - epsilon);
+}
+
+bool DoesOrthogonalSegmentIntersectBounds(ImVec2 start,
+                                          ImVec2 end,
+                                          const ComponentBounds& bounds) {
+  constexpr float kAxisEpsilon = 0.1f;
+  if (std::fabs(start.x - end.x) <= kAxisEpsilon) {
+    const float x = start.x;
+    if (x <= bounds.min_x + kAxisEpsilon || x >= bounds.max_x - kAxisEpsilon) {
+      return false;
+    }
+    return RangesOverlapStrict(start.y, end.y, bounds.min_y, bounds.max_y,
+                               kAxisEpsilon);
+  }
+  if (std::fabs(start.y - end.y) <= kAxisEpsilon) {
+    const float y = start.y;
+    if (y <= bounds.min_y + kAxisEpsilon || y >= bounds.max_y - kAxisEpsilon) {
+      return false;
+    }
+    return RangesOverlapStrict(start.x, end.x, bounds.min_x, bounds.max_x,
+                               kAxisEpsilon);
+  }
+  return true;
+}
+
+const PlacedComponent* FindComponentInList(
+    const std::vector<PlacedComponent>& comps,
+    int component_id) {
+  for (const auto& comp : comps) {
+    if (comp.instanceId == component_id) {
+      return &comp;
+    }
+  }
+  return nullptr;
+}
+
+ImVec2 GetPortBreakoutPoint(const PlacedComponent& comp,
+                            ImVec2 port_pos,
+                            float clearance) {
+  const ComponentBounds bounds = BuildComponentBounds(comp, clearance);
+  const ImVec2 center = GetComponentWorldCenter(comp);
+  const ImVec2 outward(port_pos.x - center.x, port_pos.y - center.y);
+  if (std::fabs(outward.x) >= std::fabs(outward.y)) {
+    return ImVec2(outward.x < 0.0f ? bounds.min_x : bounds.max_x, port_pos.y);
+  }
+  return ImVec2(port_pos.x, outward.y < 0.0f ? bounds.min_y : bounds.max_y);
+}
+
+std::vector<ImVec2> NormalizeOrthogonalPath(const std::vector<ImVec2>& points) {
+  constexpr float kPointEpsilon = 0.1f;
+  std::vector<ImVec2> normalized;
+  normalized.reserve(points.size());
+  for (const ImVec2& point : points) {
+    if (!normalized.empty()) {
+      const ImVec2& prev = normalized.back();
+      if (std::fabs(prev.x - point.x) <= kPointEpsilon &&
+          std::fabs(prev.y - point.y) <= kPointEpsilon) {
+        continue;
+      }
+    }
+    normalized.push_back(point);
+    while (normalized.size() >= 3) {
+      const ImVec2 a = normalized[normalized.size() - 3];
+      const ImVec2 b = normalized[normalized.size() - 2];
+      const ImVec2 c = normalized[normalized.size() - 1];
+      const bool vertical =
+          std::fabs(a.x - b.x) <= kPointEpsilon &&
+          std::fabs(b.x - c.x) <= kPointEpsilon;
+      const bool horizontal =
+          std::fabs(a.y - b.y) <= kPointEpsilon &&
+          std::fabs(b.y - c.y) <= kPointEpsilon;
+      if (!vertical && !horizontal) {
+        break;
+      }
+      normalized.erase(normalized.end() - 2);
+    }
+  }
+  return normalized;
+}
+
+bool IsOrthogonalPathClear(const std::vector<ImVec2>& path_points,
+                           const std::vector<PlacedComponent>& components,
+                           int start_component_id,
+                           int end_component_id) {
+  if (path_points.size() < 2) {
+    return false;
+  }
+
+  for (size_t i = 1; i < path_points.size(); ++i) {
+    for (const auto& comp : components) {
+      if (comp.instanceId == start_component_id ||
+          comp.instanceId == end_component_id) {
+        continue;
+      }
+      if (DoesOrthogonalSegmentIntersectBounds(
+              path_points[i - 1], path_points[i],
+              BuildComponentBounds(comp, 6.0f))) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+float OrthogonalPathLength(const std::vector<ImVec2>& path_points) {
+  float length = 0.0f;
+  for (size_t i = 1; i < path_points.size(); ++i) {
+    length += std::fabs(path_points[i].x - path_points[i - 1].x) +
+              std::fabs(path_points[i].y - path_points[i - 1].y);
+  }
+  return length;
+}
+
+std::vector<Position> BuildAutoOrthogonalWaypoints(
+    ImVec2 start_pos,
+    ImVec2 end_pos,
+    int start_component_id,
+    int end_component_id,
+    const std::vector<PlacedComponent>& components) {
+  constexpr float kAxisEpsilon = 0.1f;
+  constexpr float kRouteClearance = 20.0f;
+  const PlacedComponent* start_comp =
+      FindComponentInList(components, start_component_id);
+  const PlacedComponent* end_comp =
+      FindComponentInList(components, end_component_id);
+  const ImVec2 start_breakout =
+      start_comp ? GetPortBreakoutPoint(*start_comp, start_pos, kRouteClearance)
+                 : start_pos;
+  const ImVec2 end_breakout =
+      end_comp ? GetPortBreakoutPoint(*end_comp, end_pos, kRouteClearance)
+               : end_pos;
+
+  std::vector<ImVec2> best_path;
+  float best_length = std::numeric_limits<float>::max();
+
+  auto consider_path = [&](const std::vector<ImVec2>& mid_points) {
+    std::vector<ImVec2> route_points;
+    route_points.reserve(mid_points.size() + 2);
+    route_points.push_back(start_breakout);
+    route_points.insert(route_points.end(), mid_points.begin(), mid_points.end());
+    route_points.push_back(end_breakout);
+    route_points = NormalizeOrthogonalPath(route_points);
+    if (route_points.size() < 2) {
+      return;
+    }
+    for (size_t i = 1; i < route_points.size(); ++i) {
+      const bool axis_aligned =
+          std::fabs(route_points[i].x - route_points[i - 1].x) <=
+              kAxisEpsilon ||
+          std::fabs(route_points[i].y - route_points[i - 1].y) <=
+              kAxisEpsilon;
+      if (!axis_aligned) {
+        return;
+      }
+    }
+    if (!IsOrthogonalPathClear(route_points, components, -1, -1)) {
+      return;
+    }
+    std::vector<ImVec2> full_path = {start_pos, start_breakout};
+    full_path.insert(full_path.end(), route_points.begin() + 1,
+                     route_points.end());
+    full_path.push_back(end_pos);
+    full_path = NormalizeOrthogonalPath(full_path);
+    const float path_length = OrthogonalPathLength(full_path);
+    if (best_path.empty() || path_length < best_length) {
+      best_path = std::move(full_path);
+      best_length = path_length;
+    }
+  };
+
+  if (std::fabs(start_breakout.x - end_breakout.x) <= kAxisEpsilon ||
+      std::fabs(start_breakout.y - end_breakout.y) <= kAxisEpsilon) {
+    consider_path({});
+  } else {
+    consider_path({ImVec2(start_breakout.x, end_breakout.y)});
+    consider_path({ImVec2(end_breakout.x, start_breakout.y)});
+  }
+
+  std::vector<float> candidate_y;
+  std::vector<float> candidate_x;
+  auto append_unique = [](std::vector<float>* values, float candidate) {
+    constexpr float kUniqueEpsilon = 0.1f;
+    for (float existing : *values) {
+      if (std::fabs(existing - candidate) <= kUniqueEpsilon) {
+        return;
+      }
+    }
+    values->push_back(candidate);
+  };
+
+  append_unique(&candidate_y,
+                std::min(start_breakout.y, end_breakout.y) - kRouteClearance);
+  append_unique(&candidate_y,
+                std::max(start_breakout.y, end_breakout.y) + kRouteClearance);
+  append_unique(&candidate_x,
+                std::min(start_breakout.x, end_breakout.x) - kRouteClearance);
+  append_unique(&candidate_x,
+                std::max(start_breakout.x, end_breakout.x) + kRouteClearance);
+
+  for (const auto& comp : components) {
+    const ComponentBounds bounds = BuildComponentBounds(comp, 6.0f);
+    append_unique(&candidate_y, bounds.min_y - kRouteClearance);
+    append_unique(&candidate_y, bounds.max_y + kRouteClearance);
+    append_unique(&candidate_x, bounds.min_x - kRouteClearance);
+    append_unique(&candidate_x, bounds.max_x + kRouteClearance);
+  }
+
+  for (float route_y : candidate_y) {
+    consider_path(
+        {ImVec2(start_breakout.x, route_y), ImVec2(end_breakout.x, route_y)});
+  }
+  for (float route_x : candidate_x) {
+    consider_path(
+        {ImVec2(route_x, start_breakout.y), ImVec2(route_x, end_breakout.y)});
+  }
+
+  std::vector<Position> waypoints;
+  if (best_path.size() <= 2) {
+    return waypoints;
+  }
+  waypoints.reserve(best_path.size() - 2);
+  for (size_t i = 1; i + 1 < best_path.size(); ++i) {
+    waypoints.emplace_back(best_path[i].x, best_path[i].y);
+  }
+  return waypoints;
+}
+
 constexpr ImU32 kTagColors[] = {
     IM_COL32(0, 0, 0, 255),      // black (default)
     IM_COL32(200, 40, 40, 255),   // red
@@ -231,6 +485,7 @@ constexpr ImU32 kPneumaticTagBackground = IM_COL32(210, 235, 250, 255);
 constexpr ImU32 kElectricTagBackground = IM_COL32(255, 255, 255, 255);
 constexpr ImU32 kTagTextColor = IM_COL32(20, 20, 20, 255);
 constexpr float kTagOutwardDotThreshold = 0.35f;
+constexpr float kFixedTagZoomReference = 5.0f;
 
 ImU32 GetTagColor(int index) {
   const int count = static_cast<int>(sizeof(kTagColors) / sizeof(kTagColors[0]));
@@ -295,39 +550,181 @@ TagDirectionInfo ResolveTagDirection(ImVec2 port_pos,
 struct TagLabelLayout {
   ImVec2 rect_min = {};
   ImVec2 rect_max = {};
+  ImVec2 anchor = {};
   TagPointerSide side = TagPointerSide::Right;
+  float font_size = 0.0f;
   float tip_length = 0.0f;
   float tail_half_width = 0.0f;
   float padding = 0.0f;
 };
 
+struct ScreenRect {
+  float min_x = 0.0f;
+  float min_y = 0.0f;
+  float max_x = 0.0f;
+  float max_y = 0.0f;
+};
+
+struct ScreenComponentBounds {
+  int component_id = -1;
+  ScreenRect rect;
+};
+
+struct TagTailGeometry {
+  ImVec2 tail_p1 = {};
+  ImVec2 tail_p2 = {};
+  ImVec2 tip = {};
+  ScreenRect bounds;
+};
+
+ScreenRect MakeScreenRect(ImVec2 rect_min, ImVec2 rect_max) {
+  ScreenRect rect;
+  rect.min_x = std::min(rect_min.x, rect_max.x);
+  rect.min_y = std::min(rect_min.y, rect_max.y);
+  rect.max_x = std::max(rect_min.x, rect_max.x);
+  rect.max_y = std::max(rect_min.y, rect_max.y);
+  return rect;
+}
+
+ScreenRect ExpandScreenRect(const ScreenRect& rect, float padding) {
+  ScreenRect expanded = rect;
+  expanded.min_x -= padding;
+  expanded.min_y -= padding;
+  expanded.max_x += padding;
+  expanded.max_y += padding;
+  return expanded;
+}
+
+ImVec2 GetScreenRectCenter(const ScreenRect& rect) {
+  return {(rect.min_x + rect.max_x) * 0.5f, (rect.min_y + rect.max_y) * 0.5f};
+}
+
+bool DoScreenRectsOverlap(const ScreenRect& a, const ScreenRect& b) {
+  return a.min_x < b.max_x && a.max_x > b.min_x && a.min_y < b.max_y &&
+         a.max_y > b.min_y;
+}
+
+float ScreenRectOverlapArea(const ScreenRect& a, const ScreenRect& b) {
+  if (!DoScreenRectsOverlap(a, b)) {
+    return 0.0f;
+  }
+  const float overlap_w = std::min(a.max_x, b.max_x) - std::max(a.min_x, b.min_x);
+  const float overlap_h = std::min(a.max_y, b.max_y) - std::max(a.min_y, b.min_y);
+  return std::max(0.0f, overlap_w) * std::max(0.0f, overlap_h);
+}
+
+float ScreenRectEdgeDistance(const ScreenRect& a, const ScreenRect& b) {
+  const float dx =
+      std::max({a.min_x - b.max_x, b.min_x - a.max_x, 0.0f});
+  const float dy =
+      std::max({a.min_y - b.max_y, b.min_y - a.max_y, 0.0f});
+  return std::sqrt(dx * dx + dy * dy);
+}
+
+float DistanceSq(ImVec2 a, ImVec2 b) {
+  const float dx = a.x - b.x;
+  const float dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+template <typename WorldToScreenFn>
+ScreenComponentBounds BuildScreenComponentBounds(const PlacedComponent& comp,
+                                                 WorldToScreenFn world_to_screen,
+                                                 float padding) {
+  const Size display = GetComponentDisplaySize(comp);
+  const ImVec2 top_left = world_to_screen(comp.position);
+  const ImVec2 bottom_right = world_to_screen(
+      Position(comp.position.x + display.width, comp.position.y + display.height));
+  ScreenComponentBounds bounds;
+  bounds.component_id = comp.instanceId;
+  bounds.rect = MakeScreenRect(top_left, bottom_right);
+  bounds.rect.min_x -= padding;
+  bounds.rect.min_y -= padding;
+  bounds.rect.max_x += padding;
+  bounds.rect.max_y += padding;
+  return bounds;
+}
+
+TagDirectionInfo MakeTagDirectionForSide(TagPointerSide side) {
+  TagDirectionInfo direction;
+  direction.side = side;
+  switch (side) {
+    case TagPointerSide::Left:
+      direction.dir = {-1.0f, 0.0f};
+      direction.perp = {0.0f, 1.0f};
+      break;
+    case TagPointerSide::Right:
+      direction.dir = {1.0f, 0.0f};
+      direction.perp = {0.0f, 1.0f};
+      break;
+    case TagPointerSide::Top:
+      direction.dir = {0.0f, -1.0f};
+      direction.perp = {1.0f, 0.0f};
+      break;
+    case TagPointerSide::Bottom:
+      direction.dir = {0.0f, 1.0f};
+      direction.perp = {1.0f, 0.0f};
+      break;
+  }
+  return direction;
+}
+
+std::vector<TagPointerSide> GetPreferredTagSides(TagPointerSide preferred_side) {
+  switch (preferred_side) {
+    case TagPointerSide::Left:
+      return {TagPointerSide::Left, TagPointerSide::Top,
+              TagPointerSide::Bottom, TagPointerSide::Right};
+    case TagPointerSide::Right:
+      return {TagPointerSide::Right, TagPointerSide::Top,
+              TagPointerSide::Bottom, TagPointerSide::Left};
+    case TagPointerSide::Top:
+      return {TagPointerSide::Top, TagPointerSide::Right,
+              TagPointerSide::Left, TagPointerSide::Bottom};
+    case TagPointerSide::Bottom:
+      return {TagPointerSide::Bottom, TagPointerSide::Right,
+              TagPointerSide::Left, TagPointerSide::Top};
+  }
+  return {TagPointerSide::Right, TagPointerSide::Top, TagPointerSide::Bottom,
+          TagPointerSide::Left};
+}
+
+int StackDepthForIndex(int stack_index) {
+  if (stack_index <= 0) {
+    return 0;
+  }
+  return (stack_index + 1) / 2;
+}
+
 TagLabelLayout BuildTagLabelLayout(ImVec2 port_pos,
-                                   ImVec2 neighbor_pos,
-                                   ImVec2 component_center,
-                                   bool has_component_center,
+                                   const TagDirectionInfo& direction,
                                    const std::string& text,
                                    float layout_scale,
-                                   int stack_index) {
+                                   int stack_index,
+                                   float radial_offset) {
   TagLabelLayout layout;
   if (text.empty()) {
     layout.rect_min = port_pos;
     layout.rect_max = port_pos;
+    layout.anchor = port_pos;
     return layout;
   }
-  TagDirectionInfo direction = ResolveTagDirection(
-      port_pos, neighbor_pos, component_center, has_component_center);
   ImVec2 dir = direction.dir;
   ImVec2 perp = direction.perp;
   layout.side = direction.side;
 
+  layout.font_size = ImGui::GetFontSize() * layout_scale;
   layout.padding = 4.0f * layout_scale;
   layout.tip_length = 10.0f * layout_scale;
   layout.tail_half_width = 2.0f * layout_scale;
-  ImVec2 text_size = ImGui::CalcTextSize(text.c_str());
+  ImFont* font = ImGui::GetFont();
+  ImVec2 text_size = font
+                         ? font->CalcTextSizeA(layout.font_size, FLT_MAX, 0.0f,
+                                               text.c_str())
+                         : ImGui::CalcTextSize(text.c_str());
   float half_w = text_size.x * 0.5f + layout.padding;
   float half_h = text_size.y * 0.5f + layout.padding;
 
-  float base_offset = 12.0f * layout_scale + layout.tip_length;
+  float base_offset = 12.0f * layout_scale + layout.tip_length + radial_offset;
   if (layout.side == TagPointerSide::Left ||
       layout.side == TagPointerSide::Right) {
     base_offset += half_w;
@@ -342,23 +739,233 @@ TagLabelLayout BuildTagLabelLayout(ImVec2 port_pos,
     stack_offset = sign * static_cast<float>(step) * 12.0f * layout_scale;
   }
 
-  ImVec2 anchor = {port_pos.x + dir.x * base_offset + perp.x * stack_offset,
+  layout.anchor = {port_pos.x + dir.x * base_offset + perp.x * stack_offset,
                    port_pos.y + dir.y * base_offset + perp.y * stack_offset};
-  layout.rect_min = {anchor.x - half_w, anchor.y - half_h};
-  layout.rect_max = {anchor.x + half_w, anchor.y + half_h};
+  layout.rect_min = {layout.anchor.x - half_w, layout.anchor.y - half_h};
+  layout.rect_max = {layout.anchor.x + half_w, layout.anchor.y + half_h};
   return layout;
+}
+
+TagTailGeometry BuildTagTailGeometry(const TagLabelLayout& layout, ImVec2 port_pos) {
+  TagTailGeometry geometry;
+  geometry.tip = port_pos;
+  const float mid_x = (layout.rect_min.x + layout.rect_max.x) * 0.5f;
+  const float mid_y = (layout.rect_min.y + layout.rect_max.y) * 0.5f;
+  const ImVec2 to_port = {port_pos.x - mid_x, port_pos.y - mid_y};
+  if (std::abs(to_port.x) >= std::abs(to_port.y)) {
+    if (to_port.x >= 0.0f) {
+      geometry.tail_p1 = {layout.rect_max.x, mid_y - layout.tail_half_width};
+      geometry.tail_p2 = {layout.rect_max.x, mid_y + layout.tail_half_width};
+    } else {
+      geometry.tail_p1 = {layout.rect_min.x, mid_y - layout.tail_half_width};
+      geometry.tail_p2 = {layout.rect_min.x, mid_y + layout.tail_half_width};
+    }
+  } else {
+    if (to_port.y >= 0.0f) {
+      geometry.tail_p1 = {mid_x - layout.tail_half_width, layout.rect_max.y};
+      geometry.tail_p2 = {mid_x + layout.tail_half_width, layout.rect_max.y};
+    } else {
+      geometry.tail_p1 = {mid_x - layout.tail_half_width, layout.rect_min.y};
+      geometry.tail_p2 = {mid_x + layout.tail_half_width, layout.rect_min.y};
+    }
+  }
+
+  geometry.bounds.min_x =
+      std::min({geometry.tail_p1.x, geometry.tail_p2.x, geometry.tip.x});
+  geometry.bounds.min_y =
+      std::min({geometry.tail_p1.y, geometry.tail_p2.y, geometry.tip.y});
+  geometry.bounds.max_x =
+      std::max({geometry.tail_p1.x, geometry.tail_p2.x, geometry.tip.x});
+  geometry.bounds.max_y =
+      std::max({geometry.tail_p1.y, geometry.tail_p2.y, geometry.tip.y});
+  return geometry;
+}
+
+bool DoesTagTailIntersectRect(const TagTailGeometry& geometry, const ScreenRect& rect) {
+  return DoesSegmentIntersectSelectionRect(geometry.tail_p1, geometry.tip, rect.min_x,
+                                           rect.min_y, rect.max_x, rect.max_y) ||
+         DoesSegmentIntersectSelectionRect(geometry.tail_p2, geometry.tip, rect.min_x,
+                                           rect.min_y, rect.max_x, rect.max_y);
+}
+
+std::vector<TagTailGeometry> BuildTagTailGeometries(
+    const TagLabelLayout& layout,
+    const std::vector<std::pair<int, ImVec2>>& grouped_ports) {
+  std::vector<TagTailGeometry> tails;
+  tails.reserve(grouped_ports.size());
+  for (const auto& grouped_port : grouped_ports) {
+    tails.push_back(BuildTagTailGeometry(layout, grouped_port.second));
+  }
+  return tails;
+}
+
+ImU32 ScaleColorAlpha(ImU32 color, float alpha_scale) {
+  const float clamped = std::clamp(alpha_scale, 0.0f, 1.0f);
+  const ImU32 alpha = static_cast<ImU32>(
+      std::round(((color >> IM_COL32_A_SHIFT) & 0xFFU) * clamped));
+  return (color & ~(0xFFU << IM_COL32_A_SHIFT)) |
+         (alpha << IM_COL32_A_SHIFT);
 }
 
 struct TagLayoutEntry {
   Wire* wire = nullptr;
   int component_id = 0;
+  int port_id = -1;
+  int lane_bucket = 0;
+  ComponentType component_type = ComponentType::PLC;
+  bool is_electric = false;
+  int color_index = 0;
+  std::string tag_text;
   ImVec2 port_pos = {};
   ImVec2 neighbor_pos = {};
   ImVec2 component_center = {};
   bool has_component_center = false;
   TagPointerSide side = TagPointerSide::Right;
+  TagPointerSide preferred_side = TagPointerSide::Right;
+  int cluster_neighbor_count = 0;
+  int component_side_neighbor_count = 0;
+  int arrow_overlap_count = 1;
+  float arrow_alpha = 1.0f;
+  std::vector<std::pair<int, ImVec2>> grouped_ports;
   TagLabelLayout layout;
 };
+
+enum class TagVisualGroup {
+  Default,
+  PlcX,
+  PlcY,
+};
+
+struct PlacedTagLayoutInfo {
+  int component_id = 0;
+  TagPointerSide preferred_side = TagPointerSide::Right;
+  TagPointerSide actual_side = TagPointerSide::Right;
+  TagVisualGroup visual_group = TagVisualGroup::Default;
+  int lane_bucket = 0;
+  ScreenRect rect;
+  std::vector<TagTailGeometry> tails;
+  TagLabelLayout layout;
+};
+
+TagVisualGroup ResolveTagVisualGroup(ComponentType component_type, int port_id) {
+  if (component_type != ComponentType::PLC) {
+    return TagVisualGroup::Default;
+  }
+  if (port_id >= 0 && port_id < 16) {
+    return TagVisualGroup::PlcX;
+  }
+  if (port_id >= 16 && port_id < 32) {
+    return TagVisualGroup::PlcY;
+  }
+  return TagVisualGroup::Default;
+}
+
+TagPointerSide ResolvePreferredTagSide(ComponentType component_type,
+                                       int port_id,
+                                       TagPointerSide fallback_side) {
+  switch (ResolveTagVisualGroup(component_type, port_id)) {
+    case TagVisualGroup::PlcX:
+      return TagPointerSide::Top;
+    case TagVisualGroup::PlcY:
+      return TagPointerSide::Bottom;
+    case TagVisualGroup::Default:
+      break;
+  }
+  return fallback_side;
+}
+
+int ResolveTagLaneBucket(ComponentType component_type, int port_id) {
+  switch (ResolveTagVisualGroup(component_type, port_id)) {
+    case TagVisualGroup::PlcX:
+      return port_id >= 8 ? 1 : 0;
+    case TagVisualGroup::PlcY:
+      return port_id >= 24 ? 1 : 0;
+    case TagVisualGroup::Default:
+      break;
+  }
+  return 0;
+}
+
+float ResolveTagBucketRadialOffset(const TagLayoutEntry& entry,
+                                   float layout_scale) {
+  if (ResolveTagVisualGroup(entry.component_type, entry.port_id) ==
+      TagVisualGroup::Default) {
+    return 0.0f;
+  }
+  return static_cast<float>(entry.lane_bucket) * 22.0f * layout_scale;
+}
+
+bool ShouldShareTagLane(const TagLayoutEntry& a, const TagLayoutEntry& b) {
+  if (a.component_id != b.component_id) {
+    return false;
+  }
+  const TagVisualGroup a_group =
+      ResolveTagVisualGroup(a.component_type, a.port_id);
+  const TagVisualGroup b_group =
+      ResolveTagVisualGroup(b.component_type, b.port_id);
+  if (a_group != b_group) {
+    return false;
+  }
+  if (a_group != TagVisualGroup::Default) {
+    return a.lane_bucket == b.lane_bucket;
+  }
+  return a.preferred_side == b.preferred_side;
+}
+
+std::vector<TagPointerSide> GetCandidateTagSides(const TagLayoutEntry& entry) {
+  if (ResolveTagVisualGroup(entry.component_type, entry.port_id) !=
+      TagVisualGroup::Default) {
+    return {entry.preferred_side};
+  }
+  return GetPreferredTagSides(entry.preferred_side);
+}
+
+float GetTagLaneAxis(const TagLabelLayout& layout) {
+  return (layout.side == TagPointerSide::Left || layout.side == TagPointerSide::Right)
+             ? layout.anchor.x
+             : layout.anchor.y;
+}
+
+void SetTagLaneAxis(TagLabelLayout* layout, float lane_axis) {
+  if (!layout) {
+    return;
+  }
+  if (layout->side == TagPointerSide::Left ||
+      layout->side == TagPointerSide::Right) {
+    const float delta = lane_axis - layout->anchor.x;
+    layout->anchor.x += delta;
+    layout->rect_min.x += delta;
+    layout->rect_max.x += delta;
+    return;
+  }
+  const float delta = lane_axis - layout->anchor.y;
+  layout->anchor.y += delta;
+  layout->rect_min.y += delta;
+  layout->rect_max.y += delta;
+}
+
+float GetTagPerpendicularAxis(TagPointerSide side, ImVec2 point) {
+  return (side == TagPointerSide::Left || side == TagPointerSide::Right) ? point.y
+                                                                          : point.x;
+}
+
+bool ShouldClusterTagEntries(const TagLayoutEntry& a,
+                             const TagLayoutEntry& b,
+                             float cluster_radius,
+                             float rect_padding) {
+  const float cluster_radius_sq = cluster_radius * cluster_radius;
+  if (DistanceSq(a.port_pos, b.port_pos) <= cluster_radius_sq) {
+    return true;
+  }
+  const ScreenRect a_rect = MakeScreenRect(a.layout.rect_min, a.layout.rect_max);
+  const ScreenRect b_rect = MakeScreenRect(b.layout.rect_min, b.layout.rect_max);
+  if (DistanceSq(GetScreenRectCenter(a_rect), GetScreenRectCenter(b_rect)) <=
+      cluster_radius_sq) {
+    return true;
+  }
+  return DoScreenRectsOverlap(ExpandScreenRect(a_rect, rect_padding),
+                              ExpandScreenRect(b_rect, rect_padding));
+}
 
 template <typename WorldToScreenFn>
 std::vector<TagLayoutEntry> BuildTagLayouts(
@@ -367,13 +974,22 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
     const std::vector<PlacedComponent>& placed_components,
     WorldToScreenFn world_to_screen,
     float layout_scale) {
+  constexpr int kMaxTagStackCandidates = 13;
+  constexpr int kMaxTagRadialCandidates = 8;
+  constexpr int kDenseArrowThreshold = 5;
+  constexpr float kDenseArrowAlpha = 0.55f;
   std::vector<TagLayoutEntry> entries;
   std::map<int, ImVec2> component_centers;
+  std::map<int, ComponentType> component_types;
+  std::vector<ScreenComponentBounds> component_bounds;
   for (const auto& comp : placed_components) {
     const Size display = GetComponentDisplaySize(comp);
     Position center_world(comp.position.x + display.width * 0.5f,
                           comp.position.y + display.height * 0.5f);
     component_centers[comp.instanceId] = world_to_screen(center_world);
+    component_types[comp.instanceId] = comp.type;
+    component_bounds.push_back(
+        BuildScreenComponentBounds(comp, world_to_screen, 12.0f * layout_scale));
   }
 
   for (auto& wire : *wires) {
@@ -397,13 +1013,24 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
     }
 
     auto append_entry = [&](int component_id,
+                            int port_id,
                             ImVec2 port_pos,
                             ImVec2 neighbor_pos) {
       TagLayoutEntry entry;
       entry.wire = &wire;
       entry.component_id = component_id;
+      entry.port_id = port_id;
+      entry.is_electric = wire.isElectric;
+      entry.color_index = wire.tagColorIndex;
+      entry.tag_text = wire.tagText;
       entry.port_pos = port_pos;
       entry.neighbor_pos = neighbor_pos;
+      entry.grouped_ports.push_back({port_id, port_pos});
+      auto type_it = component_types.find(component_id);
+      if (type_it != component_types.end()) {
+        entry.component_type = type_it->second;
+      }
+      entry.lane_bucket = ResolveTagLaneBucket(entry.component_type, port_id);
       auto center_it = component_centers.find(component_id);
       if (center_it != component_centers.end()) {
         entry.component_center = center_it->second;
@@ -412,59 +1039,376 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
       TagDirectionInfo direction = ResolveTagDirection(
           port_pos, neighbor_pos, entry.component_center,
           entry.has_component_center);
-      entry.side = direction.side;
-      entry.layout = BuildTagLabelLayout(
-          port_pos, neighbor_pos, entry.component_center,
-          entry.has_component_center, wire.tagText, layout_scale, 0);
+      entry.preferred_side = ResolvePreferredTagSide(entry.component_type, port_id,
+                                                     direction.side);
+      direction = MakeTagDirectionForSide(entry.preferred_side);
+      entry.side = entry.preferred_side;
+      entry.layout = BuildTagLabelLayout(port_pos, direction, wire.tagText,
+                                         layout_scale, 0,
+                                         ResolveTagBucketRadialOffset(entry,
+                                                                      layout_scale));
       entries.push_back(entry);
     };
 
-    append_entry(wire.fromComponentId, start_screen_pos, start_neighbor);
-    append_entry(wire.toComponentId, end_screen_pos, end_neighbor);
+    append_entry(wire.fromComponentId, wire.fromPortId, start_screen_pos,
+                 start_neighbor);
+    append_entry(wire.toComponentId, wire.toPortId, end_screen_pos, end_neighbor);
   }
 
-  using TagGroupKey = std::pair<int, TagPointerSide>;
-  std::map<TagGroupKey, std::vector<TagLayoutEntry*>> groups;
-  for (auto& entry : entries) {
-    groups[{entry.component_id, entry.side}].push_back(&entry);
+  if (entries.empty()) {
+    return entries;
   }
 
-  const float spacing = 8.0f * layout_scale;
-  for (auto& [key, group] : groups) {
-    if (group.empty()) {
+  using TagMergeKey = std::tuple<int, std::string, int, int, bool, int>;
+  struct TagMergeAccumulator {
+    TagLayoutEntry entry;
+    ImVec2 port_sum = {};
+    ImVec2 neighbor_sum = {};
+    int count = 0;
+  };
+
+  std::map<TagMergeKey, TagMergeAccumulator> merged_by_key;
+  for (const auto& entry : entries) {
+    const TagVisualGroup visual_group =
+        ResolveTagVisualGroup(entry.component_type, entry.port_id);
+    const TagMergeKey key(entry.component_id, entry.tag_text,
+                          static_cast<int>(visual_group), entry.lane_bucket,
+                          entry.is_electric, entry.color_index);
+    TagMergeAccumulator& accum = merged_by_key[key];
+    if (accum.count == 0) {
+      accum.entry = entry;
+      accum.entry.grouped_ports.clear();
+    } else {
+      accum.entry.port_id = std::min(accum.entry.port_id, entry.port_id);
+      accum.entry.lane_bucket =
+          std::min(accum.entry.lane_bucket, entry.lane_bucket);
+    }
+    accum.entry.grouped_ports.insert(accum.entry.grouped_ports.end(),
+                                     entry.grouped_ports.begin(),
+                                     entry.grouped_ports.end());
+    accum.port_sum.x += entry.port_pos.x;
+    accum.port_sum.y += entry.port_pos.y;
+    accum.neighbor_sum.x += entry.neighbor_pos.x;
+    accum.neighbor_sum.y += entry.neighbor_pos.y;
+    ++accum.count;
+  }
+
+  entries.clear();
+  entries.reserve(merged_by_key.size());
+  for (auto& [key, accum] : merged_by_key) {
+    if (accum.count <= 0) {
       continue;
     }
-    TagPointerSide side = key.second;
-    const bool vertical = (side == TagPointerSide::Left ||
-                           side == TagPointerSide::Right);
-    std::sort(group.begin(), group.end(),
-              [&](const TagLayoutEntry* a, const TagLayoutEntry* b) {
-                return vertical ? (a->layout.rect_min.y <
-                                   b->layout.rect_min.y)
-                                : (a->layout.rect_min.x <
-                                   b->layout.rect_min.x);
+    std::sort(accum.entry.grouped_ports.begin(), accum.entry.grouped_ports.end(),
+              [](const auto& lhs, const auto& rhs) {
+                if (lhs.first != rhs.first) {
+                  return lhs.first < rhs.first;
+                }
+                if (lhs.second.y != rhs.second.y) {
+                  return lhs.second.y < rhs.second.y;
+                }
+                return lhs.second.x < rhs.second.x;
               });
+    accum.entry.port_pos = {accum.port_sum.x / static_cast<float>(accum.count),
+                            accum.port_sum.y / static_cast<float>(accum.count)};
+    accum.entry.neighbor_pos = {
+        accum.neighbor_sum.x / static_cast<float>(accum.count),
+        accum.neighbor_sum.y / static_cast<float>(accum.count)};
+    TagDirectionInfo direction =
+        ResolveTagDirection(accum.entry.port_pos, accum.entry.neighbor_pos,
+                            accum.entry.component_center,
+                            accum.entry.has_component_center);
+    accum.entry.preferred_side = ResolvePreferredTagSide(
+        accum.entry.component_type, accum.entry.port_id, direction.side);
+    direction = MakeTagDirectionForSide(accum.entry.preferred_side);
+    accum.entry.side = accum.entry.preferred_side;
+    accum.entry.layout = BuildTagLabelLayout(accum.entry.port_pos, direction,
+                                             accum.entry.tag_text, layout_scale, 0,
+                                             ResolveTagBucketRadialOffset(
+                                                 accum.entry, layout_scale));
+    entries.push_back(std::move(accum.entry));
+  }
 
-    float last_max = -FLT_MAX;
-    for (auto* entry : group) {
-      float min_axis =
-          vertical ? entry->layout.rect_min.y : entry->layout.rect_min.x;
-      float max_axis =
-          vertical ? entry->layout.rect_max.y : entry->layout.rect_max.x;
-      if (min_axis < last_max + spacing) {
-        float delta = (last_max + spacing) - min_axis;
-        if (vertical) {
-          entry->layout.rect_min.y += delta;
-          entry->layout.rect_max.y += delta;
-        } else {
-          entry->layout.rect_min.x += delta;
-          entry->layout.rect_max.x += delta;
-        }
-        min_axis += delta;
-        max_axis += delta;
-      }
-      last_max = max_axis;
+  const float cluster_radius = 180.0f * layout_scale;
+  const float cluster_rect_padding = 40.0f * layout_scale;
+  std::vector<std::vector<int>> clusters;
+  std::vector<bool> visited(entries.size(), false);
+  for (size_t i = 0; i < entries.size(); ++i) {
+    if (visited[i]) {
+      continue;
     }
+    std::vector<int> cluster;
+    std::vector<size_t> stack = {i};
+    visited[i] = true;
+    while (!stack.empty()) {
+      const size_t current = stack.back();
+      stack.pop_back();
+      cluster.push_back(static_cast<int>(current));
+      for (size_t j = 0; j < entries.size(); ++j) {
+        if (visited[j]) {
+          continue;
+        }
+        if (!ShouldClusterTagEntries(entries[current], entries[j], cluster_radius,
+                                     cluster_rect_padding)) {
+          continue;
+        }
+        visited[j] = true;
+        stack.push_back(j);
+      }
+    }
+    clusters.push_back(std::move(cluster));
+  }
+
+  for (auto& cluster : clusters) {
+    for (int entry_index : cluster) {
+      TagLayoutEntry& entry = entries[entry_index];
+      int neighbor_count = 0;
+      int component_side_neighbor_count = 0;
+      for (int other_index : cluster) {
+        if (entry_index == other_index) {
+          continue;
+        }
+        if (ShouldClusterTagEntries(entry, entries[other_index], cluster_radius,
+                                    cluster_rect_padding)) {
+          ++neighbor_count;
+        }
+        if (ShouldShareTagLane(entry, entries[other_index])) {
+          ++component_side_neighbor_count;
+        }
+      }
+      entry.cluster_neighbor_count = neighbor_count;
+      entry.component_side_neighbor_count = component_side_neighbor_count;
+    }
+
+    std::sort(cluster.begin(), cluster.end(), [&](int lhs, int rhs) {
+      const TagLayoutEntry& a = entries[lhs];
+      const TagLayoutEntry& b = entries[rhs];
+      const TagVisualGroup a_group =
+          ResolveTagVisualGroup(a.component_type, a.port_id);
+      const TagVisualGroup b_group =
+          ResolveTagVisualGroup(b.component_type, b.port_id);
+      if (a.component_type == ComponentType::PLC &&
+          b.component_type == ComponentType::PLC &&
+          a.component_id == b.component_id && a_group == b_group &&
+          a.lane_bucket != b.lane_bucket) {
+        return a.lane_bucket < b.lane_bucket;
+      }
+      if (a.component_type == ComponentType::PLC &&
+          b.component_type == ComponentType::PLC &&
+          a.component_id == b.component_id && a_group == b_group &&
+          a.port_id != b.port_id) {
+        return a.port_id < b.port_id;
+      }
+      if (a.cluster_neighbor_count != b.cluster_neighbor_count) {
+        return a.cluster_neighbor_count > b.cluster_neighbor_count;
+      }
+      if (a.component_side_neighbor_count != b.component_side_neighbor_count) {
+        return a.component_side_neighbor_count > b.component_side_neighbor_count;
+      }
+      if (a.component_id != b.component_id) {
+        return a.component_id < b.component_id;
+      }
+      if (a_group != b_group) {
+        return static_cast<int>(a_group) < static_cast<int>(b_group);
+      }
+      if (a.preferred_side != b.preferred_side) {
+        return static_cast<int>(a.preferred_side) <
+               static_cast<int>(b.preferred_side);
+      }
+      const float a_axis = GetTagPerpendicularAxis(a.preferred_side, a.port_pos);
+      const float b_axis = GetTagPerpendicularAxis(b.preferred_side, b.port_pos);
+      if (a_axis != b_axis) {
+        return a_axis < b_axis;
+      }
+      if (a.port_pos.y != b.port_pos.y) {
+        return a.port_pos.y < b.port_pos.y;
+      }
+      if (a.port_pos.x != b.port_pos.x) {
+        return a.port_pos.x < b.port_pos.x;
+      }
+      return a.wire && b.wire ? a.wire->id < b.wire->id : a.wire < b.wire;
+    });
+
+    std::vector<PlacedTagLayoutInfo> placed_layouts;
+    const float label_spacing = 10.0f * layout_scale;
+    const float radial_step = 16.0f * layout_scale;
+
+    for (int entry_index : cluster) {
+      TagLayoutEntry& entry = entries[entry_index];
+      const std::vector<TagPointerSide> preferred_sides =
+          GetCandidateTagSides(entry);
+
+      TagLabelLayout best_layout = entry.layout;
+      float best_score = std::numeric_limits<float>::max();
+
+      for (size_t side_rank = 0; side_rank < preferred_sides.size(); ++side_rank) {
+        const TagDirectionInfo candidate_direction =
+            MakeTagDirectionForSide(preferred_sides[side_rank]);
+        for (int radial_index = 0; radial_index < kMaxTagRadialCandidates;
+             ++radial_index) {
+          const float radial_offset = radial_step * static_cast<float>(radial_index);
+          for (int stack_index = 0; stack_index < kMaxTagStackCandidates;
+               ++stack_index) {
+            TagLabelLayout candidate_layout = BuildTagLabelLayout(
+                entry.port_pos, candidate_direction, entry.tag_text,
+                layout_scale, stack_index, radial_offset);
+
+            float score = static_cast<float>(side_rank) * 180.0f +
+                          static_cast<float>(radial_index) * 24.0f +
+                          static_cast<float>(StackDepthForIndex(stack_index)) * 16.0f;
+
+            if (entry.component_side_neighbor_count > 0 &&
+                candidate_layout.side != entry.preferred_side) {
+              score += 320.0f * static_cast<float>(entry.component_side_neighbor_count);
+            }
+
+            int same_component_side_matches = 0;
+            float same_component_lane_sum = 0.0f;
+            for (const auto& placed : placed_layouts) {
+              if (placed.component_id == entry.component_id &&
+                  placed.preferred_side == entry.preferred_side &&
+                  placed.visual_group ==
+                      ResolveTagVisualGroup(entry.component_type, entry.port_id) &&
+                  placed.lane_bucket == entry.lane_bucket) {
+                if (candidate_layout.side == entry.preferred_side &&
+                    placed.actual_side == entry.preferred_side) {
+                  same_component_lane_sum += GetTagLaneAxis(placed.layout);
+                  ++same_component_side_matches;
+                } else if (candidate_layout.side != entry.preferred_side) {
+                  score += 240.0f;
+                }
+              }
+            }
+
+            if (same_component_side_matches > 0 &&
+                candidate_layout.side == entry.preferred_side) {
+              const float target_lane =
+                  same_component_lane_sum /
+                  static_cast<float>(same_component_side_matches);
+              SetTagLaneAxis(&candidate_layout, target_lane);
+              score -= 90.0f * static_cast<float>(same_component_side_matches);
+            }
+
+            const ScreenRect candidate_rect =
+                MakeScreenRect(candidate_layout.rect_min, candidate_layout.rect_max);
+            const std::vector<TagTailGeometry> candidate_tails =
+                BuildTagTailGeometries(candidate_layout, entry.grouped_ports);
+            score += std::sqrt(DistanceSq(GetScreenRectCenter(candidate_rect),
+                                          entry.port_pos)) *
+                     0.08f;
+
+            bool blocked_by_component = false;
+            for (const auto& bounds : component_bounds) {
+              const float overlap_area =
+                  ScreenRectOverlapArea(candidate_rect, bounds.rect);
+              if (overlap_area > 0.0f) {
+                if (bounds.component_id != entry.component_id) {
+                  blocked_by_component = true;
+                  break;
+                }
+                score += 4000.0f + overlap_area * 0.5f;
+              }
+              if (bounds.component_id != entry.component_id) {
+                for (const auto& candidate_tail : candidate_tails) {
+                  if (DoesTagTailIntersectRect(candidate_tail, bounds.rect)) {
+                    blocked_by_component = true;
+                    break;
+                  }
+                }
+                if (blocked_by_component) {
+                  break;
+                }
+              }
+            }
+            if (blocked_by_component) {
+              continue;
+            }
+
+            bool overlaps_existing_label = false;
+            for (const auto& placed : placed_layouts) {
+              const auto& placed_rect = placed.rect;
+              const float overlap_area =
+                  ScreenRectOverlapArea(candidate_rect, placed_rect);
+              if (overlap_area > 0.0f) {
+                overlaps_existing_label = true;
+                break;
+              }
+              const float edge_distance =
+                  ScreenRectEdgeDistance(candidate_rect, placed_rect);
+              if (edge_distance < label_spacing) {
+                score += (label_spacing - edge_distance) * 180.0f;
+              }
+
+              for (const auto& candidate_tail : candidate_tails) {
+                bool overlapped_tail = false;
+                for (const auto& placed_tail : placed.tails) {
+                  if (DoScreenRectsOverlap(ExpandScreenRect(candidate_tail.bounds,
+                                                            4.0f * layout_scale),
+                                           ExpandScreenRect(placed_tail.bounds,
+                                                            4.0f * layout_scale))) {
+                    score += 120.0f;
+                    overlapped_tail = true;
+                    break;
+                  }
+                }
+                if (overlapped_tail) {
+                  break;
+                }
+              }
+            }
+            if (overlaps_existing_label) {
+              continue;
+            }
+
+            if (score < best_score) {
+              best_score = score;
+              best_layout = candidate_layout;
+            }
+          }
+        }
+      }
+
+      entry.layout = best_layout;
+      entry.side = best_layout.side;
+      PlacedTagLayoutInfo placed;
+      placed.component_id = entry.component_id;
+      placed.preferred_side = entry.preferred_side;
+      placed.actual_side = best_layout.side;
+      placed.visual_group = ResolveTagVisualGroup(entry.component_type, entry.port_id);
+      placed.lane_bucket = entry.lane_bucket;
+      placed.rect = MakeScreenRect(best_layout.rect_min, best_layout.rect_max);
+      placed.tails = BuildTagTailGeometries(best_layout, entry.grouped_ports);
+      placed.layout = best_layout;
+      placed_layouts.push_back(placed);
+    }
+  }
+
+  const float dense_arrow_padding = 6.0f * layout_scale;
+  for (size_t i = 0; i < entries.size(); ++i) {
+    int overlap_count = 1;
+    const std::vector<TagTailGeometry> tails =
+        BuildTagTailGeometries(entries[i].layout, entries[i].grouped_ports);
+    for (const auto& tail : tails) {
+      int tail_overlap_count = 1;
+      for (size_t j = 0; j < entries.size(); ++j) {
+        if (i == j) {
+          continue;
+        }
+        const std::vector<TagTailGeometry> other_tails =
+            BuildTagTailGeometries(entries[j].layout, entries[j].grouped_ports);
+        for (const auto& other_tail : other_tails) {
+          if (DoScreenRectsOverlap(ExpandScreenRect(tail.bounds, dense_arrow_padding),
+                                   ExpandScreenRect(other_tail.bounds,
+                                                    dense_arrow_padding))) {
+            ++tail_overlap_count;
+          }
+        }
+      }
+      overlap_count = std::max(overlap_count, tail_overlap_count);
+    }
+    entries[i].arrow_overlap_count = overlap_count;
+    entries[i].arrow_alpha =
+        overlap_count >= kDenseArrowThreshold ? kDenseArrowAlpha : 1.0f;
   }
 
   return entries;
@@ -513,6 +1457,11 @@ void Application::CompleteWireConnection(int componentId, int portId,
           newWire.toComponentId = componentId;
           newWire.toPortId = portId;
           newWire.wayPoints = current_way_points_;
+          if (newWire.wayPoints.empty()) {
+            newWire.wayPoints = BuildAutoOrthogonalWaypoints(
+                wire_start_pos_, portWorldPos, wire_start_component_id_,
+                componentId, placed_components_);
+          }
           newWire.isElectric = (current_tool_ == ToolType::ELECTRIC);
 
           if (newWire.isElectric) {
@@ -533,6 +1482,8 @@ void Application::CompleteWireConnection(int componentId, int portId,
 
 void Application::RenderWires(ImDrawList* draw_list) {
   const float layout_scale = GetLayoutScale();
+  const float tag_layout_scale =
+      layout_scale * (std::max(camera_zoom_, 0.05f) / kFixedTagZoomReference);
   const ImGuiIO& io = ImGui::GetIO();
   const bool reveal_tagged = io.KeyAlt;
   Wire* hovered_tagged_wire =
@@ -544,49 +1495,33 @@ void Application::RenderWires(ImDrawList* draw_list) {
              canvas_top_left_.y + canvas_size_.y);
 
   auto draw_tag_label = [&](const TagLabelLayout& layout,
-                            ImVec2 port_pos,
+                            const std::vector<std::pair<int, ImVec2>>& grouped_ports,
                             bool is_electric,
                             int color_index,
+                            float arrow_alpha,
                             const std::string& text) {
     if (text.empty()) {
       return;
     }
     ImU32 border = GetTagColor(color_index);
     ImU32 fill = is_electric ? kElectricTagBackground : kPneumaticTagBackground;
-    float mid_x = (layout.rect_min.x + layout.rect_max.x) * 0.5f;
-    float mid_y = (layout.rect_min.y + layout.rect_max.y) * 0.5f;
+    const ImU32 arrow_fill = ScaleColorAlpha(fill, arrow_alpha);
+    const ImU32 arrow_border = ScaleColorAlpha(border, arrow_alpha);
 
     draw_list->AddRectFilled(layout.rect_min, layout.rect_max, fill,
-                             4.0f * layout_scale);
+                             4.0f * tag_layout_scale);
     draw_list->AddRect(layout.rect_min, layout.rect_max, border,
-                       4.0f * layout_scale, 0, 1.5f * layout_scale);
+                       4.0f * tag_layout_scale, 0, 1.5f * tag_layout_scale);
 
-    ImVec2 to_port = {port_pos.x - mid_x, port_pos.y - mid_y};
-    ImVec2 tail_p1 = {};
-    ImVec2 tail_p2 = {};
-    ImVec2 tail_tip = port_pos;
-    if (std::abs(to_port.x) >= std::abs(to_port.y)) {
-      if (to_port.x >= 0.0f) {
-        tail_p1 = {layout.rect_max.x, mid_y - layout.tail_half_width};
-        tail_p2 = {layout.rect_max.x, mid_y + layout.tail_half_width};
-      } else {
-        tail_p1 = {layout.rect_min.x, mid_y - layout.tail_half_width};
-        tail_p2 = {layout.rect_min.x, mid_y + layout.tail_half_width};
-      }
-    } else {
-      if (to_port.y >= 0.0f) {
-        tail_p1 = {mid_x - layout.tail_half_width, layout.rect_max.y};
-        tail_p2 = {mid_x + layout.tail_half_width, layout.rect_max.y};
-      } else {
-        tail_p1 = {mid_x - layout.tail_half_width, layout.rect_min.y};
-        tail_p2 = {mid_x + layout.tail_half_width, layout.rect_min.y};
-      }
+    for (const auto& tail : BuildTagTailGeometries(layout, grouped_ports)) {
+      draw_list->AddTriangleFilled(tail.tail_p1, tail.tail_p2, tail.tip, arrow_fill);
+      draw_list->AddLine(tail.tail_p1, tail.tip, arrow_border,
+                         1.5f * tag_layout_scale);
+      draw_list->AddLine(tail.tail_p2, tail.tip, arrow_border,
+                         1.5f * tag_layout_scale);
     }
-
-    draw_list->AddTriangleFilled(tail_p1, tail_p2, tail_tip, fill);
-    draw_list->AddLine(tail_p1, tail_tip, border, 1.5f * layout_scale);
-    draw_list->AddLine(tail_p2, tail_tip, border, 1.5f * layout_scale);
-    draw_list->AddText(ImVec2(layout.rect_min.x + layout.padding,
+    draw_list->AddText(ImGui::GetFont(), layout.font_size,
+                       ImVec2(layout.rect_min.x + layout.padding,
                               layout.rect_min.y + layout.padding),
                        kTagTextColor, text.c_str());
   };
@@ -700,13 +1635,13 @@ void Application::RenderWires(ImDrawList* draw_list) {
     };
     std::vector<TagLayoutEntry> tag_layouts = BuildTagLayouts(
         &wires_, port_positions_, placed_components_, world_to_screen,
-        layout_scale);
+        tag_layout_scale);
     for (const auto& entry : tag_layouts) {
       if (!entry.wire) {
         continue;
       }
-      draw_tag_label(entry.layout, entry.port_pos, entry.wire->isElectric,
-                     entry.wire->tagColorIndex, entry.wire->tagText);
+      draw_tag_label(entry.layout, entry.grouped_ports, entry.is_electric,
+                     entry.color_index, entry.arrow_alpha, entry.tag_text);
     }
   }
 }
@@ -751,6 +1686,12 @@ void Application::ApplyWiringState(const WiringUndoState& state) {
   wire_edit_mode_ = WireEditMode::NONE;
   editing_wire_id_ = -1;
   editing_point_index_ = -1;
+  pen_component_adjust_active_ = false;
+  pen_component_adjust_component_id_ = -1;
+  pen_component_adjust_command_type_ = ComponentInteractionCommandType::None;
+  pen_component_adjust_start_scalar_ = 0.0f;
+  pen_component_adjust_last_angle_ = 0.0f;
+  pen_component_adjust_start_screen_pos_ = ImVec2(0.0f, 0.0f);
   show_tag_popup_ = false;
   tag_edit_wire_id_ = -1;
   OnElectricalConfigChanged();
@@ -1057,15 +1998,15 @@ void Application::RenderWiringCanvas() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 0.9f));
         ImGui::Text("%s", TR("ui.wiring.camera_help.title", "Camera"));
         ImGui::Separator();
-        ImGui::Text("%s", TR("ui.wiring.camera_help.zoom", "Zoom: Mouse wheel / Trackpad pinch"));
+        ImGui::Text("%s", TR("ui.wiring.camera_help.zoom", "Zoom: Mouse wheel / Trackpad pinch / Touch pinch"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.pan_alt",
-                             "Trackpad: Pinch to zoom"));
+                             "Wheel pan: Shift + Mouse wheel"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.pan_middle",
                              "Pan: Middle drag / Alt + Right drag"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.trackpad",
                              "Trackpad: Two-finger scroll to pan"));
         ImGui::Text("%s", TR("ui.wiring.camera_help.touch",
-                             "Touch: Pinch to zoom, drag to pan"));
+                             "Touch: Drag to pan, pinch to zoom"));
         ImGui::PopStyleColor();
       }
       ImGui::EndChild();
@@ -1100,12 +2041,13 @@ void Application::OpenTagPopupForWire(int wire_id) {
 }
 
 void Application::RenderTagPopup() {
-  if (show_tag_popup_ && !ImGui::IsPopupOpen("Wire Tag")) {
-    ImGui::OpenPopup("Wire Tag");
+  const char* tag_popup_title = TR("ui.wiring.tag_title", "Wire Tag");
+  if (show_tag_popup_ && !ImGui::IsPopupOpen(tag_popup_title)) {
+    ImGui::OpenPopup(tag_popup_title);
   }
 
   bool popup_open = show_tag_popup_;
-  if (ImGui::BeginPopupModal("Wire Tag", &popup_open,
+  if (ImGui::BeginPopupModal(tag_popup_title, &popup_open,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     const float layout_scale = GetLayoutScale();
     ImGui::TextUnformatted(TR("ui.wiring.tag_title", "Wire Tag"));
@@ -1116,7 +2058,8 @@ void Application::RenderTagPopup() {
     }
 
     bool confirm = false;
-    if (ImGui::InputText("Tag", tag_text_buffer_, sizeof(tag_text_buffer_),
+    if (ImGui::InputText(TR("ui.wiring.tag_label", "Tag"), tag_text_buffer_,
+                         sizeof(tag_text_buffer_),
                          ImGuiInputTextFlags_EnterReturnsTrue)) {
       confirm = true;
     }
@@ -1150,11 +2093,13 @@ void Application::RenderTagPopup() {
     }
 
     ImGui::Spacing();
-    if (ImGui::Button("OK", ImVec2(120 * layout_scale, 0))) {
+    if (ImGui::Button(TR("ui.common.ok", "OK"),
+                      ImVec2(120 * layout_scale, 0))) {
       confirm = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120 * layout_scale, 0))) {
+    if (ImGui::Button(TR("ui.common.cancel", "Cancel"),
+                      ImVec2(120 * layout_scale, 0))) {
       popup_open = false;
     }
 
@@ -1287,7 +2232,8 @@ Wire* Application::FindWireAtPosition(ImVec2 worldPos, float tolerance) {
 }
 
 Wire* Application::FindTaggedWireAtScreenPos(ImVec2 screen_pos) {
-  const float layout_scale = GetLayoutScale();
+  const float layout_scale =
+      GetLayoutScale() * (std::max(camera_zoom_, 0.05f) / kFixedTagZoomReference);
   auto world_to_screen = [&](const Position& pos) {
     return WorldToScreen(pos);
   };
@@ -1566,6 +2512,204 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
         ApplyBoxSelectionResult(BoxSelectionResult{});
       }
       CancelBoxSelection();
+    }
+  }
+
+  auto find_component_by_id = [&](int component_id) -> PlacedComponent* {
+    for (auto& comp : placed_components_) {
+      if (comp.instanceId == component_id) {
+        return &comp;
+      }
+    }
+    return nullptr;
+  };
+  auto is_pen_adjustable_component = [](ComponentType type) {
+    return type == ComponentType::FRL || type == ComponentType::METER_VALVE;
+  };
+  auto get_pen_adjust_command_type = [](ComponentType type) {
+    switch (type) {
+      case ComponentType::FRL:
+        return ComponentInteractionCommandType::SetAirPressure;
+      case ComponentType::METER_VALVE:
+        return ComponentInteractionCommandType::SetFlowSetting;
+      default:
+        return ComponentInteractionCommandType::None;
+    }
+  };
+  auto get_pen_adjust_value = [](const PlacedComponent& comp) {
+    switch (comp.type) {
+      case ComponentType::FRL:
+        return comp.internalStates.count(state_keys::kAirPressure)
+                   ? std::clamp(comp.internalStates.at(state_keys::kAirPressure),
+                                0.0f, 10.0f)
+                   : 6.0f;
+      case ComponentType::METER_VALVE:
+        return comp.internalStates.count(state_keys::kFlowSetting)
+                   ? std::clamp(comp.internalStates.at(state_keys::kFlowSetting),
+                                0.0f, 1.0f)
+                   : 1.0f;
+      default:
+        return 0.0f;
+    }
+  };
+  auto get_pen_adjust_handle_center = [](ComponentType type) {
+    switch (type) {
+      case ComponentType::FRL:
+        return ImVec2(40.0f, 25.0f);
+      case ComponentType::METER_VALVE:
+        return ImVec2(25.0f, 40.0f);
+      default:
+        return ImVec2(0.0f, 0.0f);
+    }
+  };
+  auto get_pen_adjust_handle_radius = [](ComponentType type) {
+    switch (type) {
+      case ComponentType::FRL:
+      case ComponentType::METER_VALVE:
+        return 15.0f;
+      default:
+        return 0.0f;
+    }
+  };
+  auto get_pen_adjust_value_per_radian = [](ComponentType type) {
+    constexpr float kPi = 3.14159265f;
+    switch (type) {
+      case ComponentType::FRL:
+        return 10.0f / (4.0f * kPi);
+      case ComponentType::METER_VALVE:
+        return 1.0f / 10.0f;
+      default:
+        return 0.0f;
+    }
+  };
+  auto get_pen_adjust_clamped_value = [](ComponentType type, float value) {
+    switch (type) {
+      case ComponentType::FRL:
+        return std::clamp(value, 0.0f, 10.0f);
+      case ComponentType::METER_VALVE:
+        return std::clamp(value, 0.0f, 1.0f);
+      default:
+        return value;
+    }
+  };
+  auto reset_pen_adjust_session = [&]() {
+    pen_component_adjust_active_ = false;
+    pen_component_adjust_component_id_ = -1;
+    pen_component_adjust_command_type_ = ComponentInteractionCommandType::None;
+    pen_component_adjust_start_scalar_ = 0.0f;
+    pen_component_adjust_last_angle_ = 0.0f;
+    pen_component_adjust_start_screen_pos_ = ImVec2(0.0f, 0.0f);
+  };
+  auto find_hovered_pen_adjust_component = [&]() -> PlacedComponent* {
+    if (!is_canvas_hovered) {
+      return nullptr;
+    }
+    const int top_index =
+        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+    if (top_index == -1) {
+      return nullptr;
+    }
+    auto& comp = placed_components_[static_cast<size_t>(top_index)];
+    return is_pen_adjustable_component(comp.type) ? &comp : nullptr;
+  };
+  auto try_get_pen_adjust_angle = [&](const PlacedComponent& comp,
+                                      float* out_angle) -> bool {
+    if (!out_angle || !is_pen_adjustable_component(comp.type)) {
+      return false;
+    }
+    const ImVec2 adjusted_pos = GetBehaviorWorldPos(comp, mouse_world_pos);
+    const ImVec2 local(adjusted_pos.x - comp.position.x,
+                       adjusted_pos.y - comp.position.y);
+    const ImVec2 center = get_pen_adjust_handle_center(comp.type);
+    const float dx = local.x - center.x;
+    const float dy = local.y - center.y;
+    const float radius = get_pen_adjust_handle_radius(comp.type);
+    if (radius <= 0.0f || (dx * dx + dy * dy) > (radius * radius)) {
+      return false;
+    }
+    if ((dx * dx + dy * dy) < 9.0f) {
+      return false;
+    }
+    *out_angle = std::atan2(dy, dx);
+    return true;
+  };
+  auto normalize_angle_delta = [](float delta) {
+    constexpr float kPi = 3.14159265f;
+    constexpr float kTwoPi = 2.0f * kPi;
+    while (delta > kPi) {
+      delta -= kTwoPi;
+    }
+    while (delta < -kPi) {
+      delta += kTwoPi;
+    }
+    return delta;
+  };
+
+  if (pen_component_adjust_active_) {
+    PlacedComponent* active_comp =
+        find_component_by_id(pen_component_adjust_component_id_);
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) || !is_canvas_hovered ||
+        active_comp == nullptr ||
+        get_pen_adjust_command_type(active_comp->type) !=
+            pen_component_adjust_command_type_) {
+      reset_pen_adjust_session();
+    } else {
+      float current_angle = 0.0f;
+      if (try_get_pen_adjust_angle(*active_comp, &current_angle)) {
+        const float delta_angle = normalize_angle_delta(
+            current_angle - pen_component_adjust_last_angle_);
+        pen_component_adjust_last_angle_ = current_angle;
+
+        if (std::fabs(delta_angle) > 1e-4f) {
+          const float current_value = get_pen_adjust_value(*active_comp);
+          const float target_value = get_pen_adjust_clamped_value(
+              active_comp->type,
+              current_value +
+                  delta_angle *
+                      get_pen_adjust_value_per_radian(active_comp->type));
+          if (std::fabs(target_value - current_value) > 1e-4f) {
+            ComponentInteractionResult interaction;
+            interaction.handled = true;
+            ComponentInteractionCommand interaction_command;
+            interaction_command.type = pen_component_adjust_command_type_;
+            interaction_command.scalar = target_value;
+            interaction.commands.push_back(interaction_command);
+
+            CanvasInteractionCommand command;
+            command.type =
+                CanvasInteractionCommand::Type::ApplyComponentInteraction;
+            command.component_id = active_comp->instanceId;
+            command.component_interaction = interaction;
+            ApplyCanvasInteractionCommand(command);
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && is_canvas_hovered &&
+      !ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+      ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+      !box_select_pending_ && !is_box_selecting_ && !is_moving_component_) {
+    PlacedComponent* hovered_pen_component =
+        find_hovered_pen_adjust_component();
+    if (hovered_pen_component != nullptr) {
+      float start_angle = 0.0f;
+      const ComponentInteractionCommandType command_type =
+          get_pen_adjust_command_type(hovered_pen_component->type);
+      if (command_type != ComponentInteractionCommandType::None &&
+          try_get_pen_adjust_angle(*hovered_pen_component, &start_angle)) {
+        pen_component_adjust_active_ = true;
+        pen_component_adjust_component_id_ = hovered_pen_component->instanceId;
+        pen_component_adjust_command_type_ = command_type;
+        pen_component_adjust_start_scalar_ =
+            get_pen_adjust_value(*hovered_pen_component);
+        pen_component_adjust_last_angle_ = start_angle;
+        pen_component_adjust_start_screen_pos_ = mouse_screen_pos;
+        PushWiringUndoState();
+        return;
+      }
     }
   }
 
@@ -2367,11 +3511,14 @@ void Application::ProcessDeferredCanvasWheelInput() {
 
   const bool popup_blocking =
       ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
-  ImVec2 mouse_screen_pos =
-      wheel_input.pending
-          ? wheel_input.screen_pos
-          : (last_pointer_is_pan_input_ ? touch_anchor_screen_pos_
-                                        : io.MousePos);
+  ImVec2 mouse_screen_pos = wheel_input.pending
+                                ? wheel_input.screen_pos
+                                : ((last_pointer_is_pan_input_ ||
+                                    touch_gesture_active_ ||
+                                    touchpad_pan_pending_ ||
+                                    touchpad_zoom_pending_)
+                                       ? touch_anchor_screen_pos_
+                                       : io.MousePos);
   ImVec2 mouse_world_pos = ScreenToWorld(mouse_screen_pos);
   const bool mouse_within_canvas_bounds =
       (mouse_screen_pos.x >= canvas_top_left_.x &&
@@ -2382,8 +3529,10 @@ void Application::ProcessDeferredCanvasWheelInput() {
       IsPointInOverlayCaptureRect(mouse_screen_pos);
   const bool overlay_capture_blocking = false;
   const bool component_navigation_blocking =
-      wheel_input.touchpad_like &&
-      IsPointOverComponentAtScreenPos(mouse_screen_pos);
+      is_moving_component_ ||
+      ((wheel_input.touchpad_like || touch_gesture_active_ ||
+        touchpad_pan_pending_ || touchpad_zoom_pending_) &&
+       IsPointOverComponentAtScreenPos(mouse_screen_pos));
   const bool overlay_point_blocking =
       overlay_rect_blocking || overlay_capture_blocking;
   const bool navigation_blocking =
@@ -2925,7 +4074,8 @@ void Application::HandleCanvasContextActions(bool is_canvas_hovered,
       DebugLog("[INPUT] Side click: canvas not hovered");
     }
   }
-  if ((side_click || side_hold) && is_canvas_hovered) {
+  if ((side_click || side_hold) && is_canvas_hovered &&
+      !pen_component_adjust_active_) {
     if (side_click && is_connecting_) {
       CanvasInteractionCommand command;
       command.type = CanvasInteractionCommand::Type::CancelWireConnection;
@@ -3019,7 +4169,11 @@ bool Application::IsPointOverComponentAtScreenPos(ImVec2 screen_pos) const {
   ImVec2 world_pos = ScreenToWorld(screen_pos);
   for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
        ++it) {
-    if (IsPointInsideComponent(*it, world_pos)) {
+    if (!IsPointInsideComponent(*it, world_pos)) {
+      continue;
+    }
+    if (it->type == ComponentType::FRL ||
+        it->type == ComponentType::METER_VALVE) {
       return true;
     }
   }
@@ -3048,6 +4202,9 @@ bool Application::HasWheelResponsiveComponentAtScreenPos(
 bool Application::ShouldBlockCanvasNavigationAtScreenPos(
     ImVec2 screen_pos, bool block_on_component) const {
   if (IsPointInOverlayCaptureRect(screen_pos)) {
+    return true;
+  }
+  if (is_moving_component_) {
     return true;
   }
   if (block_on_component && IsPointOverComponentAtScreenPos(screen_pos)) {
@@ -3282,6 +4439,12 @@ void Application::RenderComponentContextMenu() {
           PushWiringUndoState();
           comp->flip_y = !comp->flip_y;
         }
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem(
+              TR("ui.wiring.context.delete_component", "Delete"))) {
+        DeleteSelectedComponent();
+        ImGui::CloseCurrentPopup();
       }
       if (comp && comp->type == ComponentType::PLC) {
         ImGui::Separator();

@@ -62,7 +62,15 @@ class ProjectFileManager {
     std::string ldProgram;
     std::string layoutJson;
     std::string rtlLibraryJson;
-    std::map<std::string, std::string> rtlArtifacts;
+    std::map<std::string, std::map<std::string, std::string>> rtlArtifacts;
+    ProjectInfo info;
+  };
+
+  struct RtlComponentLoadResult {
+    bool success = false;
+    std::string errorMessage;
+    std::string entryJson;
+    std::map<std::string, std::string> artifactFiles;
     ProjectInfo info;
   };
 
@@ -75,12 +83,18 @@ class ProjectFileManager {
   SaveResult SaveProjectPackage(const LadderProgram& program,
                                 const std::string& layoutJson,
                                 const std::string& rtlLibraryJson,
-                                const std::map<std::string, std::string>& rtlArtifacts,
+                                const std::map<std::string, std::map<std::string, std::string>>& rtlArtifacts,
                                 const std::string& filePath,
                                 const std::string& projectName = "");
+  SaveResult SaveRtlComponentPackage(
+      const std::string& entryJson,
+      const std::map<std::string, std::string>& artifactFiles,
+      const std::string& filePath,
+      const std::string& componentName = "");
 
   LoadResult LoadProject(const std::string& filePath);
   LoadResult LoadProjectPackage(const std::string& filePath);
+  RtlComponentLoadResult LoadRtlComponentPackage(const std::string& filePath);
 
   ProjectInfo GetProjectInfo(const std::string& filePath);
 

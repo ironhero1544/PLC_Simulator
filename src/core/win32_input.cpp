@@ -69,6 +69,10 @@ POINT g_prev_pinch_center_client = {0, 0};
 UINT32 g_active_touch_id = 0;
 POINT g_last_touch_client = {0, 0};
 bool g_has_last_touch = false;
+UINT32 g_overlay_touch_scroll_id = 0;
+POINT g_overlay_touch_scroll_start_client = {0, 0};
+POINT g_overlay_touch_scroll_last_client = {0, 0};
+bool g_overlay_touch_scroll_active = false;
 std::unordered_map<UINT32, bool> g_pen_side_down;
 
 struct InputMessageSourceCompat {
@@ -130,6 +134,78 @@ DWORD GetCurrentInputMessageDeviceType() {
   return source.deviceType;
 }
 
+void ResetOverlayTouchScrollSession() {
+  g_overlay_touch_scroll_id = 0;
+  g_overlay_touch_scroll_start_client = {0, 0};
+  g_overlay_touch_scroll_last_client = {0, 0};
+  g_overlay_touch_scroll_active = false;
+}
+
+bool ForwardOverlayTouchScroll(UINT msg, UINT32 pointer_id, POINT client_pt) {
+  if (!ImGui::GetCurrentContext()) {
+    if (msg == WM_POINTERUP && pointer_id == g_overlay_touch_scroll_id) {
+      ResetOverlayTouchScrollSession();
+    }
+    return false;
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+  if (msg == WM_POINTERDOWN) {
+    g_overlay_touch_scroll_id = pointer_id;
+    g_overlay_touch_scroll_start_client = client_pt;
+    g_overlay_touch_scroll_last_client = client_pt;
+    g_overlay_touch_scroll_active = false;
+    return false;
+  }
+
+  if (pointer_id != g_overlay_touch_scroll_id) {
+    return false;
+  }
+
+  if (msg == WM_POINTERUP) {
+    const bool consumed = g_overlay_touch_scroll_active;
+    if (consumed) {
+      io.AddMousePosEvent(static_cast<float>(client_pt.x),
+                          static_cast<float>(client_pt.y));
+      io.AddMouseButtonEvent(0, false);
+    }
+    ResetOverlayTouchScrollSession();
+    return consumed;
+  }
+
+  if (msg != WM_POINTERUPDATE) {
+    return false;
+  }
+
+  const float total_dx =
+      static_cast<float>(client_pt.x - g_overlay_touch_scroll_start_client.x);
+  const float total_dy =
+      static_cast<float>(client_pt.y - g_overlay_touch_scroll_start_client.y);
+  const float step_dy =
+      static_cast<float>(client_pt.y - g_overlay_touch_scroll_last_client.y);
+  g_overlay_touch_scroll_last_client = client_pt;
+
+  constexpr float kTouchScrollActivationDistance = 8.0f;
+  constexpr float kPixelsPerWheelStep = 45.0f;
+  if (!g_overlay_touch_scroll_active) {
+    const float total_distance_sq = total_dx * total_dx + total_dy * total_dy;
+    if (total_distance_sq <
+        kTouchScrollActivationDistance * kTouchScrollActivationDistance) {
+      return false;
+    }
+    g_overlay_touch_scroll_active = true;
+    io.AddMouseButtonEvent(0, false);
+  }
+
+  io.AddMousePosEvent(static_cast<float>(client_pt.x),
+                      static_cast<float>(client_pt.y));
+  const float wheel_y = step_dy / kPixelsPerWheelStep;
+  if (std::fabs(wheel_y) > 1e-4f) {
+    io.AddMouseWheelEvent(0.0f, wheel_y);
+  }
+  return true;
+}
+
 void UpdateTouchGestureFromPoints() {
   if (!g_app_instance) {
     return;
@@ -173,6 +249,16 @@ void UpdateTouchGestureFromPoints() {
     zoom_delta = -0.15f;
   }
   zoom_delta *= 0.6f;
+
+  const float abs_zoom_delta = std::fabs(zoom_delta);
+  constexpr float kPinchPanSuppressZoomThreshold = 0.01f;
+  constexpr float kPinchPanDamping = 0.2f;
+  if (abs_zoom_delta >= kPinchPanSuppressZoomThreshold) {
+    pan_delta = ImVec2(0.0f, 0.0f);
+  } else {
+    pan_delta.x *= kPinchPanDamping;
+    pan_delta.y *= kPinchPanDamping;
+  }
 
   g_prev_pinch_distance = distance;
   g_prev_pinch_center = center;
@@ -246,7 +332,9 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
           in_contact || (IS_POINTER_FIRSTBUTTON_WPARAM(wParam) != 0) ||
           (IS_POINTER_SECONDBUTTON_WPARAM(wParam) != 0);
       if (is_pen) {
-        g_app_instance->SetPanInputActive(in_contact);
+        // Pen should continue to flow through the normal mouse pipeline so
+        // click/drag wiring interactions still work.
+        g_app_instance->SetPanInputActive(false);
       }
 
       if (is_touch) {
@@ -278,15 +366,32 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         const ImVec2 touch_pos(static_cast<float>(client_pt.x),
                                static_cast<float>(client_pt.y));
-        const bool over_overlay =
+        const bool over_overlay_rect =
+            g_app_instance->IsPointInOverlayCaptureRect(touch_pos);
+        const bool overlay_capturing =
+            g_app_instance->IsOverlayWindowCapturingMouse(touch_pos);
+        const bool block_canvas_navigation =
             g_app_instance->ShouldBlockCanvasNavigationAtScreenPos(
                 touch_pos, true);
 
-        if (over_overlay) {
+        if (block_canvas_navigation) {
           g_app_instance->UpdateTouchGesture(0.0f, ImVec2(0, 0), false);
-          // 캔버스 navigation이 막힌 영역이면 Win32/ImGui 기본 루프로 흘려보냄
-          handled_pointer = false;
+          g_has_last_touch = false;
+          if ((overlay_capturing || pointer_id == g_overlay_touch_scroll_id) &&
+              g_touch_points.size() < 2) {
+            handled_pointer =
+                ForwardOverlayTouchScroll(msg, pointer_id, client_pt);
+          } else if (msg == WM_POINTERUP &&
+                     pointer_id == g_overlay_touch_scroll_id) {
+            handled_pointer =
+                ForwardOverlayTouchScroll(msg, pointer_id, client_pt);
+          } else if (!over_overlay_rect && pointer_id == g_overlay_touch_scroll_id) {
+            ResetOverlayTouchScrollSession();
+          }
         } else {
+          if (pointer_id == g_overlay_touch_scroll_id) {
+            ResetOverlayTouchScrollSession();
+          }
           if (g_touch_points.size() >= 2) {
             UpdateTouchGestureFromPoints();
           } else if (msg != WM_POINTERUP) {
@@ -389,7 +494,7 @@ LRESULT CALLBACK PlcWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         g_app_instance->RegisterWin32SideDown(false);
       }
       if (is_pen && over_canvas) {
-        handled_pointer = true;
+        handled_pointer = false;
       }
     }
     if (handled_pointer) {

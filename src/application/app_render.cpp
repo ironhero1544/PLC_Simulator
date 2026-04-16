@@ -148,6 +148,36 @@ void OpenExternalUrl(const char* url) {
 
 }  // namespace
 
+bool Application::PromptSaveProjectPackageDialog(
+    const std::string& default_file_name,
+    const std::string& project_name) {
+#ifdef _WIN32
+  OPENFILENAMEA ofn;
+  CHAR szFile[260] = {0};
+  std::strncpy(szFile, default_file_name.c_str(), sizeof(szFile) - 1);
+  ZeroMemory(&ofn, sizeof(ofn));
+  ofn.lStructSize = sizeof(ofn);
+  ofn.hwndOwner = glfwGetWin32Window(window_);
+  ofn.lpstrFile = szFile;
+  ofn.nMaxFile = sizeof(szFile);
+  ofn.lpstrFilter =
+      "PLC Project Package (*.plcproj)\0*.plcproj\0All Files (*.*)\0*.*\0";
+  ofn.nFilterIndex = 1;
+  ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+  if (GetSaveFileNameA(&ofn) != TRUE) {
+    return false;
+  }
+
+  std::string save_path = ofn.lpstrFile;
+  if (save_path.find(".plcproj") == std::string::npos) {
+    save_path += ".plcproj";
+  }
+  return SaveProjectPackage(save_path, project_name);
+#else
+  return SaveProjectPackage(default_file_name, project_name);
+#endif
+}
+
 void Application::BeginFrame() {
   glClearColor(0.94f, 0.94f, 0.94f, 1.00f);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -358,28 +388,7 @@ void Application::RenderMainMenuBar(float* out_height) {
 
   if (ImGui::BeginMenu(TR("menu.project", "Project"))) {
     if (ImGui::MenuItem(TR("menu.project.save", "Save Project..."))) {
-#ifdef _WIN32
-      OPENFILENAMEA ofn;
-      CHAR szFile[260] = "project.plcproj";
-      ZeroMemory(&ofn, sizeof(ofn));
-      ofn.lStructSize = sizeof(ofn);
-      ofn.hwndOwner = glfwGetWin32Window(window_);
-      ofn.lpstrFile = szFile;
-      ofn.nMaxFile = sizeof(szFile);
-      ofn.lpstrFilter =
-          "PLC Project Package (*.plcproj)\0*.plcproj\0All Files (*.*)\0*.*\0";
-      ofn.nFilterIndex = 1;
-      ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-      if (GetSaveFileNameA(&ofn) == TRUE) {
-        std::string save_path = ofn.lpstrFile;
-        if (save_path.find(".plcproj") == std::string::npos) {
-          save_path += ".plcproj";
-        }
-        SaveProjectPackage(save_path, "PLC_Project");
-      }
-#else
-      SaveProjectPackage("project.plcproj", "PLC_Project");
-#endif
+      PromptSaveProjectPackageDialog();
     }
     if (ImGui::MenuItem(TR("menu.project.load", "Load Project..."))) {
 #ifdef _WIN32
@@ -404,7 +413,7 @@ void Application::RenderMainMenuBar(float* out_height) {
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("RTL")) {
+  if (ImGui::BeginMenu(TR("menu.rtl", "RTL"))) {
     if (ImGui::MenuItem(TR("menu.rtl_library", "RTL Library"))) {
       show_rtl_library_panel_ = true;
     }
@@ -450,13 +459,15 @@ void Application::RenderMainMenuBar(float* out_height) {
 
   ImGui::EndMainMenuBar();
 
+  const char* restart_popup_title =
+      TR("lang.restart_title", "Restart Application");
   if (show_restart_popup_) {
-    ImGui::OpenPopup("Restart Application");
+    ImGui::OpenPopup(restart_popup_title);
     show_restart_popup_ = false;
   }
 
   bool restart_popup_open = true;
-  if (ImGui::BeginPopupModal("Restart Application", &restart_popup_open,
+  if (ImGui::BeginPopupModal(restart_popup_title, &restart_popup_open,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ImGui::TextUnformatted(
         TR("lang.restart_prompt", "Restart application now?"));
@@ -1003,7 +1014,9 @@ void Application::RenderShortcutHelpDialog() {
     ImGui::BulletText("%s", TR("ui.help.shortcuts.common_switch_mode",
                                "Switch mode: Wiring / Programming buttons"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.common_save_load",
-                               "Save/Load: Use toolbar buttons in Wiring mode"));
+                               "Mode toolbars: Wiring JSON / Programming CSV"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_save_project",
+                               "Ctrl+S: Save project package (.plcproj)"));
 
     ImGui::Spacing();
     ImGui::TextUnformatted(
@@ -1041,11 +1054,13 @@ void Application::RenderShortcutHelpDialog() {
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tag",
                                "Tag tool: click wire to add/edit wire tag"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_zoom",
-                               "Zoom: Mouse wheel / Trackpad pinch"));
+                               "Zoom: Mouse wheel / Trackpad pinch / Touch pinch"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_pan",
-                               "Pan: Middle drag / Alt + Right drag"));
+                               "Pan: Middle drag / Alt + Right drag / Shift + Wheel (horizontal)"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_trackpad_pan",
-                               "Trackpad pan: Ctrl + Scroll"));
+                               "Trackpad: Two-finger scroll pans / Touch: drag pans"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_source_sink",
+                               "PLC context menu: choose Sink/Source input and output modes"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order",
                                "Z-order: use component context menu"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order_items",
@@ -1070,8 +1085,25 @@ void Application::RenderShortcutHelpDialog() {
                                "Address example: Y0, T1 K10, C2 K5, SET M0, RST Y0"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_compile",
                                "Use Save / Load / Compile buttons on the top bar"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_save_project",
+                               "Ctrl+S: Save project package (.plcproj)"));
     ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_monitor",
                                "Monitor mode: inspect X/Y/M/T/C states in real time"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_rst_bkrst",
+                               "RST resets one device, BKRST resets a device range"));
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(TR("ui.help.shortcuts.rtl_mode", "RTL"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_open",
+                               "RTL menu: open RTL Library and Toolchain"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_runtime",
+                               "RTL Runtime menu: configure logic family, power, clock, and reset pins"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_import_export",
+                               "RTL Library: import/export reusable .plccomp component packages"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_runtime_package",
+                               "Source-less RTL packages run from the bundled runtime and cannot be edited"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_logs",
+                               "Analyze, build, and testbench results are shown in the RTL Library log panel"));
 
     // Hidden easter egg: type "ironhero" while this popup is open.
     ImGuiIO& io = ImGui::GetIO();
