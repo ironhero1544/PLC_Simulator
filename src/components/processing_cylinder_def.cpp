@@ -47,17 +47,17 @@ void RenderProcessingCylinderBody(ImDrawList* draw_list,
   ImVec2 body_max = {pos.x + w, pos.y + h};
 
   draw_list->AddRectFilled(body_min, body_max, kBodyColor);
-  draw_list->AddRect(body_min, body_max, kFrameColor, 0, 2.0f * zoom);
+  draw_list->AddRect(body_min, body_max, kFrameColor, 0, 0, 2.0f * zoom);
 
   ImVec2 header_min = {body_max.x - 38.0f * zoom, body_min.y};
   ImVec2 header_max = {body_max.x, body_min.y + 26.0f * zoom};
   draw_list->AddRectFilled(header_min, header_max, kHeaderColor);
-  draw_list->AddRect(header_min, header_max, kFrameColor, 0, 2.0f * zoom);
+  draw_list->AddRect(header_min, header_max, kFrameColor, 0, 0, 2.0f * zoom);
 
   ImVec2 base_min = {body_min.x, body_max.y - 22.0f * zoom};
   ImVec2 base_max = body_max;
   draw_list->AddRectFilled(base_min, base_max, kBaseColor);
-  draw_list->AddRect(base_min, base_max, kFrameColor, 0, 2.0f * zoom);
+  draw_list->AddRect(base_min, base_max, kFrameColor, 0, 0, 2.0f * zoom);
 }
 
 void RenderProcessingCylinderPorts(ImDrawList* draw_list,
@@ -115,7 +115,7 @@ void RenderProcessingCylinderHeadInternal(ImDrawList* draw_list,
                            {rod_max.x + 4.0f * zoom, rod_max.y + 4.0f * zoom},
                            kShadowSoft);
   draw_list->AddRectFilled(rod_min, rod_max, IM_COL32(210, 210, 210, 255));
-  draw_list->AddRect(rod_min, rod_max, kFrameColor, 0, 1.5f * zoom);
+  draw_list->AddRect(rod_min, rod_max, kFrameColor, 0, 0, 1.5f * zoom);
 
   draw_list->AddCircleFilled({center.x + 5.0f * zoom, center.y + 5.0f * zoom},
                              outer_r + 3.0f * zoom, kShadowSoft);

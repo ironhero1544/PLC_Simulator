@@ -1,0 +1,414 @@
+{
+  "components": [
+    {
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 0,
+      "rotation_quadrants": 0,
+      "type": "PLC",
+      "x": 954.0,
+      "y": 331.0,
+      "z_order": 0
+    },
+    {
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 1,
+      "rotation_quadrants": 0,
+      "type": "BUTTON_UNIT",
+      "x": 1355.9434814453125,
+      "y": 331.5914611816406,
+      "z_order": 1
+    },
+    {
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 2,
+      "rotation_quadrants": 0,
+      "type": "EMERGENCY_STOP",
+      "x": 1601.928466796875,
+      "y": 332.45654296875,
+      "z_order": 2
+    },
+    {
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 3,
+      "rotation_quadrants": 0,
+      "type": "POWER_SUPPLY",
+      "x": 868.7503051757813,
+      "y": 565.2057495117188,
+      "z_order": 3
+    }
+  ],
+  "electrical_config": {
+    "plc_input_mode": "source",
+    "plc_output_mode": "sink"
+  },
+  "next_instance_id": 4,
+  "next_wire_id": 16,
+  "next_z_order": 4,
+  "version": 2,
+  "wires": [
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 0,
+      "from_port_id": 0,
+      "id": 2,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 1,
+      "waypoints": [
+        {
+          "x": 984.0,
+          "y": 297.62701416015625
+        },
+        {
+          "x": 1451.2498779296875,
+          "y": 297.62701416015625
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 1,
+      "from_port_id": 6,
+      "id": 3,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 0,
+      "to_port_id": 1,
+      "waypoints": [
+        {
+          "x": 1455.9434814453125,
+          "y": 300.6680603027344
+        },
+        {
+          "x": 1003.0868530273438,
+          "y": 300.66802978515625
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 0,
+      "from_port_id": 2,
+      "id": 4,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 11,
+      "waypoints": [
+        {
+          "x": 1034.0,
+          "y": 307.60693359375
+        },
+        {
+          "x": 1452.923828125,
+          "y": 307.60693359375
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 3,
+      "from_port_id": 1,
+      "id": 5,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 10,
+      "waypoints": [
+        {
+          "x": 1439.74365234375,
+          "y": 605.2057495117188
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 1,
+      "from_port_id": 10,
+      "id": 6,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 5,
+      "waypoints": []
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 1,
+      "from_port_id": 5,
+      "id": 7,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 0,
+      "waypoints": []
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 0,
+      "from_port_id": 16,
+      "id": 8,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 4,
+      "waypoints": [
+        {
+          "x": 984.0,
+          "y": 542.9642333984375
+        },
+        {
+          "x": 1533.39013671875,
+          "y": 542.9642333984375
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 1,
+      "from_port_id": 9,
+      "id": 9,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 0,
+      "to_port_id": 17,
+      "waypoints": [
+        {
+          "x": 1530.9434814453125,
+          "y": 543.3731079101563
+        },
+        {
+          "x": 1008.2644653320313,
+          "y": 543.3731689453125
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 0,
+      "from_port_id": 18,
+      "id": 10,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 14,
+      "waypoints": [
+        {
+          "x": 1034.0,
+          "y": 542.2210693359375
+        },
+        {
+          "x": 1538.123291015625,
+          "y": 542.2210693359375
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 2,
+      "from_port_id": 2,
+      "id": 11,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 0,
+      "to_port_id": 3,
+      "waypoints": [
+        {
+          "x": 1583.9298095703125,
+          "y": 422.45654296875
+        },
+        {
+          "x": 1583.9298095703125,
+          "y": 303.7364196777344
+        },
+        {
+          "x": 1060.176513671875,
+          "y": 303.7363586425781
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 2,
+      "from_port_id": 3,
+      "id": 12,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 10,
+      "waypoints": [
+        {
+          "x": 1705.6260986328125,
+          "y": 422.45654296875
+        },
+        {
+          "x": 1705.6260986328125,
+          "y": 539.1104125976563
+        },
+        {
+          "x": 1536.2716064453125,
+          "y": 539.1104125976563
+        },
+        {
+          "x": 1436.0340576171875,
+          "y": 539.1104125976563
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 3,
+      "from_port_id": 0,
+      "id": 13,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 13,
+      "waypoints": [
+        {
+          "x": 1511.308837890625,
+          "y": 585.2057495117188
+        }
+      ]
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 1,
+      "from_port_id": 13,
+      "id": 14,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 8,
+      "waypoints": []
+    },
+    {
+      "color": {
+        "a": 1.0,
+        "b": 0.0,
+        "g": 0.27000001072883606,
+        "r": 1.0
+      },
+      "from_component_id": 1,
+      "from_port_id": 8,
+      "id": 15,
+      "is_electric": true,
+      "is_tagged": false,
+      "tag_color_index": 0,
+      "tag_text": "",
+      "thickness": 2.0,
+      "to_component_id": 1,
+      "to_port_id": 3,
+      "waypoints": []
+    }
+  ]
+}

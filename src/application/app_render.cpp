@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // app_render.cpp
 //
 // Application rendering and UI.
@@ -16,7 +17,9 @@
 #include <GLFW/glfw3.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -25,6 +28,9 @@
 #include <shellapi.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
+#ifndef APIENTRY
+#define APIENTRY WINAPI
+#endif
 #include <commdlg.h>
 #endif
 
@@ -676,6 +682,9 @@ void Application::RenderHeader() {
 
     ImGui::SameLine();
 
+    const bool conversion_required = !is_plc_running_ && programming_mode_ &&
+                                     !programming_mode_->IsConverted();
+    ImGui::BeginDisabled(conversion_required);
     if (ImGui::Button(is_plc_running_
                           ? TR("ui.header.btn_stop", "STOP")
                           : TR("ui.header.btn_run", "RUN"),
@@ -688,7 +697,7 @@ void Application::RenderHeader() {
         plc_device_states_.clear();
         for (int i = 0; i < 16; ++i) {
           std::string i_str = std::to_string(i);
-          plc_device_states_["X" + i_str] = false;
+          plc_device_states_[plc_emulator::programming::FormatIOAddress('X', i)] = false;
           plc_device_states_["M" + i_str] = false;
         }
 
@@ -724,13 +733,17 @@ void Application::RenderHeader() {
         std::cout << "[INFO] PLC STOP: Stopping execution..." << std::endl;
 
         for (int i = 0; i < 16; ++i) {
-          SetPlcDeviceState("Y" + std::to_string(i), false);
+          SetPlcDeviceState(plc_emulator::programming::FormatIOAddress('Y', i), false);
         }
 
         std::cout << "[INFO] PLC STOP: All outputs deactivated" << std::endl;
       }
 
       is_plc_running_ = !is_plc_running_;
+    }
+    ImGui::EndDisabled();
+    if (conversion_required && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      ImGui::SetTooltip("Convert the ladder with F4 before RUN");
     }
 
     ImGui::Columns(1);

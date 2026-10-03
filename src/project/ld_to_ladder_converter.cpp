@@ -6,7 +6,10 @@
 
 #include "plc_emulator/core/data_types.h"
 #include "plc_emulator/programming/ladder_program_utils.h"
-#include "plc_emulator/programming/programming_mode.h"
+#include "plc_emulator/programming/ladder_program.h"
+
+#include "plc_emulator/project/instruction_codec.h"
+#include "plc_emulator/project/openplc_compiler_integration.h"
 
 #include <algorithm>
 #include <fstream>
@@ -43,6 +46,15 @@ bool LDToLadderConverter::ConvertFromLDString(const std::string& ldContent,
                                               LadderProgram& ladderProgram) {
   stats_ = ConversionStats();
   parsed_networks_.clear();
+  if (ldContent.find("<network") == std::string::npos) {
+    OpenPLCCompilerIntegration compiler;
+    const auto result = compiler.CompileLDString(ldContent);
+    if (!result.success) { SetError(result.errorMessage); return false; }
+    if (!plc_emulator::programming::MaterializeLadder(result.program, &ladderProgram, &last_error_)) return false;
+    stats_.networksCount = static_cast<int>(result.program.instructions.size());
+    stats_.coilsCount = stats_.networksCount;
+    return true;
+  }
 
   if (!ParseLDFile(ldContent)) {
     return false;

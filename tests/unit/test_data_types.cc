@@ -4,6 +4,7 @@
 #include "plc_emulator/core/data_types.h"
 
 #include <gtest/gtest.h>
+#include <cmath>
 
 namespace plc {
 namespace {
@@ -41,22 +42,22 @@ TEST(DataTypesTest, WireCreation) {
   Wire wire;
   wire.fromComponentId = 1;
   wire.toComponentId = 2;
-  wire.fromPortIndex = 0;
-  wire.toPortIndex = 1;
+  wire.fromPortId = 0;
+  wire.toPortId = 1;
   
   EXPECT_EQ(wire.fromComponentId, 1);
   EXPECT_EQ(wire.toComponentId, 2);
-  EXPECT_EQ(wire.fromPortIndex, 0);
-  EXPECT_EQ(wire.toPortIndex, 1);
+  EXPECT_EQ(wire.fromPortId, 0);
+  EXPECT_EQ(wire.toPortId, 1);
 }
 
 // ComponentType enum 테스트
 TEST(DataTypesTest, ComponentTypeEnum) {
-  ComponentType type = ComponentType::kPLC;
-  EXPECT_EQ(type, ComponentType::kPLC);
+  ComponentType type = ComponentType::PLC;
+  EXPECT_EQ(type, ComponentType::PLC);
   
-  type = ComponentType::kFRL;
-  EXPECT_NE(type, ComponentType::kPLC);
+  type = ComponentType::FRL;
+  EXPECT_NE(type, ComponentType::PLC);
 }
 
 }  // namespace

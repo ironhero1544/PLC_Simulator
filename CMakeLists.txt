@@ -245,10 +245,41 @@ if(BUILD_MAIN_APP)
             src/programming/programming_mode_sim.cpp
             src/programming/programming_mode_edit.cpp
             src/programming/programming_mode_ui.cpp
+            src/programming/execution_program.cpp
+            src/programming/structured_execution.cpp
+            src/programming/fx_cpu_execution.cpp
+            src/programming/flow_execution.cpp
+            src/programming/float_execution.cpp
+            src/programming/string_execution.cpp
+            src/programming/table_execution.cpp
+              src/programming/utility_execution.cpp
+              src/programming/module_execution.cpp
+              src/programming/handy_execution.cpp
+              src/programming/device_memory.cpp
+    src/programming/storage_execution.cpp
+    src/programming/high_speed_execution.cpp
+    src/programming/panel_execution.cpp
+    src/programming/serial_execution.cpp
+    src/programming/ist_execution.cpp
+    src/programming/sfc_execution.cpp
+    src/programming/inverter_execution.cpp
+    src/programming/modbus_execution.cpp
+    src/programming/cf_execution.cpp
+    src/programming/cf_storage.cpp
+    src/programming/cf_transfer.cpp
+    src/programming/pid_execution.cpp
+    src/programming/position_table_execution.cpp
+    src/programming/motion_execution.cpp
+    src/programming/drum_execution.cpp
+            src/project/structured_ladder_compiler.cpp
+            src/project/instruction_codec.cpp
+            src/project/gx_csv_codec.cpp
             src/programming/compiled_plc_executor.cpp
 
             src/physics/physics_engine.cpp
             src/physics/component_physics_adapter.cpp
+            src/physics/pneumatic_simulation.cpp
+            src/physics/box2d_simulation.cpp
             src/physics/physics_solvers.cpp
             src/physics/application_physics.cpp
             src/application_physics/physics_task_runner.cpp

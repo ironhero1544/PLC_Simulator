@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // physics_sync.cpp
 //
 // Synchronization between PLC/application state and physics engine.
@@ -32,7 +33,7 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
 
     // PLC Y OUTPUT SYNCHRONIZATION (ports 16-31) with bounds checking
     for (int y = 0; y < 16; y++) {
-      std::string yAddress = "Y" + std::to_string(y);
+      std::string yAddress = plc_emulator::programming::FormatIOAddress('Y', y);
       bool yState = GetPlcDeviceState(yAddress);
 
       // SAFE NODE LOOKUP: Multiple bounds checks prevent array violations
@@ -405,7 +406,7 @@ void Application::SyncPhysicsEngineToApplication() {
       std::map<std::string, bool>
           xInputs;  // Buffer X inputs for ProgrammingMode
       for (int x = 0; x < 16; x++) {
-        std::string xAddress = "X" + std::to_string(x);
+        std::string xAddress = plc_emulator::programming::FormatIOAddress('X', x);
         auto portKey = std::make_pair(comp.instanceId, x);
 
         bool x_active = false;
@@ -424,7 +425,7 @@ void Application::SyncPhysicsEngineToApplication() {
             x_active ? 1.0f : 0.0f;
       }
       for (int y = 0; y < 16; ++y) {
-        std::string yAddress = "Y" + std::to_string(y);
+        std::string yAddress = plc_emulator::programming::FormatIOAddress('Y', y);
         comp.internalStates[std::string(state_keys::kPlcYPrefix) +
                             std::to_string(y)] =
             GetPlcDeviceState(yAddress) ? 1.0f : 0.0f;

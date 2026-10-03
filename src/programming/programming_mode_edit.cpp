@@ -1,3 +1,4 @@
+#include "plc_emulator/project/instruction_codec.h"
 // programming_mode_edit.cpp
 //
 // Ladder editing functions.
@@ -18,175 +19,6 @@
 namespace plc {
 
 namespace {
-bool TryParseDevicePreset(const char* text,
-                          char devicePrefix,
-                          int* deviceNum,
-                          int* presetNum) {
-  if (!text || !deviceNum || !presetNum) {
-    return false;
-  }
-
-  std::string input(text);
-  for (size_t i = 0; i < input.size(); ++i) {
-    if (input[i] != devicePrefix) {
-      continue;
-    }
-
-    size_t j = i + 1;
-    while (j < input.size() &&
-           !std::isdigit(static_cast<unsigned char>(input[j]))) {
-      ++j;
-    }
-
-    if (j >= input.size()) {
-      continue;
-    }
-
-    size_t deviceStart = j;
-    while (j < input.size() &&
-           std::isdigit(static_cast<unsigned char>(input[j]))) {
-      ++j;
-    }
-
-    std::string deviceDigits = input.substr(deviceStart, j - deviceStart);
-    if (deviceDigits.empty()) {
-      continue;
-    }
-
-    size_t kPos = input.find_first_of("Kk", j);
-    if (kPos == std::string::npos) {
-      continue;
-    }
-
-    size_t p = kPos + 1;
-    while (p < input.size() &&
-           !std::isdigit(static_cast<unsigned char>(input[p]))) {
-      ++p;
-    }
-
-    if (p >= input.size()) {
-      continue;
-    }
-
-    size_t presetStart = p;
-    while (p < input.size() &&
-           std::isdigit(static_cast<unsigned char>(input[p]))) {
-      ++p;
-    }
-
-    std::string presetDigits = input.substr(presetStart, p - presetStart);
-    if (presetDigits.empty()) {
-      continue;
-    }
-
-    try {
-      *deviceNum = std::stoi(deviceDigits);
-      *presetNum = std::stoi(presetDigits);
-      return true;
-    } catch (...) {
-      return false;
-    }
-  }
-
-  return false;
-}
-
-bool TryParseBkrstCommand(const char* text, std::string* device,
-                           std::string* preset, bool* is_pulse) {
-  if (!text || !device || !preset) {
-    return false;
-  }
-  if (is_pulse) {
-    *is_pulse = false;
-  }
-
-  std::string input(text);
-  size_t pos = input.find_first_not_of(" \t\r\n");
-  if (pos == std::string::npos) {
-    return false;
-  }
-  if (input.compare(pos, 5, "BKRST") != 0) {
-    return false;
-  }
-  pos += 5;
-
-  pos = input.find_first_not_of(" \t\r\n", pos);
-  if (pos != std::string::npos) {
-    if (input[pos] == '(') {
-      size_t end = input.find(')', pos);
-      if (end != std::string::npos) {
-        std::string inside = input.substr(pos + 1, end - pos - 1);
-        for (char ch : inside) {
-          if (std::toupper(static_cast<unsigned char>(ch)) == 'P') {
-            if (is_pulse) {
-              *is_pulse = true;
-            }
-            break;
-          }
-        }
-        pos = end + 1;
-      }
-    } else if (std::toupper(static_cast<unsigned char>(input[pos])) == 'P') {
-      if (is_pulse) {
-        *is_pulse = true;
-      }
-      pos++;
-    }
-  }
-
-  pos = input.find_first_not_of(" \t\r\n", pos);
-  if (pos == std::string::npos) {
-    return false;
-  }
-
-  char type = static_cast<char>(std::toupper(
-      static_cast<unsigned char>(input[pos])));
-  if (!std::isalpha(static_cast<unsigned char>(type))) {
-    return false;
-  }
-
-  size_t start = pos;
-  pos++;
-  size_t digit_start = pos;
-  while (pos < input.size() &&
-         std::isdigit(static_cast<unsigned char>(input[pos]))) {
-    pos++;
-  }
-  if (pos == digit_start) {
-    return false;
-  }
-
-  std::string device_str = input.substr(start, pos - start);
-  pos = input.find_first_not_of(" \t\r\n", pos);
-
-  int count = 1;
-  if (pos != std::string::npos) {
-    size_t end = pos;
-    while (end < input.size() &&
-           !std::isspace(static_cast<unsigned char>(input[end]))) {
-      end++;
-    }
-    std::string token = input.substr(pos, end - pos);
-    if (!token.empty()) {
-      if (token[0] == 'K' || token[0] == 'k') {
-        token = token.substr(1);
-      }
-      if (!token.empty()) {
-        char* endptr = nullptr;
-        long parsed = std::strtol(token.c_str(), &endptr, 10);
-        if (endptr && *endptr == '\0' && parsed > 0 &&
-            parsed <= std::numeric_limits<int>::max()) {
-          count = static_cast<int>(parsed);
-        }
-      }
-    }
-  }
-
-  *device = device_str;
-  *preset = "K" + std::to_string(count);
-  return true;
-}
-
 void AppendVerticalConnectionComponents(int x,
                                         const std::vector<int>& source_rungs,
                                         int rung_offset,
@@ -236,6 +68,10 @@ void to_upper(char* str) {
 }
 
 void ProgrammingMode::HandleKeyboardInput(int key) {
+  if (key == ImGuiKey_F4 && !is_monitor_mode_) {
+    CompileLadderToOpenPLC();
+    return;
+  }
   const bool any_popup_open =
       show_address_popup_ || show_rung_memo_popup_ || show_vertical_dialog_;
   const bool is_f5_f6_f7 =
@@ -243,9 +79,14 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
   if (any_popup_open) {
     if (!is_monitor_mode_ && show_address_popup_ && is_f5_f6_f7) {
       pending_instruction_type_ =
-          (key == ImGuiKey_F5)   ? LadderInstructionType::XIC
-          : (key == ImGuiKey_F6) ? LadderInstructionType::XIO
+          (key == ImGuiKey_F5)   ? (ImGui::GetIO().KeyShift
+              ? LadderInstructionType::RISING_CONTACT : LadderInstructionType::XIC)
+          : (key == ImGuiKey_F6) ? (ImGui::GetIO().KeyShift
+              ? LadderInstructionType::FALLING_CONTACT : LadderInstructionType::XIO)
                                  : LadderInstructionType::OTE;
+      if (pending_instruction_type_ == LadderInstructionType::OTE) {
+        SelectSingleCell(selected_rung_, GetColumnCount() - 1, false);
+      }
     }
     return;
   }
@@ -324,31 +165,23 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
       case ImGuiKey_F5:
       case ImGuiKey_F6:
       case ImGuiKey_F7:
-        if (onEndRung) {
-          pending_action_.type = PendingActionType::ADD_NEW_RUNG;
-        } else {
-          pending_action_.type = PendingActionType::ADD_INSTRUCTION;
-          pending_action_.instructionType =
-              (key == ImGuiKey_F5)   ? LadderInstructionType::XIC
-              : (key == ImGuiKey_F6) ? LadderInstructionType::XIO
+      case ImGuiKey_F8:
+        pending_action_.type = PendingActionType::ADD_INSTRUCTION;
+        pending_action_.instructionType =
+              (key == ImGuiKey_F5)   ? (shiftPressed
+                  ? LadderInstructionType::RISING_CONTACT : LadderInstructionType::XIC)
+              : (key == ImGuiKey_F6) ? (shiftPressed
+                  ? LadderInstructionType::FALLING_CONTACT : LadderInstructionType::XIO)
                                      : LadderInstructionType::OTE;
-        }
         return;
       case ImGuiKey_F9:
-        if (selected_cell_ == 11) {
-          return;
-        }
         if (shiftPressed) {
           if (!onEndRung && selected_cell_ > 0) {
             AddVerticalConnection();
           }
         } else {
-          if (onEndRung) {
-            pending_action_.type = PendingActionType::ADD_NEW_RUNG;
-          } else {
-            pending_action_.type = PendingActionType::ADD_INSTRUCTION;
-            pending_action_.instructionType = LadderInstructionType::HLINE;
-          }
+          pending_action_.type = PendingActionType::ADD_INSTRUCTION;
+          pending_action_.instructionType = LadderInstructionType::HLINE;
         }
         return;
       case ImGuiKey_Delete:
@@ -380,14 +213,18 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
   int prev_cell = selected_cell_;
   const int maxSelectableRung =
       std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2);
+  const bool is_arrow = key == ImGuiKey_LeftArrow ||
+                        key == ImGuiKey_RightArrow ||
+                        key == ImGuiKey_UpArrow ||
+                        key == ImGuiKey_DownArrow;
 
   switch (key) {
     case ImGuiKey_LeftArrow:
-      selected_cell_ = (selected_cell_ > 0) ? (selected_cell_ - 1) : 11;
+      selected_cell_ = std::max(0, selected_cell_ - 1);
       rung_selection_mode_ = false;
       break;
     case ImGuiKey_RightArrow:
-      selected_cell_ = (selected_cell_ < 11) ? (selected_cell_ + 1) : 0;
+      selected_cell_ = std::min(GetColumnCount() - 1, selected_cell_ + 1);
       rung_selection_mode_ = false;
       break;
     case ImGuiKey_UpArrow:
@@ -395,11 +232,8 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
         selected_rung_--;
       break;
     case ImGuiKey_DownArrow:
-      if (shiftPressed) {
-        if (selected_rung_ < maxSelectableRung) {
-          selected_rung_++;
-        }
-      } else if (selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) - 1) {
+      if (selected_rung_ < (shiftPressed ? maxSelectableRung :
+          static_cast<int>(ladder_program_.rungs.size()) - 1)) {
         selected_rung_++;
       }
       break;
@@ -416,6 +250,12 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
       break;
   }
 
+  if (is_arrow && !shiftPressed) {
+    SelectSingleCell(std::clamp(selected_rung_, 0,
+        static_cast<int>(ladder_program_.rungs.size()) - 1),
+                     selected_cell_, false);
+  }
+
   if (shiftPressed && prev_rung != selected_rung_ &&
       selected_rung_ >= 0 && selected_rung_ <= maxSelectableRung) {
     ExtendRungSelectionTo(selected_rung_);
@@ -423,7 +263,7 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
     if (!rung_selection_mode_ &&
         (prev_rung != selected_rung_ || prev_cell != selected_cell_) &&
         selected_rung_ >= 0 && selected_rung_ <= maxSelectableRung &&
-        selected_cell_ >= 0 && selected_cell_ < 12) {
+        selected_cell_ >= 0 && selected_cell_ < GetColumnCount()) {
       SelectSingleCell(selected_rung_, selected_cell_, false);
     }
     selected_rungs_.clear();
@@ -441,12 +281,12 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
       int step = (selected_cell_ > prev_cell) ? 1 : -1;
       for (int c = prev_cell; c != selected_cell_; c += step) {
         int next = c + step;
-        if (next < 0 || next >= 12)
+        if (next < 0 || next >= GetColumnCount())
           continue;
         if (prev_rung >= static_cast<int>(ladder_program_.rungs.size()) - 1)
           continue;
 
-        if (next != 11) {
+        if (next != (GetColumnCount() - 1)) {
           auto& dest = ladder_program_.rungs[prev_rung].cells[next];
           if (dest.type == LadderInstructionType::HLINE) {
             dest = LadderInstruction();
@@ -455,7 +295,7 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
           }
         }
 
-        if (c != 11) {
+        if (c != (GetColumnCount() - 1)) {
           auto& current = ladder_program_.rungs[prev_rung].cells[c];
           if (current.type == LadderInstructionType::EMPTY) {
             current.type = LadderInstructionType::HLINE;
@@ -464,7 +304,7 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
         }
       }
     } else if (prev_cell == selected_cell_) {
-      if (selected_cell_ == 11) {
+      if (selected_cell_ == (GetColumnCount() - 1)) {
         return;
       }
       int maxRung = static_cast<int>(ladder_program_.rungs.size()) - 2;
@@ -619,8 +459,8 @@ void ProgrammingMode::SelectSingleCell(int rungIndex,
                                        int cellIndex,
                                        bool startDrag) {
   if (rungIndex < 0 ||
-      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1 ||
-      cellIndex < 0 || cellIndex >= 12) {
+      rungIndex >= static_cast<int>(ladder_program_.rungs.size()) ||
+      cellIndex < 0 || cellIndex >= GetColumnCount()) {
     return;
   }
 
@@ -642,7 +482,7 @@ void ProgrammingMode::UpdateCellSelection(int rungIndex, int cellIndex) {
   if (!cell_selection_active_ ||
       rungIndex < 0 ||
       rungIndex >= static_cast<int>(ladder_program_.rungs.size()) - 1 ||
-      cellIndex < 0 || cellIndex >= 12) {
+      cellIndex < 0 || cellIndex >= GetColumnCount()) {
     return;
   }
 
@@ -684,6 +524,10 @@ bool ProgrammingMode::GetCellSelectionBounds(CellSelectionBounds* bounds) const 
 
   const int maxRung =
       std::max(0, static_cast<int>(ladder_program_.rungs.size()) - 2);
+  if (cell_selection_anchor_rung_ > maxRung &&
+      cell_selection_end_rung_ > maxRung) {
+    return false;
+  }
   bounds->minRung = std::max(
       0, std::min(std::min(cell_selection_anchor_rung_, cell_selection_end_rung_),
                   maxRung));
@@ -693,7 +537,7 @@ bool ProgrammingMode::GetCellSelectionBounds(CellSelectionBounds* bounds) const 
   bounds->minCell =
       std::max(0, std::min(cell_selection_anchor_cell_, cell_selection_end_cell_));
   bounds->maxCell =
-      std::max(0, std::min(std::max(cell_selection_anchor_cell_, cell_selection_end_cell_), 11));
+      std::max(0, std::min(std::max(cell_selection_anchor_cell_, cell_selection_end_cell_), (GetColumnCount() - 1)));
   return bounds->minRung <= bounds->maxRung &&
          bounds->minCell <= bounds->maxCell;
 }
@@ -786,13 +630,13 @@ void ProgrammingMode::PasteCellClipboard() {
 
   const int endIndex = static_cast<int>(ladder_program_.rungs.size()) - 1;
   if (targetRung < 0 || targetRung >= endIndex || targetCell < 0 ||
-      targetCell >= 12) {
+      targetCell >= GetColumnCount()) {
     return;
   }
 
   const int height = static_cast<int>(cell_clipboard_.size());
   const int width = static_cast<int>(cell_clipboard_.front().size());
-  if (targetCell + width > 12) {
+  if (targetCell + width > GetColumnCount()) {
     std::cout << "[WARN] Cell clipboard paste exceeds ladder width" << std::endl;
     return;
   }
@@ -1171,85 +1015,88 @@ void ProgrammingMode::DeleteSelectedRungs() {
 }
 
 void ProgrammingMode::HandleEditAction(LadderInstructionType type) {
-  if (type == LadderInstructionType::HLINE) {
-    InsertHorizontalLine();
-  } else {
-    pending_instruction_type_ = type;
-    temp_address_buffer_[0] = '\0';
-    show_address_popup_ = true;
+  if (type == LadderInstructionType::OTE) {
+    SelectSingleCell(selected_rung_, GetColumnCount() - 1, false);
   }
+  pending_instruction_type_ = type;
+  temp_address_buffer_[0] = '\0';
+  if (type == LadderInstructionType::HLINE) {
+    std::strcpy(temp_address_buffer_, "1");
+  }
+  show_address_popup_ = true;
+  inline_focus_pending_ = true;
+  inline_input_error_.clear();
 }
 
 void ProgrammingMode::ConfirmInstruction() {
-  if (selected_rung_ >= static_cast<int>(ladder_program_.rungs.size()))
-    return;
-
+  if (selected_rung_ < 0 || selected_rung_ >= static_cast<int>(ladder_program_.rungs.size()) ||
+      ladder_program_.rungs[selected_rung_].isEndRung) return;
+  LadderInstruction instruction;
+  if (!plc_emulator::programming::ParseCellInput(temp_address_buffer_,
+      pending_instruction_type_, &instruction, &inline_input_error_)) return;
   auto& rung = ladder_program_.rungs[selected_rung_];
-
-  to_upper(temp_address_buffer_);
-
-  LadderInstruction newInstruction;
-  newInstruction.type = pending_instruction_type_;
-  newInstruction.address = temp_address_buffer_;
-
-  int deviceNum = 0, presetNum = 0;
-  char deviceTypeBuffer[64] = {0};
-
-  if (pending_instruction_type_ == LadderInstructionType::OTE) {
-    std::string bkDevice;
-    std::string bkPreset;
-    if (TryParseBkrstCommand(temp_address_buffer_, &bkDevice, &bkPreset,
-                             nullptr)) {
-      newInstruction.type = LadderInstructionType::BKRST;
-      newInstruction.address = bkDevice;
-      newInstruction.preset = bkPreset;
-    } else if (TryParseDevicePreset(temp_address_buffer_, 'T', &deviceNum,
-                                    &presetNum)) {
-      newInstruction.type = LadderInstructionType::TON;
-      newInstruction.address = "T" + std::to_string(deviceNum);
-      newInstruction.preset = "K" + std::to_string(presetNum);
-      timer_states_[newInstruction.address].preset = presetNum;
-    } else if (TryParseDevicePreset(temp_address_buffer_, 'C', &deviceNum,
-                                    &presetNum)) {
-      newInstruction.type = LadderInstructionType::CTU;
-      newInstruction.address = "C" + std::to_string(deviceNum);
-      newInstruction.preset = "K" + std::to_string(presetNum);
-      counter_states_[newInstruction.address].preset = presetNum;
-    } else if (sscanf(temp_address_buffer_, "SET %s", deviceTypeBuffer) == 1) {
-      newInstruction.type = LadderInstructionType::SET;
-      newInstruction.address = deviceTypeBuffer;
-    } else if (sscanf(temp_address_buffer_, "RST %s", deviceTypeBuffer) == 1) {
-      if (deviceTypeBuffer[0] == 'T' || deviceTypeBuffer[0] == 'C') {
-        newInstruction.type = LadderInstructionType::RST_TMR_CTR;
-      } else {
-        newInstruction.type = LadderInstructionType::RST;
-      }
-      newInstruction.address = deviceTypeBuffer;
+  if (instruction.type == LadderInstructionType::HLINE) {
+    const auto length = plc_emulator::programming::ParseOperand(instruction.preset);
+    const int count = length ? length->immediate : 0;
+    const int64_t destination = static_cast<int64_t>(selected_cell_) + count;
+    if (count == 0 || destination < 0 ||
+        destination > static_cast<int64_t>(rung.cells.size())) {
+      inline_input_error_ = "Line length exceeds this row";
+      return;
     }
-  }
-
-  bool isOutputInstruction =
-      (newInstruction.type == LadderInstructionType::OTE ||
-       newInstruction.type == LadderInstructionType::SET ||
-       newInstruction.type == LadderInstructionType::RST ||
-       newInstruction.type == LadderInstructionType::TON ||
-       newInstruction.type == LadderInstructionType::CTU ||
-       newInstruction.type == LadderInstructionType::RST_TMR_CTR ||
-       newInstruction.type == LadderInstructionType::BKRST);
-
-  int targetCell = isOutputInstruction ? 11 : selected_cell_;
-  if (targetCell < 0 || targetCell >= 12)
+    const int end = static_cast<int>(destination);
+    const int begin = count > 0 ? selected_cell_ : end;
+    const int finish = count > 0 ? end : selected_cell_;
+    for (int column = begin; column < finish; ++column) {
+      if (rung.cells[column].type != LadderInstructionType::EMPTY &&
+          rung.cells[column].type != LadderInstructionType::HLINE) {
+        inline_input_error_ = "Line would overwrite an instruction";
+        return;
+      }
+    }
+    PushProgrammingUndoState();
+    for (int column = begin; column < finish; ++column) {
+      rung.cells[column].type = LadderInstructionType::HLINE;
+    }
+    MarkDirty();
+    SelectSingleCell(selected_rung_, std::min(end, GetColumnCount() - 1), false);
+    show_address_popup_ = false;
+    inline_input_error_.clear();
     return;
-
+  }
+  if (instruction.type == LadderInstructionType::kWrappingSource &&
+      selected_cell_ == 0) {
+    instruction.type = LadderInstructionType::kWrappingDestination;
+  }
+  const bool output = instruction.type == LadderInstructionType::OTE ||
+      instruction.type == LadderInstructionType::SET || instruction.type == LadderInstructionType::RST ||
+      instruction.type == LadderInstructionType::TON || instruction.type == LadderInstructionType::CTU ||
+      instruction.type == LadderInstructionType::APPLICATION;
+  const int target = output ? static_cast<int>(rung.cells.size()) - 1 : selected_cell_;
+  if (target < 0 || target >= static_cast<int>(rung.cells.size())) return;
+  const bool had_source =
+      rung.cells[target].type == LadderInstructionType::kWrappingSource;
   PushProgrammingUndoState();
-  rung.cells[targetCell] = newInstruction;
+  rung.cells[target] = std::move(instruction);
   UpdateHorizontalLines(selected_rung_);
   MarkDirty();
+  if (rung.cells[target].type == LadderInstructionType::kWrappingSource) {
+    if (!had_source) AddNewRung(false);
+    SelectSingleCell(had_source ? selected_rung_ + 1 : selected_rung_, 0, false);
+    show_address_popup_ = false;
+    inline_input_error_.clear();
+    return;
+  }
+  const int next_cell = output ? target :
+      std::min(target + 1, static_cast<int>(rung.cells.size()) - 1);
+  SelectSingleCell(selected_rung_, next_cell, false);
+  show_address_popup_ = false;
+  inline_input_error_.clear();
 }
 
 void ProgrammingMode::DeleteCurrentInstruction() {
   if (selected_rung_ >= static_cast<int>(ladder_program_.rungs.size()) ||
-      selected_cell_ < 0 || selected_cell_ >= 12)
+      selected_cell_ < 0 || selected_cell_ >= GetColumnCount())
     return;
 
   PushProgrammingUndoState();
@@ -1261,7 +1108,7 @@ void ProgrammingMode::DeleteCurrentInstruction() {
 
 void ProgrammingMode::EditCurrentInstruction() {
   if (selected_rung_ >= static_cast<int>(ladder_program_.rungs.size()) ||
-      selected_cell_ < 0 || selected_cell_ >= 12)
+      selected_cell_ < 0 || selected_cell_ >= GetColumnCount())
     return;
 
   const auto& instruction =
@@ -1272,34 +1119,31 @@ void ProgrammingMode::EditCurrentInstruction() {
     return;
   }
 
-  std::string full_command;
-  if (instruction.type == LadderInstructionType::BKRST) {
-    full_command = "BKRST " + instruction.address;
-    if (!instruction.preset.empty()) {
-      full_command += " " + instruction.preset;
-    }
-  } else {
-    full_command = instruction.address;
-    if (!instruction.preset.empty()) {
-      full_command += " " + instruction.preset;
-    }
-  }
+  const std::string full_command =
+      plc_emulator::programming::FormatCellInput(instruction);
   strncpy(temp_address_buffer_, full_command.c_str(),
           sizeof(temp_address_buffer_) - 1);
   temp_address_buffer_[sizeof(temp_address_buffer_) - 1] = '\0';
 
   pending_instruction_type_ = instruction.type;
   if (pending_instruction_type_ != LadderInstructionType::XIC &&
-      pending_instruction_type_ != LadderInstructionType::XIO) {
+      pending_instruction_type_ != LadderInstructionType::XIO &&
+      pending_instruction_type_ != LadderInstructionType::RISING_CONTACT &&
+      pending_instruction_type_ != LadderInstructionType::FALLING_CONTACT &&
+      pending_instruction_type_ != LadderInstructionType::HLINE &&
+      pending_instruction_type_ != LadderInstructionType::kWrappingSource &&
+      pending_instruction_type_ != LadderInstructionType::kWrappingDestination) {
     pending_instruction_type_ = LadderInstructionType::OTE;
   }
 
   show_address_popup_ = true;
+  inline_focus_pending_ = true;
+  inline_input_error_.clear();
 }
 
-void ProgrammingMode::AddNewRung() {
+void ProgrammingMode::AddNewRung(bool record_undo) {
   if (ladder_program_.rungs.empty()) {
-    PushProgrammingUndoState();
+    if (record_undo) PushProgrammingUndoState();
     ladder_program_.rungs.push_back(Rung());
     CanonicalizeLadderProgram(&ladder_program_);
     selected_rung_ = 0;
@@ -1318,7 +1162,7 @@ void ProgrammingMode::AddNewRung() {
     insertIndex = selected_rung_ + 1;
   }
 
-  PushProgrammingUndoState();
+  if (record_undo) PushProgrammingUndoState();
   std::vector<bool> extendConnections;
   extendConnections.reserve(ladder_program_.verticalConnections.size());
   for (const auto& conn : ladder_program_.verticalConnections) {
@@ -1433,7 +1277,7 @@ void ProgrammingMode::UpdateHorizontalLines(int rungIndex) {
   int coil_pos = -1;
   int first_instruction = -1;
 
-  for (int i = 11; i >= 0; --i) {
+  for (int i = (GetColumnCount() - 1); i >= 0; --i) {
     if (cells[i].type != LadderInstructionType::EMPTY &&
         cells[i].type != LadderInstructionType::HLINE) {
       bool isOutput = (cells[i].type == LadderInstructionType::OTE ||
@@ -1442,7 +1286,9 @@ void ProgrammingMode::UpdateHorizontalLines(int rungIndex) {
                        cells[i].type == LadderInstructionType::TON ||
                        cells[i].type == LadderInstructionType::CTU ||
                        cells[i].type == LadderInstructionType::RST_TMR_CTR ||
-                       cells[i].type == LadderInstructionType::BKRST);
+                       cells[i].type == LadderInstructionType::BKRST ||
+                       cells[i].type == LadderInstructionType::APPLICATION ||
+                       cells[i].type == LadderInstructionType::kWrappingSource);
       if (isOutput) {
         coil_pos = i;
         break;
@@ -1450,7 +1296,7 @@ void ProgrammingMode::UpdateHorizontalLines(int rungIndex) {
     }
   }
 
-  for (int i = 0; i < 12; ++i) {
+  for (int i = 0; i < GetColumnCount(); ++i) {
     if (cells[i].type != LadderInstructionType::EMPTY &&
         cells[i].type != LadderInstructionType::HLINE) {
       first_instruction = i;
@@ -1458,7 +1304,7 @@ void ProgrammingMode::UpdateHorizontalLines(int rungIndex) {
     }
   }
 
-  for (int i = 0; i < 12; ++i) {
+  for (int i = 0; i < GetColumnCount(); ++i) {
     if (cells[i].type == LadderInstructionType::HLINE) {
       cells[i].type = LadderInstructionType::EMPTY;
     }

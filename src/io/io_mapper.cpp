@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // io_mapper.cpp
 //
 // Implementation of I/O mapper.
@@ -352,31 +353,14 @@ std::string IOMapper_GeneratePLCAddress(IOMapper* mapper, int portId,
 }
 
 bool IOMapper_IsValidPLCAddress(const std::string& address) {
-  if (address.length() < 2)
-    return false;
-
-  char prefix = address[0];
-  if (prefix != 'X' && prefix != 'Y')
-    return false;
-
-  std::string numberPart = address.substr(1);
-  try {
-    int portNum = std::stoi(numberPart);
-    return portNum >= 0 && portNum < 16;
-  } catch (...) {
-    return false;
-  }
+  const auto device = plc_emulator::programming::ParseDeviceAddress(address);
+  return device && (device->kind == plc_emulator::programming::DeviceKind::kX ||
+                    device->kind == plc_emulator::programming::DeviceKind::kY);
 }
 
 int IOMapper_ParsePLCPortNumber(const std::string& address) {
-  if (!IOMapper_IsValidPLCAddress(address))
-    return -1;
-
-  try {
-    return std::stoi(address.substr(1));
-  } catch (...) {
-    return -1;
-  }
+  if (!IOMapper_IsValidPLCAddress(address)) return -1;
+  return static_cast<int>(plc_emulator::programming::ParseDeviceAddress(address)->index);
 }
 
 

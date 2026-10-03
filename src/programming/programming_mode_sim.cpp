@@ -1,12 +1,16 @@
+#include "plc_emulator/programming/execution_program.h"
 // programming_mode_sim.cpp
 //
 // Ladder simulation functions.
 
 #include "plc_emulator/programming/compiled_plc_executor.h"
+#include "plc_emulator/core/application.h"
 #include "plc_emulator/programming/programming_mode.h"
 #include "plc_emulator/project/ladder_to_ld_converter.h"
 #include "plc_emulator/project/openplc_compiler_integration.h"
+#include "plc_emulator/project/instruction_codec.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -19,65 +23,7 @@
 
 namespace plc {
 
-namespace {
-bool TryParseIndex(const std::string& text, int* value) {
-  if (!value || text.empty()) {
-    return false;
-  }
 
-  char* end = nullptr;
-  long parsed = std::strtol(text.c_str(), &end, 10);
-  if (!end || *end != '\0') {
-    return false;
-  }
-  if (parsed < std::numeric_limits<int>::min() ||
-      parsed > std::numeric_limits<int>::max()) {
-    return false;
-  }
-
-  *value = static_cast<int>(parsed);
-  return true;
-}
-
-std::string BuildTempLadderProgramPath() {
-#ifdef _WIN32
-  char temp_dir[MAX_PATH] = {0};
-  DWORD len = GetTempPathA(MAX_PATH, temp_dir);
-  if (len > 0 && len < MAX_PATH) {
-    std::string path(temp_dir);
-    if (!path.empty()) {
-      char last_char = path[path.size() - 1];
-      if (last_char != '\\' && last_char != '/') {
-        path.push_back('\\');
-      }
-      path += "temp_ladder_program.ld";
-      return path;
-    }
-  }
-#endif
-
-  const char* env_temp = std::getenv("TMPDIR");
-#ifdef _WIN32
-  if (!env_temp) {
-    env_temp = std::getenv("TEMP");
-  }
-  if (!env_temp) {
-    env_temp = std::getenv("TMP");
-  }
-#endif
-
-  std::string path =
-      (env_temp && env_temp[0] != '\0') ? std::string(env_temp) : ".";
-  if (!path.empty()) {
-    char last_char = path[path.size() - 1];
-    if (last_char != '\\' && last_char != '/') {
-      path.push_back('/');
-    }
-  }
-  path += "temp_ladder_program.ld";
-  return path;
-}
-}  // namespace
 
 void ProgrammingMode::SimulateLadderProgram() {
   if (!plc_executor_) {
@@ -192,69 +138,71 @@ void ProgrammingMode::SetDeviceState(const std::string& address, bool state) {
 
 bool ProgrammingMode::CompileLadderToOpenPLC() {
   has_compile_attempted_ = true;
-  use_compiled_engine_ = false;
-
-  const LadderProgram& srcProg = gx2_normalization_enabled_
-                                     ? NormalizeLadderGX2(ladder_program_)
-                                     : ladder_program_;
-  std::string ldCode = ld_converter_->ConvertToLDString(srcProg);
-  last_ld_code_ = ldCode;
-  if (ldCode.empty()) {
-    last_compile_error_ = "Ladder to LD conversion failed";
-    std::cerr << "[COMPILE ERROR] Ladder to LD conversion failed"
-              << std::endl;
-    compile_failed_ = true;
-    last_failed_hash_ = ComputeProgramHash(ladder_program_);
-    UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
-    current_compiled_code_.clear();
-    return false;
-  }
-
-  const std::string temp_ld_path = BuildTempLadderProgramPath();
-  std::ofstream ldFile(temp_ld_path, std::ios::trunc);
-  if (!ldFile) {
-    last_compile_error_ =
-        "Failed to create temporary LD file: " + temp_ld_path;
-    std::cerr << "[COMPILE ERROR] " << last_compile_error_ << std::endl;
-    compile_failed_ = true;
-    last_failed_hash_ = ComputeProgramHash(ladder_program_);
-    UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
-    current_compiled_code_.clear();
-    return false;
-  }
-  ldFile << ldCode;
-  ldFile.close();
-
+  const LadderProgram& source = ladder_program_;
   OpenPLCCompilerIntegration compiler;
-  auto result = compiler.CompileLDFile(temp_ld_path);
-  std::remove(temp_ld_path.c_str());
-
+  auto result = compiler.CompileLadderProgramWithIR(source);
+  const std::string ldCode;
   if (!result.success) {
     last_compile_error_ = result.errorMessage;
     std::cerr << "[COMPILE ERROR] OpenPLC compilation failed: "
               << result.errorMessage << std::endl;
     compile_failed_ = true;
+    use_compiled_engine_ = has_loaded_program_;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
     UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
-    current_compiled_code_.clear();
     return false;
   }
 
-  if (!plc_executor_->LoadCompiledCode(result.generatedCode)) {
+  std::optional<LadderProgram> compacted;
+  bool has_wrapping = false;
+  bool has_memos = false;
+  for (const auto& rung : ladder_program_.rungs) {
+    has_memos = has_memos || !rung.memo.empty();
+    for (const auto& cell : rung.cells) {
+      has_wrapping = has_wrapping ||
+          cell.type == LadderInstructionType::kWrappingSource ||
+          cell.type == LadderInstructionType::kWrappingDestination;
+    }
+  }
+  if (has_wrapping && !has_memos) {
+    LadderProgram compact;
+    std::string layout_error;
+    if (plc_emulator::programming::MaterializeLadder(
+            result.program, &compact, &layout_error)) {
+      bool fits = true;
+      for (const auto& rung : compact.rungs) {
+        fits = fits && static_cast<int>(rung.cells.size()) <= GetColumnCount();
+      }
+      if (fits) {
+        result.program = *compact.canonical_program;
+        compacted = std::move(compact);
+      }
+    }
+  }
+  const LadderProgram& compiled_source = compacted ? *compacted : source;
+  if ((application_ && !application_->LoadProgrammingProgram(
+                           result.program, compiled_source)) ||
+      !plc_executor_->LoadFromCompilationResult(result)) {
     last_compile_error_ = "Failed to load compiled code into OpenPLC engine";
     std::cerr
         << "[COMPILE ERROR] Failed to load compiled code into OpenPLC engine"
         << std::endl;
     compile_failed_ = true;
+    use_compiled_engine_ = has_loaded_program_;
     last_failed_hash_ = ComputeProgramHash(ladder_program_);
     UpdateCompileErrorRungsOnCompileFailure(ldCode, last_compile_error_);
-    current_compiled_code_.clear();
     return false;
   }
 
-  plc_executor_->ResetMemory();
-
-  current_compiled_code_ = result.generatedCode;
+  if (compacted) {
+    PushProgrammingUndoState();
+    ladder_program_ = std::move(*compacted);
+    layout_dirty_ = true;
+    SelectSingleCell(std::min(selected_rung_,
+        static_cast<int>(ladder_program_.rungs.size()) - 2),
+        selected_cell_, false);
+  }
+  has_loaded_program_ = true;
   last_compiled_hash_ = ComputeProgramHash(ladder_program_);
   is_dirty_ = false;
   last_compile_error_.clear();
@@ -266,7 +214,7 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
   InitializeTimersAndCountersFromProgram();
 
   std::cout << "[COMPILE] OpenPLC engine loaded successfully ("
-            << result.generatedCode.length() << " chars)" << std::endl;
+            << result.program.instructions.size() << " instructions)" << std::endl;
   return true;
 }
 
@@ -276,8 +224,7 @@ void ProgrammingMode::SyncPhysicsToOpenPLC() {
     bool state = pair.second;
 
     if (!address.empty() && address[0] == 'X') {
-      int idx = -1;
-      if (TryParseIndex(address.substr(1), &idx) && idx >= 0 && idx < 16) {
+      if (plc_executor_->ResolveDeviceAddress(address)) {
         plc_executor_->SetDeviceState(address, state);
       }
     }
@@ -287,7 +234,7 @@ void ProgrammingMode::SyncPhysicsToOpenPLC() {
 void ProgrammingMode::SyncOpenPLCToDevices() {
   // Sync Y0-Y15
   for (int i = 0; i < 16; i++) {
-    std::string yAddr = "Y" + std::to_string(i);
+    std::string yAddr = plc_emulator::programming::FormatIOAddress('Y', i);
     bool yState = plc_executor_->GetDeviceState(yAddr);
     auto itY = device_states_.find(yAddr);
     if (itY == device_states_.end() || itY->second != yState) {
@@ -315,15 +262,14 @@ void ProgrammingMode::SyncOpenPLCToTimersCounters() {
     const std::string& address = pair.first;
     if (address.size() < 2)
       continue;
-    int idx = -1;
-    if (!TryParseIndex(address.substr(1), &idx) || idx < 0 || idx >= 256)
-      continue;
+    const auto device = plc_executor_->ResolveDeviceAddress(address);
+    if (!device) continue;
+    const int idx = static_cast<int>(device->index);
     TimerState& timer = pair.second;
     timer.value = plc_executor_->GetTimerValue(idx);
     timer.enabled = plc_executor_->GetTimerEnabled(idx);
     if (timer.preset > 0) {
-      int preset_ms = timer.preset * 100;
-      timer.done = (timer.value >= preset_ms);
+      timer.done = plc_executor_->GetDeviceState(address);
     } else {
       timer.done = timer.enabled;
     }
@@ -333,9 +279,9 @@ void ProgrammingMode::SyncOpenPLCToTimersCounters() {
     const std::string& address = pair.first;
     if (address.size() < 2)
       continue;
-    int idx = -1;
-    if (!TryParseIndex(address.substr(1), &idx) || idx < 0 || idx >= 256)
-      continue;
+    const auto device = plc_executor_->ResolveDeviceAddress(address);
+    if (!device) continue;
+    const int idx = static_cast<int>(device->index);
     CounterState& counter = pair.second;
     counter.value = plc_executor_->GetCounterValue(idx);
     counter.lastPower = plc_executor_->GetCounterLastPower(idx);
@@ -348,40 +294,37 @@ void ProgrammingMode::SyncOpenPLCToTimersCounters() {
 }
 
 void ProgrammingMode::UpdateVisualActiveStates() {
-  for (auto& rung : ladder_program_.rungs) {
-    for (auto& cell : rung.cells) {
-      if (cell.type == LadderInstructionType::EMPTY) {
-        cell.isActive = false;
-      } else {
-        switch (cell.type) {
-          case LadderInstructionType::XIC:
-            cell.isActive = plc_executor_->GetDeviceState(cell.address);
-            break;
-          case LadderInstructionType::XIO:
-            cell.isActive = !plc_executor_->GetDeviceState(cell.address);
-            break;
-          case LadderInstructionType::OTE:
-          case LadderInstructionType::SET:
-          case LadderInstructionType::RST:
-          case LadderInstructionType::BKRST:
-            cell.isActive = plc_executor_->GetDeviceState(cell.address);
-            break;
-          default:
-            cell.isActive = false;
-            break;
+  const CompiledPLCExecutor* executor = monitor_external_plc_ && application_
+      ? application_->GetCompiledPlcExecutor() : plc_executor_.get();
+  const bool observe = executor && !NeedsRecompilation();
+  for (size_t row = 0; row < ladder_program_.rungs.size(); ++row) {
+    auto& rung = ladder_program_.rungs[row];
+    for (size_t column = 0; column < rung.cells.size(); ++column) {
+      auto& cell = rung.cells[column];
+      cell.isActive = false;
+      if (observe) {
+        const auto power = executor->GetCellPower(
+            static_cast<int>(row), static_cast<int>(column));
+        if (power) {
+          cell.isActive = *power;
+          continue;
         }
       }
+      if (cell.type == LadderInstructionType::XIC)
+        cell.isActive = GetDeviceState(cell.address);
+      else if (cell.type == LadderInstructionType::XIO)
+        cell.isActive = !GetDeviceState(cell.address);
     }
   }
 }
 
 bool ProgrammingMode::NeedsRecompilation() const {
   size_t currentHash = ComputeProgramHash(ladder_program_);
-  if (compile_failed_ && current_compiled_code_.empty() &&
+  if (compile_failed_ &&
       currentHash == last_failed_hash_) {
     return false;
   }
-  if (is_dirty_ || current_compiled_code_.empty()) {
+  if (is_dirty_ || !has_loaded_program_) {
     return true;
   }
   return currentHash != last_compiled_hash_;

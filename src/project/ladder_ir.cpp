@@ -2,7 +2,7 @@
 
 #include "plc_emulator/project/ladder_ir.h"
 
-#include "plc_emulator/programming/programming_mode.h"
+#include "plc_emulator/programming/ladder_program.h"
 
 #include <algorithm>
 #include <iostream>

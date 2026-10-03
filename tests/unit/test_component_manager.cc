@@ -4,6 +4,7 @@
 #include "plc_emulator/core/component_manager.h"
 
 #include <gtest/gtest.h>
+#include <memory>
 
 namespace plc {
 namespace {
@@ -19,37 +20,37 @@ class ComponentManagerTest : public ::testing::Test {
 
 TEST_F(ComponentManagerTest, AddComponent) {
   PlacedComponent comp;
-  comp.type = ComponentType::kPLC;
+  comp.type = ComponentType::PLC;
   comp.position = {100.0f, 200.0f};
   
   int id = manager_->AddComponent(comp);
   
   EXPECT_GE(id, 0);
-  EXPECT_EQ(manager_->GetComponentCount(), 1);
+  EXPECT_EQ(manager_->GetComponents().size(), 1);
 }
 
 TEST_F(ComponentManagerTest, RemoveComponent) {
   PlacedComponent comp;
-  comp.type = ComponentType::kPLC;
+  comp.type = ComponentType::PLC;
   
   int id = manager_->AddComponent(comp);
-  EXPECT_EQ(manager_->GetComponentCount(), 1);
+  EXPECT_EQ(manager_->GetComponents().size(), 1);
   
   bool removed = manager_->RemoveComponent(id);
   EXPECT_TRUE(removed);
-  EXPECT_EQ(manager_->GetComponentCount(), 0);
+  EXPECT_EQ(manager_->GetComponents().size(), 0);
 }
 
 TEST_F(ComponentManagerTest, GetComponent) {
   PlacedComponent comp;
-  comp.type = ComponentType::kFRL;
+  comp.type = ComponentType::FRL;
   comp.position = {50.0f, 75.0f};
   
   int id = manager_->AddComponent(comp);
   
   auto* retrieved = manager_->GetComponent(id);
   ASSERT_NE(retrieved, nullptr);
-  EXPECT_EQ(retrieved->type, ComponentType::kFRL);
+  EXPECT_EQ(retrieved->type, ComponentType::FRL);
   EXPECT_FLOAT_EQ(retrieved->position.x, 50.0f);
   EXPECT_FLOAT_EQ(retrieved->position.y, 75.0f);
 }
@@ -62,14 +63,14 @@ TEST_F(ComponentManagerTest, GetNonexistentComponent) {
 TEST_F(ComponentManagerTest, ClearAll) {
   for (int i = 0; i < 5; ++i) {
     PlacedComponent comp;
-    comp.type = ComponentType::kPLC;
+    comp.type = ComponentType::PLC;
     manager_->AddComponent(comp);
   }
   
-  EXPECT_EQ(manager_->GetComponentCount(), 5);
+  EXPECT_EQ(manager_->GetComponents().size(), 5);
   
-  manager_->ClearAll();
-  EXPECT_EQ(manager_->GetComponentCount(), 0);
+  manager_->Clear();
+  EXPECT_EQ(manager_->GetComponents().size(), 0);
 }
 
 }  // namespace

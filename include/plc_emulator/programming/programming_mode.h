@@ -11,6 +11,7 @@
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_PROGRAMMING_MODE_H_
 
 #include "imgui.h"
+#include "plc_emulator/programming/ladder_program.h"
 #include "plc_emulator/core/data_types.h"
 
 #include <chrono>
@@ -31,142 +32,6 @@ class LadderToLDConverter;
 }
 
 namespace plc {
-
-/*
- * 래더 셀 명령 타입.
- * Ladder cell instruction types.
- */
-enum class LadderInstructionType {
-  EMPTY,
-  XIC,
-  XIO,
-  OTE,
-  HLINE,
-  SET,
-  RST,
-  TON,
-  CTU,
-  RST_TMR_CTR,
-  BKRST
-};
-
-/*
- * 래더 셀의 명령과 상태.
- * Instruction and state for a ladder cell.
- */
-struct LadderInstruction {
-  LadderInstructionType type = LadderInstructionType::EMPTY;
-  std::string address;
-  std::string preset;
-  bool isActive = false;
-};
-
-/*
- * 타이머 상태 값.
- * Timer state values.
- */
-struct TimerState {
-  int value = 0;
-  bool done = false;
-  int preset = 0;
-  bool enabled = false;
-};
-
-/*
- * 카운터 상태 값.
- * Counter state values.
- */
-struct CounterState {
-  int value = 0;
-  bool done = false;
-  int preset = 0;
-  bool lastPower = false;
-};
-
-/*
- * 시믬레이터 실행 상태 스냅샷.
- * Snapshot of simulator execution state.
- */
-struct SimulatorState {
-  std::map<std::string, bool> deviceStates;
-  std::map<std::string, TimerState> timerStates;
-  std::map<std::string, CounterState> counterStates;
-  uint64_t seqNo = 0;
-  std::chrono::steady_clock::time_point timestamp;
-
-  SimulatorState() : timestamp(std::chrono::steady_clock::now()) {}
-
-  SimulatorState(const SimulatorState& other)
-      : deviceStates(other.deviceStates),
-        timerStates(other.timerStates),
-        counterStates(other.counterStates),
-        seqNo(other.seqNo),
-        timestamp(std::chrono::steady_clock::now()) {}
-
-  SimulatorState& operator=(const SimulatorState& other) {
-    if (this != &other) {
-      deviceStates = other.deviceStates;
-      timerStates = other.timerStates;
-      counterStates = other.counterStates;
-      seqNo = other.seqNo;
-      timestamp = std::chrono::steady_clock::now();
-    }
-    return *this;
-  }
-
-  void UpdateDeviceState(const std::string& address, bool state) {
-    deviceStates[address] = state;
-    seqNo++;
-    timestamp = std::chrono::steady_clock::now();
-  }
-};
-
-/*
- * 래더 룽 데이터.
- * Ladder rung data.
- */
-struct Rung {
-  int number = 0;
-  std::vector<LadderInstruction> cells;
-  std::string memo;
-  bool isEndRung = false;
-  Rung() : cells(12) {}
-};
-
-/*
- * 룽 간 세로 연결 정보.
- * Vertical connection between rungs.
- */
-struct VerticalConnection {
-  int x = 0;
-  std::vector<int> rungs;
-
-  VerticalConnection() = default;
-  VerticalConnection(int x_pos, int start_rung, int end_rung) : x(x_pos) {
-    for (int i = start_rung; i <= end_rung; i++) {
-      rungs.push_back(i);
-    }
-  }
-
-  int startRung() const { return rungs.empty() ? 0 : rungs.front(); }
-
-  int endRung() const { return rungs.empty() ? 0 : rungs.back(); }
-};
-
-/*
- * 래더 프로그램 구성.
- * Ladder program container.
- */
-struct LadderProgram {
-  std::vector<Rung> rungs;
-  std::vector<VerticalConnection> verticalConnections;
-  LadderProgram() {
-    rungs.emplace_back();
-    rungs.back().number = 0;
-    rungs.emplace_back();
-    rungs.back().isEndRung = true;
-  }
-};
 
 /*
  * 래더 편집 및 실행 UI/로직을 관리합니다.
@@ -205,7 +70,10 @@ class ProgrammingMode {
   void UpdateInputsFromSystem(const std::map<std::string, bool>& inputs);
 
   bool IsUsingCompiledEngine() const { return use_compiled_engine_; }
-  bool HasCompiledCodeLoaded() const { return !current_compiled_code_.empty(); }
+  bool HasCompiledCodeLoaded() const { return has_loaded_program_; }
+  bool IsConverted() const {
+    return has_loaded_program_ && !is_dirty_ && !compile_failed_;
+  }
   const char* GetEngineType() const {
     return use_compiled_engine_ ? "Compiled(OpenPLC)" : "Disabled";
   }
@@ -227,6 +95,7 @@ class ProgrammingMode {
   }
 
  private:
+  friend class ApplicationRuntimeTest;
   plc::Application*
       application_;
 
@@ -270,6 +139,12 @@ class ProgrammingMode {
   void RenderSimulationControl();
   void RenderStatusBar(bool isPlcRunning);
   void RenderAddressPopup();
+  int GetColumnCount() const;
+  void RefreshColumnLayout();
+  float ColumnWidth(float area, int column) const;
+  float ColumnOffset(float area, int column) const;
+  void RenderColumnGrid(ImDrawList* draw_list, float x, float y,
+                        float area, float height) const;
   void RenderRungMemoPopup();
   void RenderVerticalDialog();
 
@@ -279,7 +154,7 @@ class ProgrammingMode {
   void ConfirmInstruction();
   void DeleteCurrentInstruction();
   void EditCurrentInstruction();
-  void AddNewRung();
+  void AddNewRung(bool record_undo = true);
   void DeleteRung(int rungIndex);
   void InsertHorizontalLine();
   void UpdateHorizontalLines(int rungIndex);
@@ -380,7 +255,7 @@ class ProgrammingMode {
   std::unique_ptr<CompiledPLCExecutor> plc_executor_;
   std::unique_ptr<LadderToLDConverter> ld_converter_;
   bool use_compiled_engine_;
-  std::string current_compiled_code_;
+  bool has_loaded_program_ = false;
   bool has_compile_attempted_ = false;
   bool compile_failed_ = false;
   std::vector<int> compile_error_rungs_;
@@ -400,10 +275,16 @@ class ProgrammingMode {
   bool scan_time_initialized_ = false;
 
   bool show_address_popup_;
+  bool inline_focus_pending_ = false;
+  ImVec2 inline_input_position_;
+  std::string inline_input_error_;
+  bool layout_dirty_ = true;
+  std::vector<float> column_weights_;
+  float column_weight_sum_ = 12.0f;
   bool show_rung_memo_popup_ = false;
   bool show_vertical_dialog_;
   LadderInstructionType pending_instruction_type_;
-  char temp_address_buffer_[64];
+  char temp_address_buffer_[256];
   char rung_memo_buffer_[256] = {0};
   char rung_memo_popup_buffer_[256] = {0};
   int rung_memo_popup_target_rung_ = -1;

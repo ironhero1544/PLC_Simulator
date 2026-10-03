@@ -98,7 +98,7 @@ void RenderConveyor(ImDrawList* draw_list,
   float offset = 0.0f;
   if (comp.internalStates.count(state_keys::kMotorActive) &&
       comp.internalStates.at(state_keys::kMotorActive) > 0.5f) {
-    offset = std::fmod(ImGui::GetTime() * 50.0f, 30.0f);
+    offset = static_cast<float>(std::fmod(ImGui::GetTime() * 50.0, 30.0));
   }
   for (float x = -size.y; x < size.x; x += 30.0f * zoom) {
     ImVec2 p0 = {pos.x + x + offset * zoom, pos.y};

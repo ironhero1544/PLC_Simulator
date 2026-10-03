@@ -315,7 +315,7 @@ void RenderMeterValve(ImDrawList* draw_list,
   draw_list->AddRectFilled(pos, {pos.x + size.x, pos.y + size.y},
                            IM_COL32(240, 240, 240, 255));
   draw_list->AddRect(pos, {pos.x + size.x, pos.y + size.y},
-                     IM_COL32(0, 0, 0, 255), 0, 2.0f * zoom);
+                     IM_COL32(0, 0, 0, 255), 0, 0, 2.0f * zoom);
 
   ImVec2 center = {pos.x + 25.0f * zoom, pos.y + 40.0f * zoom};
   draw_list->AddCircleFilled(center, 15.0f * zoom,

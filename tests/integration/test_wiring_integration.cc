@@ -21,18 +21,18 @@ class WiringIntegrationTest : public ::testing::Test {
 TEST_F(WiringIntegrationTest, CreateAndConnectComponents) {
   // PLC 컴포넌트 생성
   PlacedComponent plc;
-  plc.type = ComponentType::kPLC;
+  plc.type = ComponentType::PLC;
   plc.position = {100.0f, 100.0f};
   int plc_id = component_mgr_->AddComponent(plc);
   
   // FRL 컴포넌트 생성
   PlacedComponent frl;
-  frl.type = ComponentType::kFRL;
+  frl.type = ComponentType::FRL;
   frl.position = {300.0f, 100.0f};
   int frl_id = component_mgr_->AddComponent(frl);
   
   // 두 컴포넌트가 추가되었는지 확인
-  EXPECT_EQ(component_mgr_->GetComponentCount(), 2);
+  EXPECT_EQ(component_mgr_->GetComponents().size(), 2);
   
   auto* plc_comp = component_mgr_->GetComponent(plc_id);
   auto* frl_comp = component_mgr_->GetComponent(frl_id);
@@ -40,8 +40,8 @@ TEST_F(WiringIntegrationTest, CreateAndConnectComponents) {
   ASSERT_NE(plc_comp, nullptr);
   ASSERT_NE(frl_comp, nullptr);
   
-  EXPECT_EQ(plc_comp->type, ComponentType::kPLC);
-  EXPECT_EQ(frl_comp->type, ComponentType::kFRL);
+  EXPECT_EQ(plc_comp->type, ComponentType::PLC);
+  EXPECT_EQ(frl_comp->type, ComponentType::FRL);
 }
 
 // TODO: Wire 연결 테스트 추가

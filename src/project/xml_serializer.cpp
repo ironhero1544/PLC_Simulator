@@ -447,6 +447,10 @@ std::string XMLSerializer::GetCurrentDateTime() const {
 std::string XMLSerializer::InstructionTypeToString(
     LadderInstructionType type) const {
   switch (type) {
+    case LadderInstructionType::kWrappingSource:
+      return "WRAPPING_SOURCE";
+    case LadderInstructionType::kWrappingDestination:
+      return "WRAPPING_DESTINATION";
     case LadderInstructionType::EMPTY:
       return "EMPTY";
     case LadderInstructionType::XIC:
@@ -476,6 +480,8 @@ std::string XMLSerializer::InstructionTypeToString(
 
 LadderInstructionType XMLSerializer::StringToInstructionType(
     const std::string& str) const {
+  if (str == "WRAPPING_SOURCE") return LadderInstructionType::kWrappingSource;
+  if (str == "WRAPPING_DESTINATION") return LadderInstructionType::kWrappingDestination;
   if (str == "EMPTY")
     return LadderInstructionType::EMPTY;
   if (str == "XIC")

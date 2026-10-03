@@ -102,6 +102,9 @@ namespace plc {
         const CompiledPLCExecutor* GetCompiledPlcExecutor() const {
           return compiled_plc_executor_.get();
         }
+        bool LoadProgrammingProgram(
+            const plc_emulator::programming::ExecutionProgram& program,
+            const LadderProgram& ladder);
         /*
          * 프로젝트 저장과 로드.
          * Project save/load.
@@ -112,6 +115,7 @@ namespace plc {
         bool LoadProject(const std::string& filePath);
 
     private:
+        friend class ApplicationRuntimeTest;
         struct RtlAsyncTaskResult {
           std::string moduleId;
           std::string taskKind;

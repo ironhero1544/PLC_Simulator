@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // physics_electrical.cpp
 //
 // Electrical simulation helpers.
@@ -128,7 +129,7 @@ void UpdateElectricalComponent(size_t index, void* context) {
 void Application::SimulateElectricalImpl() {
   if (!is_plc_running_) {
     for (int i = 0; i < 16; ++i) {
-      SetPlcDeviceState("Y" + std::to_string(i), false);
+      SetPlcDeviceState(plc_emulator::programming::FormatIOAddress('Y', i), false);
     }
   }
 
@@ -454,7 +455,7 @@ void Application::SimulateElectricalImpl() {
           }
         } else if (type == ComponentType::PLC && port_id >= 16 && port_id < 32) {
           int y_index = port_id - 16;
-          bool y_state = GetPlcDeviceState("Y" + std::to_string(y_index));
+          bool y_state = GetPlcDeviceState(plc_emulator::programming::FormatIOAddress('Y', y_index));
           if (y_state) {
             assign_net_driver(
                 net_id, (GetPlcOutputOnVoltage() > 12.0f) ? VoltageType::V24
@@ -539,7 +540,7 @@ void Application::SimulateElectricalImpl() {
       if (port_voltages_.count(key)) {
         voltage = port_voltages_.at(key);
       }
-      SetPlcDeviceState("X" + std::to_string(i),
+      SetPlcDeviceState(plc_emulator::programming::FormatIOAddress('X', i),
                         IsPlcInputVoltageActive(voltage));
     }
   }

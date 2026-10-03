@@ -1,7 +1,9 @@
 #include "plc_emulator/core/win32_haptics.h"
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

@@ -1,16 +1,17 @@
-//compiled_plc_executor.cpp
+// compiled_plc_executor.cpp
 //
-// Implementation of PLC executor.
+//  Implementation of PLC executor.
 
 #include "plc_emulator/programming/compiled_plc_executor.h"
 
 #include <algorithm>
-#include <chrono>
+#include <bit>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
+#include <ctime>
 #include <functional>
 #include <iostream>
-#include <regex>
 #include <sstream>
 #include <thread>
 
@@ -18,35 +19,203 @@ namespace plc {
 
 // Initialize executor state.
 CompiledPLCExecutor::CompiledPLCExecutor() {
+  extension_file_.fill(-1);
   memory_ = PLCMemory();
   memory_.last_scan_time = std::chrono::steady_clock::now();
+  rtc_anchor_ = memory_.last_scan_time;
+  const std::time_t wall_time = std::time(nullptr);
+  std::tm local_time{};
+#ifdef _WIN32
+  localtime_s(&local_time, &wall_time);
+#else
+  localtime_r(&wall_time, &local_time);
+#endif
+  const std::chrono::year_month_day date{
+      std::chrono::year{local_time.tm_year + 1900},
+      std::chrono::month{static_cast<unsigned>(local_time.tm_mon + 1)},
+      std::chrono::day{static_cast<unsigned>(local_time.tm_mday)}};
+  rtc_time_ = std::chrono::sys_days{date} +
+              std::chrono::hours{local_time.tm_hour} +
+              std::chrono::minutes{local_time.tm_min} +
+              std::chrono::seconds{local_time.tm_sec};
   debug_mode_ = false;
   is_running_ = false;
   continuous_mode_ = false;
   cycle_time_ms_ = 10;  // Default scan time
+  memory_.D[8000] = 200;
+  memory_.D[8020] = 10;
+  memory_.D[8310] = 1;
+  InitializeAxes(true);
+  for (auto& module : modules_)
+    module.buffer.resize(32767);
+  module_transfer_owners_.fill(SIZE_MAX);
+  namespace model = plc_emulator::programming;
+  for (int index = 0; index < 16; ++index) {
+    ResolveDeviceAddress(model::FormatIOAddress('X', index));
+    ResolveDeviceAddress(model::FormatIOAddress('Y', index));
+  }
+  for (int index = 0; index < 1000; ++index) {
+    ResolveDeviceAddress("M" + std::to_string(index));
+  }
 }
 
 CompiledPLCExecutor::~CompiledPLCExecutor() {
   SetContinuousExecution(false);
 }
 
-// Cache generated code and parse it into the instruction list.
-bool CompiledPLCExecutor::LoadCompiledCode(const std::string& compiledCode) {
-  loaded_code_ = compiledCode;
-  instructions_.clear();
-
-  DebugLog("Loading compiled C++ code...");
-  DebugLog("Code size: " + std::to_string(compiledCode.length()) +
-           " characters");
-
-  if (!ParseCompiledCode(compiledCode)) {
-    SetError("Failed to parse compiled C++ code");
+bool CompiledPLCExecutor::LoadProgram(
+    const plc_emulator::programming::ExecutionProgram& program) {
+  std::string error;
+  if (!plc_emulator::programming::ValidateProgram(program, &error)) {
+    SetError(error);
     return false;
   }
-
-  DebugLog("Successfully loaded " + std::to_string(instructions_.size()) +
-           " instructions");
+  auto candidate = program;
+  std::vector<size_t> flow_targets;
+  if (!plc_emulator::programming::BuildFlowTargets(candidate, &flow_targets,
+                                                   &error)) {
+    SetError(error);
+    return false;
+  }
+  size_t size = 0;
+  for (const auto& instruction : candidate.instructions) {
+    size = std::max(size, instruction.condition.size());
+  }
+  std::vector<uint8_t> values(size);
+  std::vector<std::vector<uint8_t>> edges;
+  std::vector<std::vector<uint8_t>> observations;
+  std::vector<uint8_t> powers(candidate.instructions.size(), 0);
+  std::vector<bool> pulses(candidate.instructions.size(), false);
+  for (const auto& instruction : candidate.instructions) {
+    edges.emplace_back(instruction.condition.size(), 0);
+    observations.emplace_back(instruction.condition.size(), 0);
+    for (const auto& gate : instruction.condition) {
+      for (const auto& operand : {gate.first, gate.second}) {
+        if (operand.kind ==
+                plc_emulator::programming::OperandKind::kBitDevice ||
+            operand.kind ==
+                plc_emulator::programming::OperandKind::kWordDevice) {
+          ResolveDeviceAddress(
+              plc_emulator::programming::FormatDeviceAddress(operand.device));
+        }
+      }
+    }
+    for (size_t index = 0; index < instruction.operand_count; ++index) {
+      const auto& operand = instruction.operands[index];
+      if (operand.kind == plc_emulator::programming::OperandKind::kBitDevice ||
+          operand.kind == plc_emulator::programming::OperandKind::kWordDevice) {
+        ResolveDeviceAddress(
+            plc_emulator::programming::FormatDeviceAddress(operand.device));
+      }
+    }
+  }
+  timer_enabled_.fill(false);
+  ist_mode_ = -1;
+  ist_start_previous_ = false;
+  ist_auto_previous_ = false;
+  counter_last_power_.fill(false);
+  InitializeAxes(false);
+  for (auto& port : serial_ports_) {
+    if (port.owner != SIZE_MAX)
+      memory_.special_m[port.request_relay] = false;
+    port.owner = SIZE_MAX;
+    port.sending = port.receiving = false;
+  }
+  program_ = std::move(candidate);
+  resolved_program_ = program_;
+  BuildSourceSteps();
+  InitializeSteps();
+  inverter_transfers_.assign(program_.instructions.size(), {});
+  inverter_owners_.fill(SIZE_MAX);
+  modbus_transfers_.assign(program_.instructions.size(), {});
+  modbus_owner_ = SIZE_MAX;
+  cf_transfers_.assign(program_.instructions.size(), {});
+  for (auto& card : cf_cards_)
+    if (card) {
+      card->owner = SIZE_MAX;
+      card->mixed.active = false;
+    }
+  pointer_targets_.fill(program_.instructions.size());
+  main_program_end_ = program_.instructions.size();
+  for (size_t index = 0; index < program_.instructions.size(); ++index) {
+    const auto& instruction = program_.instructions[index];
+    if (instruction.opcode == plc_emulator::programming::Opcode::kFend)
+      main_program_end_ = std::min(main_program_end_, index);
+    if (instruction.opcode == plc_emulator::programming::Opcode::kLabel &&
+        instruction.operands[0].kind ==
+            plc_emulator::programming::OperandKind::kPointer)
+      pointer_targets_[instruction.operands[0].immediate] = index;
+  }
+  flow_targets_ = std::move(flow_targets);
+  interrupt_targets_.fill(program_.instructions.size());
+  pending_interrupts_.fill(false);
+  interrupt_elapsed_ms_.fill(0);
+  interrupts_enabled_ = false;
+  sort_state_ = {};
+  sort2_states_ = {};
+  sort2_indices_.fill(SIZE_MAX);
+  size_t sort2_slot = 0;
+  for (size_t index = 0; index < program_.instructions.size(); ++index)
+    if (program_.instructions[index].opcode ==
+        plc_emulator::programming::Opcode::kTableSort2)
+      sort2_indices_[sort2_slot++] = index;
+  module_transfers_.assign(program_.instructions.size(), {});
+  handy_states_.assign(program_.instructions.size(), {});
+  speed_pulse_starts_.assign(program_.instructions.size(), 0);
+  panel_states_.assign(program_.instructions.size(), {});
+  absolute_transfers_.assign(program_.instructions.size(), {});
+  pid_states_.assign(program_.instructions.size(), {});
+  module_transfer_owners_.fill(SIZE_MAX);
+  for (size_t index = 0; index < program_.instructions.size(); ++index) {
+    const auto& instruction = program_.instructions[index];
+    if (instruction.opcode == plc_emulator::programming::Opcode::kLabel &&
+        instruction.operands[0].kind ==
+            plc_emulator::programming::OperandKind::kInterruptPointer)
+      interrupt_targets_[instruction.operands[0].immediate] = index;
+  }
+  gate_values_ = std::move(values);
+  for (auto& frame : flow_frames_)
+    frame.gates.resize(size);
+  edge_states_ = std::move(edges);
+  first_scan_ = true;
+  pulse_states_ = std::move(pulses);
+  operation_elapsed_ms_.assign(program_.instructions.size(), 0);
+  for (size_t index = 0; index < program_.instructions.size(); ++index)
+    if (program_.instructions[index].opcode ==
+        plc_emulator::programming::Opcode::kDuty)
+      operation_elapsed_ms_[index] = -1;
+  observed_gates_ = std::move(observations);
+  instruction_power_ = std::move(powers);
+  has_scan_observations_ = false;
   return true;
+}
+
+std::optional<bool> CompiledPLCExecutor::GetCellPower(int rung,
+                                                      int cell) const {
+  if (!has_scan_observations_)
+    return std::nullopt;
+  bool found = false;
+  bool power = false;
+  for (size_t index = 0; index < program_.instructions.size(); ++index) {
+    const auto& instruction = program_.instructions[index];
+    if (instruction.rung == rung && instruction.cell == cell) {
+      found = true;
+      power = power || instruction_power_[index] != 0;
+    }
+    for (const auto& observation : instruction.observations) {
+      if (observation.rung == rung && observation.cell == cell &&
+          observation.gate < observed_gates_[index].size()) {
+        found = true;
+        bool active = observed_gates_[index][observation.gate] != 0;
+        for (const uint32_t incoming : observation.incoming_gates) {
+          active = active && incoming < observed_gates_[index].size() &&
+                   observed_gates_[index][incoming] != 0;
+        }
+        power = power || active;
+      }
+    }
+  }
+  return found ? std::optional<bool>(power) : std::nullopt;
 }
 
 bool CompiledPLCExecutor::LoadFromCompilationResult(
@@ -55,8 +224,7 @@ bool CompiledPLCExecutor::LoadFromCompilationResult(
     SetError("Cannot load failed compilation result: " + result.errorMessage);
     return false;
   }
-
-  return LoadCompiledCode(result.generatedCode);
+  return LoadProgram(result.program);
 }
 
 // Execute one PLC scan cycle and return timing/status.
@@ -66,7 +234,8 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
 
   auto now = std::chrono::steady_clock::now();
   auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now - memory_.last_scan_time).count();
+                        now - memory_.last_scan_time)
+                        .count();
   if (elapsed_ms < 0) {
     elapsed_ms = 0;
   }
@@ -80,37 +249,63 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
     current_elapsed_ms_ = elapsed_ms_int;
   }
 
-  if (instructions_.empty()) {
+  if (program_.instructions.empty()) {
     result.success = false;
     result.errorMessage = "No compiled code loaded";
     return result;
   }
 
   is_running_ = true;
+  memory_.special_m[0] = true;
+  memory_.special_m[2] = first_scan_;
+  memory_.special_m[411] = first_scan_;
+  evaluated_group_ = -1;
+  evaluated_gate_count_ = 0;
+  has_scan_observations_ = false;
+  last_result_.errorMessage.clear();
 
   // Run the scan cycle.
   try {
-    // Stage 1: input scan (inputs set via SetInput()).
+    for (int input = 0; input < 256; ++input)
+      physical_input_age_[input] =
+          std::min(60000, physical_input_age_[input] + current_elapsed_ms_);
+    RefreshInputs(0, 256, std::clamp<int>(memory_.D[8020], 0, 60));
+    AdvanceAxes();
+    AdvanceSerialPorts();
+    BeginStepScan();
+    RefreshCfStatus();
     // Stage 2: program scan (execute ladder logic).
     int executedInstructions = 0;
-    for (const auto& instruction : instructions_) {
-      if (!ExecuteInstruction(instruction)) {
-        result.success = false;
-        result.errorMessage = "Failed to execute instruction at line " +
-                              std::to_string(instruction.lineNumber);
-        is_running_ = false;
-        return result;
-      }
-      executedInstructions++;
+    if (!ExecuteProgramScan(&executedInstructions)) {
+      result.success = false;
+      result.errorMessage = last_result_.errorMessage.empty()
+                                ? "Failed to execute PLC program"
+                                : last_result_.errorMessage;
+      result.instructionCount = executedInstructions;
+      is_running_ = false;
+      last_result_ = result;
+      return result;
     }
 
-    // Stage 3: output scan (Y outputs already set).
+    FinishStepScan();
+    if (memory_.special_m[49]) {
+      int first_annunciator = 0;
+      for (int relay = 900; relay <= 999; ++relay)
+        if (memory_.S[relay]) {
+          first_annunciator = relay;
+          break;
+        }
+      memory_.special_m[48] = first_annunciator != 0;
+      memory_.D[8049] = static_cast<int16_t>(first_annunciator);
+    }
+    std::copy_n(memory_.Y, 256, physical_outputs_.begin());
 
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
         endTime - startTime);
 
     result.success = true;
+    has_scan_observations_ = true;
     result.cycleTime_us = static_cast<int>(duration.count());
     result.instructionCount = executedInstructions;
 
@@ -136,6 +331,7 @@ CompiledPLCExecutor::ExecutionResult CompiledPLCExecutor::ExecuteScanCycle() {
   }
 
   is_running_ = false;
+  first_scan_ = false;
   last_result_ = result;
   return result;
 }
@@ -154,43 +350,51 @@ void CompiledPLCExecutor::SetContinuousExecution(bool enable,
 }
 
 void CompiledPLCExecutor::SetInput(int address, bool state) {
-  if (address >= 0 && address < 16) {
-    memory_.X[address] = state;
-    if (debug_mode_ && state) {
-      DebugLog("Input X" + std::to_string(address) + " = ON");
-    }
-  }
+  if (!SetPhysicalInput(address, state))
+    return;
+  memory_.X[address] = state;
+}
+
+bool CompiledPLCExecutor::RequestInterrupt(int pointer) {
+  if (pointer < 0 || pointer >= 900 ||
+      interrupt_targets_[pointer] >= program_.instructions.size())
+    return false;
+  pending_interrupts_[pointer] = true;
+  return true;
 }
 
 bool CompiledPLCExecutor::GetOutput(int address) const {
-  if (address >= 0 && address < 16) {
+  if (address >= 0 && address < 256) {
     return memory_.Y[address];
   }
   return false;
 }
 
 void CompiledPLCExecutor::SetMemory(int address, bool state) {
-  if (address >= 0 && address < 1000) {
+  if (address >= 0 && address < 7680) {
     memory_.M[address] = state;
   }
 }
 
 bool CompiledPLCExecutor::GetMemory(int address) const {
-  if (address >= 0 && address < 1000) {
+  if (address >= 0 && address < 7680) {
     return memory_.M[address];
   }
   return false;
 }
 
 int CompiledPLCExecutor::GetTimerValue(int index) const {
-  if (index >= 0 && index < 256) {
-    return memory_.T[index];
+  if (index >= 0 && index < 512) {
+    const int unit = index < 200 || (index >= 250 && index < 256) ? 100
+                     : index < 246                                ? 10
+                                                                  : 1;
+    return memory_.T[index] * unit + timer_remainders_ms_[index];
   }
   return 0;
 }
 
 bool CompiledPLCExecutor::GetTimerEnabled(int index) const {
-  if (index >= 0 && index < 256) {
+  if (index >= 0 && index < 512) {
     return timer_enabled_[index];
   }
   return false;
@@ -210,104 +414,61 @@ bool CompiledPLCExecutor::GetCounterLastPower(int index) const {
   return false;
 }
 
-// Return device state for X/Y/M/T/C addresses.
 bool CompiledPLCExecutor::GetDeviceState(const std::string& address) const {
-  if (address.empty())
-    return false;
+  const auto device = ResolveDeviceAddress(address);
+  return device && ReadBit(*device);
+}
 
-  char deviceType = address[0];
-  int deviceAddr = 0;
-
-  // Parse numeric address safely.
-  try {
-    deviceAddr = std::stoi(address.substr(1));
-  } catch (...) {
-    return false;
-  }
-
-  auto timer_done = [&](int idx) -> bool {
-    if (idx < 0 || idx >= 256)
-      return false;
-    int preset = timer_presets_[idx];
-    if (preset > 0)
-      return memory_.T[idx] >= preset;
-    return timer_enabled_[idx];
-  };
-
-  auto counter_done = [&](int idx) -> bool {
-    if (idx < 0 || idx >= 256)
-      return false;
-    int preset = counter_presets_[idx];
-    if (preset > 0)
-      return memory_.C[idx] >= preset;
-    return memory_.C[idx] > 0;
-  };
-
-  // Bounds-checked device access.
-  switch (deviceType) {
-    case 'X':
-      return (deviceAddr >= 0 && deviceAddr < 16) ? memory_.X[deviceAddr]
-                                                  : false;
-    case 'Y':
-      return (deviceAddr >= 0 && deviceAddr < 16) ? memory_.Y[deviceAddr]
-                                                  : false;
-    case 'M':
-      return (deviceAddr >= 0 && deviceAddr < 1000) ? memory_.M[deviceAddr]
-                                                    : false;
-    case 'T':
-      return timer_done(deviceAddr);
-    case 'C':
-      return counter_done(deviceAddr);
-    default:
-      return false;
+void CompiledPLCExecutor::SetDeviceState(const std::string& address,
+                                         bool state) {
+  const auto device = ResolveDeviceAddress(address);
+  if (device && device->kind == plc_emulator::programming::DeviceKind::kX) {
+    SetInput(device->index, state);
+  } else if (device) {
+    WriteBit(*device, state);
   }
 }
 
-// Update device state for X/Y/M addresses.
-void CompiledPLCExecutor::SetDeviceState(const std::string& address,
-                                         bool state) {
-  if (address.empty())
-    return;
+std::optional<plc_emulator::programming::DeviceAddress>
+CompiledPLCExecutor::ResolveDeviceAddress(const std::string& address) const {
+  const auto found = resolved_devices_.find(address);
+  if (found != resolved_devices_.end())
+    return found->second;
+  const auto device = plc_emulator::programming::ParseDeviceAddress(address);
+  resolved_devices_.emplace(address, device);
+  return device;
+}
 
-  char deviceType = address[0];
-  int deviceAddr = 0;
-
-  // Parse numeric address safely.
-  try {
-    deviceAddr = std::stoi(address.substr(1));
-  } catch (...) {
-    return;
-  }
-
-  // Bounds-checked device writes.
-  switch (deviceType) {
-    case 'X':
-      if (deviceAddr >= 0 && deviceAddr < 16) {
-        memory_.X[deviceAddr] = state;
-      }
-      break;
-    case 'Y':
-      if (deviceAddr >= 0 && deviceAddr < 16) {
-        memory_.Y[deviceAddr] = state;
-      }
-      break;
-    case 'M':
-      if (deviceAddr >= 0 && deviceAddr < 1000) {
-        memory_.M[deviceAddr] = state;
-      }
-      break;
-  }
+int32_t CompiledPLCExecutor::GetWordValue(
+    plc_emulator::programming::DeviceAddress address, bool wide) const {
+  return ReadValue(
+      {plc_emulator::programming::OperandKind::kWordDevice, address, 0}, wide);
 }
 
 // Reset PLC memory and execution state.
 void CompiledPLCExecutor::ResetMemory() {
+  cf_transfers_.assign(program_.instructions.size(), {});
+  for (auto& card : cf_cards_)
+    if (card) {
+      card->owner = SIZE_MAX;
+      card->mixed.active = false;
+    }
+  modbus_transfers_.assign(program_.instructions.size(), {});
+  modbus_owner_ = SIZE_MAX;
+  inverter_transfers_.assign(program_.instructions.size(), {});
+  inverter_owners_.fill(SIZE_MAX);
+  ist_mode_ = -1;
+  ist_start_previous_ = false;
+  ist_auto_previous_ = false;
+  InitializeSteps();
+  physical_outputs_.fill(false);
   // Reset device memory.
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 256; i++) {
     memory_.X[i] = false;
     memory_.Y[i] = false;
   }
 
-  for (int i = 0; i < 1000; i++) {
+  for (int i = 0; i < 7680; i++) {
     memory_.M[i] = false;
   }
 
@@ -317,6 +478,8 @@ void CompiledPLCExecutor::ResetMemory() {
     memory_.C[i] = 0;
   }
 
+  std::fill(std::begin(memory_.T), std::end(memory_.T), 0);
+
   // Reset execution state.
   memory_.accumulator = false;
   memory_.stack_pointer = 0;
@@ -325,266 +488,142 @@ void CompiledPLCExecutor::ResetMemory() {
     memory_.accumulator_stack[i] = false;
   }
 
+  first_scan_ = true;
   current_elapsed_ms_ = 0;
+  sort_state_ = {};
+  sort2_states_ = {};
+  sort2_indices_.fill(SIZE_MAX);
+  size_t sort2_slot = 0;
+  for (size_t index = 0; index < program_.instructions.size(); ++index)
+    if (program_.instructions[index].opcode ==
+        plc_emulator::programming::Opcode::kTableSort2)
+      sort2_indices_[sort2_slot++] = index;
+  module_transfers_.assign(program_.instructions.size(), {});
+  handy_states_.assign(program_.instructions.size(), {});
+  speed_pulse_starts_.assign(program_.instructions.size(), 0);
+  panel_states_.assign(program_.instructions.size(), {});
+  absolute_transfers_.assign(program_.instructions.size(), {});
+  pid_states_.assign(program_.instructions.size(), {});
+  module_transfer_owners_.fill(SIZE_MAX);
+  pending_interrupts_.fill(false);
+  interrupt_elapsed_ms_.fill(0);
+  interrupts_enabled_ = false;
   timer_enabled_.fill(false);
   counter_last_power_.fill(false);
   timer_presets_.fill(0);
+  timer_remainders_ms_.fill(0);
+  timer_contacts_.fill(false);
+  counter_contacts_.fill(false);
   counter_presets_.fill(0);
 
+  std::fill(std::begin(memory_.S), std::end(memory_.S), false);
+  std::fill(std::begin(memory_.D), std::end(memory_.D), 0);
+  std::fill(std::begin(memory_.R), std::end(memory_.R), 0);
+  std::fill(std::begin(memory_.V), std::end(memory_.V), 0);
+  std::fill(std::begin(memory_.Z), std::end(memory_.Z), 0);
+  std::fill(std::begin(memory_.special_m), std::end(memory_.special_m), false);
+  memory_.D[8000] = 200;
+  memory_.D[8020] = 10;
+  memory_.D[8310] = 1;
+  InitializeAxes(true);
+  for (auto& port : serial_ports_) {
+    port.owner = SIZE_MAX;
+    port.sending = port.receiving = false;
+    port.incoming_count = port.outgoing_count = 0;
+  }
+  std::fill(operation_elapsed_ms_.begin(), operation_elapsed_ms_.end(), 0);
+  for (size_t index = 0; index < program_.instructions.size(); ++index)
+    if (program_.instructions[index].opcode ==
+        plc_emulator::programming::Opcode::kDuty)
+      operation_elapsed_ms_[index] = -1;
+  for (auto& edges : edge_states_)
+    std::fill(edges.begin(), edges.end(), 0);
+  std::fill(pulse_states_.begin(), pulse_states_.end(), false);
+  has_scan_observations_ = false;
   DebugLog("Memory reset completed");
 }
 
 // Parse generated C++ into executable instructions.
-bool CompiledPLCExecutor::ParseCompiledCode(const std::string& code) {
-  std::istringstream stream(code);
-  std::string line;
-  int lineNumber = 0;
-
-  while (std::getline(stream, line)) {
-    lineNumber++;
-
-    // Normalize whitespace for consistent parsing.
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (!line.empty()) {
-      size_t last = line.find_last_not_of(" \t\r\n");
-      if (last != std::string::npos)
-        line.erase(last + 1);
-    }
-
-    // Remove inline comments.
-    size_t commentPos = line.find("//");
-    if (commentPos != std::string::npos) {
-      line = line.substr(0, commentPos);
-      line.erase(0, line.find_first_not_of(" \t"));
-      if (!line.empty()) {
-        size_t last = line.find_last_not_of(" \t");
-        if (last != std::string::npos)
-          line.erase(last + 1);
-      }
-    }
-
-    if (line.empty())
-      continue;  // Skip empty lines
-    if (line[0] == '/' || line[0] == '#')
-      continue;  // Skip comments and preprocessor
-    if (line == "{" || line == "}" || line == "};")
-      continue;  // Skip braces only lines
-
-    // Validate PLC target names.
-    auto is_valid_target = [](const std::string& t) -> bool {
-      static const std::regex re(R"(^(accumulator|[XYM]\[\d+\]|[XYM]\d+)$)");
-      return std::regex_match(t, re);
-    };
-
-    // Analyze instruction types with error tolerance.
-    // PLC helper instructions.
-    if (line.rfind("PLC_", 0) == 0) {
-      std::istringstream plcStream(line);
-      std::string op;
-      std::string addr;
-      std::string presetStr;
-      plcStream >> op >> addr >> presetStr;
-      if (!addr.empty() && addr.back() == ';') {
-        addr.pop_back();
-      }
-      if (!presetStr.empty() && presetStr.back() == ';') {
-        presetStr.pop_back();
-      }
-      auto parse_index = [](const std::string& text) -> int {
-        if (text.size() < 2) return -1;
-        int idx = -1;
-        try { idx = std::stoi(text.substr(1)); } catch (...) { return -1; }
-        return idx;
-      };
-
-      ParsedInstruction instruction;
-      instruction.originalLine = line;
-      instruction.lineNumber = lineNumber;
-
-      if (op == "PLC_TON") {
-        instruction.type = ParsedInstruction::PLC_TON;
-        instruction.index = parse_index(addr);
-        instruction.preset = presetStr.empty() ? 0 : std::atoi(presetStr.c_str());
-        instructions_.push_back(instruction);
-        continue;
-      }
-
-      if (op == "PLC_CTU") {
-        instruction.type = ParsedInstruction::PLC_CTU;
-        instruction.index = parse_index(addr);
-        instruction.preset = presetStr.empty() ? 0 : std::atoi(presetStr.c_str());
-        instructions_.push_back(instruction);
-        continue;
-      }
-
-      if (op == "PLC_RST") {
-        int idx = parse_index(addr);
-        instruction.index = idx;
-        if (!addr.empty() && addr[0] == 'T') {
-          instruction.type = ParsedInstruction::PLC_RST_T;
-        } else if (!addr.empty() && addr[0] == 'C') {
-          instruction.type = ParsedInstruction::PLC_RST_C;
-        } else {
-          instruction.type = ParsedInstruction::UNKNOWN;
-        }
-        instructions_.push_back(instruction);
-        continue;
-      }
-    }
-
-    // Conditional assignment: if (accumulator) X0 = true.
-    {
-      static const std::regex condRegex(
-          R"(^if\s*\(\s*accumulator\s*\)\s*([A-Za-z0-9_\[\]]+)\s*=\s*(true|false)\s*;?$)");
-      std::smatch condMatch;
-      if (std::regex_match(line, condMatch, condRegex)) {
-        ParsedInstruction instruction;
-        instruction.originalLine = line;
-        instruction.lineNumber = lineNumber;
-        instruction.type = ParsedInstruction::COND_ASSIGN;
-        instruction.target = condMatch[1].str();
-        instruction.boolValue = (condMatch[2].str() == "true");
-        instructions_.push_back(instruction);
-        if (debug_mode_) {
-          DebugLog("Parsed line " + std::to_string(lineNumber) + ": " + instruction.originalLine);
-        }
-        continue;
-      }
-    }
-
-    if (line.find(" = ") != std::string::npos) {
-      size_t equalPos = line.find(" = ");
-      std::string lhs = line.substr(0, equalPos);
-      std::string rhs = line.substr(equalPos + 3);
-
-      // Trim lhs/rhs.
-      auto trim = [](std::string s) {
-        s.erase(0, s.find_first_not_of(" \t"));
-        size_t last = s.find_last_not_of(" \t");
-        if (last != std::string::npos)
-          s.erase(last + 1);
-        return s;
-      };
-      lhs = trim(lhs);
-
-      // Remove inline comments from rhs and trailing semicolon.
-      size_t rhsComment = rhs.find("//");
-      if (rhsComment != std::string::npos)
-        rhs = rhs.substr(0, rhsComment);
-      rhs = trim(rhs);
-      if (!rhs.empty() && rhs.back() == ';')
-        rhs.pop_back();
-
-      // Ignore non-PLC assignments (e.g., C++ variables).
-      if (!is_valid_target(lhs)) {
-        if (debug_mode_)
-          DebugLog("Skipping non-PLC assignment: " + lhs);
-        continue;
-      }
-
-      ParsedInstruction instruction;
-      instruction.originalLine = line;
-      instruction.lineNumber = lineNumber;
-      instruction.type = ParsedInstruction::ASSIGNMENT;
-      instruction.target = lhs;
-      instruction.operand1 = rhs;
-
-      instructions_.push_back(instruction);
-      if (debug_mode_) {
-        DebugLog("Parsed line " + std::to_string(lineNumber) + ": " +
-                 instruction.originalLine);
-      }
-    } else {
-      // Skip non-assignment lines.
-      continue;
-    }
-  }
-
-  return true;
-}
-
 bool CompiledPLCExecutor::ExecuteInstruction(
     const ParsedInstruction& instruction) {
   switch (instruction.type) {
-    case ParsedInstruction::ASSIGNMENT:
-    case ParsedInstruction::LOGIC_OP:
-      return ExecuteAssignment(instruction);
-
-    case ParsedInstruction::COND_ASSIGN: {
-      if (memory_.accumulator) {
-        bool* targetPtr = GetVariablePointer(instruction.target);
-        if (!targetPtr) {
-          SetError("Invalid target variable: " + instruction.target);
-          return false;
-        }
-        *targetPtr = instruction.boolValue;
-      }
-      return true;
-    }
-
     case ParsedInstruction::PLC_TON: {
-      int idx = instruction.index;
-      if (idx < 0 || idx >= 256) {
+      const int index = instruction.index;
+      if (index < 0 || index >= 512) {
         SetError("Invalid timer index");
         return false;
       }
-      int preset = instruction.preset;
-      if (preset < 0) {
-        preset = 0;
-      }
-      timer_presets_[idx] = preset;
+      const int preset = instruction.preset;
+      const int unit = index < 200 || (index >= 250 && index < 256) ? 100
+                       : index < 246                                ? 10
+                                                                    : 1;
+      const bool retentive = index >= 246 && index < 256;
+      const bool was_enabled = timer_enabled_[index];
+      timer_presets_[index] = preset;
+      timer_enabled_[index] = memory_.accumulator;
       if (memory_.accumulator) {
-        timer_enabled_[idx] = true;
-        if (preset == 0) {
-          memory_.T[idx] = 0;
-          memory_.accumulator = true;
-        } else {
-          if (memory_.T[idx] < preset) {
-            memory_.T[idx] += current_elapsed_ms_;
-            if (memory_.T[idx] > preset) {
-              memory_.T[idx] = preset;
-            }
-          }
-          memory_.accumulator = (memory_.T[idx] >= preset);
+        if (was_enabled && memory_.T[index] < preset) {
+          const int64_t elapsed = static_cast<int64_t>(current_elapsed_ms_) +
+                                  timer_remainders_ms_[index];
+          memory_.T[index] = static_cast<int>(
+              std::min<int64_t>(preset, memory_.T[index] + elapsed / unit));
+          timer_remainders_ms_[index] = static_cast<int>(elapsed % unit);
         }
-      } else {
-        timer_enabled_[idx] = false;
-        memory_.T[idx] = 0;
-        memory_.accumulator = false;
+        if (was_enabled && memory_.T[index] >= preset)
+          timer_contacts_[index] = true;
+      } else if (!retentive) {
+        memory_.T[index] = 0;
+        timer_remainders_ms_[index] = 0;
+        timer_contacts_[index] = false;
       }
+      memory_.accumulator = timer_contacts_[index];
       return true;
     }
-
     case ParsedInstruction::PLC_CTU: {
-      int idx = instruction.index;
-      if (idx < 0 || idx >= 256) {
+      const int index = instruction.index;
+      if (index < 0 || index >= 256) {
         SetError("Invalid counter index");
         return false;
       }
-      int preset = instruction.preset;
-      if (preset < 0) {
-        preset = 0;
+      const int preset =
+          index < 200 ? std::max(1, instruction.preset) : instruction.preset;
+      counter_presets_[index] = preset;
+      const bool power = memory_.accumulator;
+      if (index < 235 && power && !counter_last_power_[index]) {
+        if (index < 200) {
+          if (!counter_contacts_[index]) {
+            memory_.C[index] = std::min(preset, memory_.C[index] + 1);
+            counter_contacts_[index] = memory_.C[index] >= preset;
+          }
+        } else {
+          const int32_t previous = memory_.C[index];
+          const bool down = memory_.special_m[index];
+          const uint32_t bits = static_cast<uint32_t>(previous) +
+                                (down ? UINT32_MAX : uint32_t{1});
+          const int32_t current = std::bit_cast<int32_t>(bits);
+          memory_.C[index] = current;
+          if (!down && previous < preset && current >= preset)
+            counter_contacts_[index] = true;
+          if (down && previous >= preset && current < preset)
+            counter_contacts_[index] = false;
+        }
       }
-      counter_presets_[idx] = preset;
-      bool power = memory_.accumulator;
-      if (power && !counter_last_power_[idx]) {
-        memory_.C[idx] += 1;
-      }
-      counter_last_power_[idx] = power;
-      bool done = (preset > 0) ? (memory_.C[idx] >= preset) : power;
-      memory_.accumulator = done;
+      counter_last_power_[index] = power;
+      memory_.accumulator = counter_contacts_[index];
       return true;
     }
 
     case ParsedInstruction::PLC_RST_T: {
       int idx = instruction.index;
-      if (idx < 0 || idx >= 256) {
+      if (idx < 0 || idx >= 512) {
         SetError("Invalid timer index");
         return false;
       }
       if (memory_.accumulator) {
         memory_.T[idx] = 0;
         timer_enabled_[idx] = false;
+        timer_remainders_ms_[idx] = 0;
+        timer_contacts_[idx] = false;
       }
       return true;
     }
@@ -597,6 +636,7 @@ bool CompiledPLCExecutor::ExecuteInstruction(
       }
       if (memory_.accumulator) {
         memory_.C[idx] = 0;
+        counter_contacts_[idx] = false;
         // Keep the powered state latched so the next scan does not treat
         // a still-true rung as a fresh rising edge immediately after reset.
         counter_last_power_[idx] = true;
@@ -607,309 +647,11 @@ bool CompiledPLCExecutor::ExecuteInstruction(
     case ParsedInstruction::COMMENT:
       return true;  // Comment line.
 
-    case ParsedInstruction::UNKNOWN:
-      return true;  // Ignore unknown lines.
-
     default:
       return false;
   }
 }
 
-bool CompiledPLCExecutor::ExecuteAssignment(
-    const ParsedInstruction& instruction) {
-
-  bool result = EvaluateExpression(instruction.operand1);
-
-  bool* targetPtr = GetVariablePointer(instruction.target);
-  if (targetPtr) {
-    *targetPtr = result;
-
-    if (debug_mode_) {
-      DebugLog("Executed: " + instruction.target + " = " +
-               (result ? "true" : "false"));
-    }
-
-    return true;
-  } else {
-    SetError("Invalid target variable: " + instruction.target);
-    return false;
-  }
-}
-
-// Map a variable token to PLC memory storage.
-bool* CompiledPLCExecutor::GetVariablePointer(const std::string& varName) {
-  // Remove whitespace and trailing semicolon.
-  std::string name = varName;
-  name.erase(std::remove_if(name.begin(), name.end(), ::isspace), name.end());
-  if (!name.empty() && name.back() == ';')
-    name.pop_back();
-
-  // Accumulator access.
-  if (name == "accumulator") {
-    return &memory_.accumulator;
-  }
-
-  // Handle X[index], Y[index], M[index].
-  std::regex arrayRegex(R"(([XYM])\[(\d+)\])");
-  std::smatch match;
-
-  if (std::regex_match(name, match, arrayRegex)) {
-    char deviceType = match[1].str()[0];
-    int index = std::stoi(match[2].str());
-
-    // Bounds-check pointer return.
-    switch (deviceType) {
-      case 'X':
-        return (index >= 0 && index < 16) ? &memory_.X[index] : nullptr;
-      case 'Y':
-        return (index >= 0 && index < 16) ? &memory_.Y[index] : nullptr;
-      case 'M':
-        return (index >= 0 && index < 1000) ? &memory_.M[index] : nullptr;
-    }
-  }
-
-  // Handle X1, Y2, M3.
-  std::regex plainRegex(R"(([XYM])(\d+))");
-  if (std::regex_match(name, match, plainRegex)) {
-    char deviceType = match[1].str()[0];
-    int index = std::stoi(match[2].str());
-    switch (deviceType) {
-      case 'X':
-        return (index >= 0 && index < 16) ? &memory_.X[index] : nullptr;
-      case 'Y':
-        return (index >= 0 && index < 16) ? &memory_.Y[index] : nullptr;
-      case 'M':
-        return (index >= 0 && index < 1000) ? &memory_.M[index] : nullptr;
-    }
-  }
-
-  // Return nullptr for invalid variable names.
-  return nullptr;
-}
-
-// Evaluate boolean expressions used by compiled ladder logic.
-bool CompiledPLCExecutor::EvaluateExpression(const std::string& expression) {
-  std::string expr = expression;
-
-  // Remove inline comments and trailing semicolon.
-  size_t cpos = expr.find("//");
-  if (cpos != std::string::npos)
-    expr = expr.substr(0, cpos);
-
-  // Normalize whitespace for consistent parsing.
-  expr.erase(std::remove_if(expr.begin(), expr.end(), ::isspace), expr.end());
-  if (!expr.empty() && expr.back() == ';')
-    expr.pop_back();
-
-  // Normalize textual operators to C++ style.
-  auto replace_all = [](std::string& s, const std::string& from,
-                        const std::string& to) {
-    size_t pos = 0;
-    while ((pos = s.find(from, pos)) != std::string::npos) {
-      s.replace(pos, from.length(), to);
-      pos += to.length();
-    }
-  };
-  replace_all(expr, "AND", "&&");
-  replace_all(expr, "OR", "||");
-  replace_all(expr, "NOT", "!");
-
-  auto timer_done = [&](int idx) -> bool {
-    if (idx < 0 || idx >= 256)
-      return false;
-    int preset = timer_presets_[idx];
-    if (preset > 0)
-      return memory_.T[idx] >= preset;
-    return timer_enabled_[idx];
-  };
-
-  auto counter_done = [&](int idx) -> bool {
-    if (idx < 0 || idx >= 256)
-      return false;
-    int preset = counter_presets_[idx];
-    if (preset > 0)
-      return memory_.C[idx] >= preset;
-    return memory_.C[idx] > 0;
-  };
-
-  auto parse_tc_index = [](const std::string& s, char type, int* out) -> bool {
-    if (s.size() < 2 || s[0] != type)
-      return false;
-    std::string number;
-    if (s[1] == '[' && s.back() == ']') {
-      if (s.size() <= 3)
-        return false;
-      number = s.substr(2, s.size() - 3);
-    } else {
-      number = s.substr(1);
-    }
-    try {
-      *out = std::stoi(number);
-    } catch (...) {
-      return false;
-    }
-    return true;
-  };
-
-  auto parse_bool_literal = [](std::string token, bool* out) -> bool {
-    if (!out) {
-      return false;
-    }
-    std::transform(token.begin(), token.end(), token.begin(), ::toupper);
-    if (token == "TRUE") {
-      *out = true;
-      return true;
-    }
-    if (token == "FALSE") {
-      *out = false;
-      return true;
-    }
-    return false;
-  };
-
-  auto parse_special_relay = [](std::string token, bool* out) -> bool {
-    if (!out) {
-      return false;
-    }
-    std::transform(token.begin(), token.end(), token.begin(), ::toupper);
-    if (token == "M8000" || token == "SM400" || token == "SM8000") {
-      *out = true;
-      return true;
-    }
-    return false;
-  };
-
-  if (expr.empty()) {
-    return false;
-  }
-  if (expr == "!") {
-    return !memory_.accumulator;
-  }
-
-  size_t pos = 0;
-
-  std::function<void()> skip_spaces = [&]() {
-    while (pos < expr.size() &&
-           std::isspace(static_cast<unsigned char>(expr[pos]))) {
-      ++pos;
-    }
-  };
-
-  std::function<bool()> parse_or;
-  std::function<bool()> parse_and;
-  std::function<bool()> parse_unary;
-  std::function<bool()> parse_primary;
-
-  parse_primary = [&]() -> bool {
-    skip_spaces();
-    if (pos >= expr.size()) {
-      return false;
-    }
-
-    if (expr[pos] == '(') {
-      ++pos;
-      bool value = parse_or();
-      skip_spaces();
-      if (pos < expr.size() && expr[pos] == ')') {
-        ++pos;
-      }
-      return value;
-    }
-
-    size_t start = pos;
-    while (pos < expr.size()) {
-      const char ch = expr[pos];
-      if (ch == '(' || ch == ')' || ch == '!' ||
-          (ch == '&' && pos + 1 < expr.size() && expr[pos + 1] == '&') ||
-          (ch == '|' && pos + 1 < expr.size() && expr[pos + 1] == '|')) {
-        break;
-      }
-      ++pos;
-    }
-
-    std::string token = expr.substr(start, pos - start);
-    if (token.empty()) {
-      return false;
-    }
-
-    bool literal = false;
-    if (parse_bool_literal(token, &literal)) {
-      return literal;
-    }
-    if (parse_special_relay(token, &literal)) {
-      return literal;
-    }
-
-    int idx = -1;
-    if (parse_tc_index(token, 'T', &idx)) {
-      return timer_done(idx);
-    }
-    if (parse_tc_index(token, 'C', &idx)) {
-      return counter_done(idx);
-    }
-    bool* varPtr = GetVariablePointer(token);
-    return varPtr ? *varPtr : false;
-  };
-
-  parse_unary = [&]() -> bool {
-    skip_spaces();
-    if (pos < expr.size() && expr[pos] == '!') {
-      ++pos;
-      return !parse_unary();
-    }
-    return parse_primary();
-  };
-
-  parse_and = [&]() -> bool {
-    bool value = parse_unary();
-    while (true) {
-      skip_spaces();
-      if (pos + 1 < expr.size() && expr[pos] == '&' && expr[pos + 1] == '&') {
-        pos += 2;
-        bool rhs = parse_unary();
-        value = value && rhs;
-        continue;
-      }
-      break;
-    }
-    return value;
-  };
-
-  parse_or = [&]() -> bool {
-    bool value = parse_and();
-    while (true) {
-      skip_spaces();
-      if (pos + 1 < expr.size() && expr[pos] == '|' && expr[pos + 1] == '|') {
-        pos += 2;
-        bool rhs = parse_and();
-        value = value || rhs;
-        continue;
-      }
-      break;
-    }
-    return value;
-  };
-
-  bool result = parse_or();
-  skip_spaces();
-  if (pos != expr.size()) {
-    return false;
-  }
-  return result;
-}
-
-int CompiledPLCExecutor::ExtractNumber(const std::string& str) {
-  std::regex numberRegex(R"(\d+)");
-  std::smatch match;
-
-  if (std::regex_search(str, match, numberRegex)) {
-    return std::stoi(match[0].str());
-  }
-
-  return -1;
-}
-
-// Record the last error and log when debugging is enabled.
 void CompiledPLCExecutor::SetError(const std::string& error) {
   last_result_.success = false;
   last_result_.errorMessage = error;

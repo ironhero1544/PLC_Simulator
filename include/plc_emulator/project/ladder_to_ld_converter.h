@@ -55,29 +55,7 @@ class LadderToLDConverter {
   std::string last_error_;
   bool debug_mode_ = false;
 
-  struct DeviceSet {
-    std::set<int> x_inputs;
-    std::set<int> y_outputs;
-    std::set<int> m_bits;
-    std::set<int> t_timers;
-    std::set<int> c_counters;
-  };
 
-  std::string GenerateLDHeader(const DeviceSet& devices);
-
-  void ConvertSingleRung(const Rung& rung, int rungIndex,
-                         std::string& ldContent);
-
-  std::string ConvertInstruction(const LadderInstruction& instruction);
-
-  std::string ConvertAddress(const std::string& address) const;
-
-  std::string GetLDInstructionName(LadderInstructionType type);
-
-  void DebugLog(const std::string& message);
-  DeviceSet CollectUsedDevices(const LadderProgram& program) const;
-  void AppendOutputInstruction(const LadderInstruction& output,
-                               std::string& ldContent) const;
 };
 
 }  /* namespace plc */

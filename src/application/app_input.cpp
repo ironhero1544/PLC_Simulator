@@ -36,12 +36,16 @@ void Application::ProcessFrameKeyboardInput() {
     if (programming_mode_) {
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_Escape);
+      if (ImGui::IsKeyPressed(ImGuiKey_F4, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_F4);
       if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_F5);
       if (ImGui::IsKeyPressed(ImGuiKey_F6, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_F6);
       if (ImGui::IsKeyPressed(ImGuiKey_F7, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_F7);
+      if (ImGui::IsKeyPressed(ImGuiKey_F8, false))
+        programming_mode_->HandleKeyboardInput(ImGuiKey_F8);
       if (ImGui::IsKeyPressed(ImGuiKey_F9, false))
         programming_mode_->HandleKeyboardInput(ImGuiKey_F9);
       if (ImGui::IsKeyPressed(ImGuiKey_F2, false))

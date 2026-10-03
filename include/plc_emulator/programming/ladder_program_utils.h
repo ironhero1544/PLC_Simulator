@@ -7,7 +7,7 @@
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_LADDER_PROGRAM_UTILS_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROGRAMMING_LADDER_PROGRAM_UTILS_H_
 
-#include "plc_emulator/programming/programming_mode.h"
+#include "plc_emulator/programming/ladder_program.h"
 
 #include <algorithm>
 #include <limits>

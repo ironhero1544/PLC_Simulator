@@ -1,0 +1,1757 @@
+{
+  "source": "https://www.mitsubishielectric.com/fa/products/cnt/plc_fx/pmerit/contents/plc/instruction.html",
+  "instructions": [
+    {
+      "fnc": 0,
+      "mnemonic": "CJ",
+      "function": "Conditional Jump",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 1,
+      "mnemonic": "CALL",
+      "function": "Call Subroutine",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 2,
+      "mnemonic": "SRET",
+      "function": "Subroutine Return",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 3,
+      "mnemonic": "IRET",
+      "function": "Interrupt Return",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 4,
+      "mnemonic": "EI",
+      "function": "Enable Interrupt",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 5,
+      "mnemonic": "DI",
+      "function": "Disable Interrupt",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 6,
+      "mnemonic": "FEND",
+      "function": "Main Routine Program End",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 7,
+      "mnemonic": "WDT",
+      "function": "Watchdog Timer Refresh",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 8,
+      "mnemonic": "FOR",
+      "function": "Start a FOR/NEXT Loop",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 9,
+      "mnemonic": "NEXT",
+      "function": "End a FOR/NEXT Loop",
+      "category": "Program Flow",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 10,
+      "mnemonic": "CMP",
+      "function": "Compare",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 11,
+      "mnemonic": "ZCP",
+      "function": "Zone Compare",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 12,
+      "mnemonic": "MOV",
+      "function": "Move",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 13,
+      "mnemonic": "SMOV",
+      "function": "Shift Move",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 14,
+      "mnemonic": "CML",
+      "function": "Complement",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 15,
+      "mnemonic": "BMOV",
+      "function": "Block Move",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 16,
+      "mnemonic": "FMOV",
+      "function": "Fill Move",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 17,
+      "mnemonic": "XCH",
+      "function": "Exchange",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 18,
+      "mnemonic": "BCD",
+      "function": "Conversion to Binary Coded Decimal",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 19,
+      "mnemonic": "BIN",
+      "function": "Conversion to Binary",
+      "category": "Move and Compare",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 20,
+      "mnemonic": "ADD",
+      "function": "Addition",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 21,
+      "mnemonic": "SUB",
+      "function": "Subtraction",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 22,
+      "mnemonic": "MUL",
+      "function": "Multiplication",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 23,
+      "mnemonic": "DIV",
+      "function": "Division",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 24,
+      "mnemonic": "INC",
+      "function": "Increment",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 25,
+      "mnemonic": "DEC",
+      "function": "Decrement",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 26,
+      "mnemonic": "WAND",
+      "function": "Logical Word AND",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 27,
+      "mnemonic": "WOR",
+      "function": "Logical Word OR",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 28,
+      "mnemonic": "WXOR",
+      "function": "Logical Exclusive OR",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 29,
+      "mnemonic": "NEG",
+      "function": "Negation",
+      "category": "Arithmetic and Logical Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 30,
+      "mnemonic": "ROR",
+      "function": "Rotation Right",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 31,
+      "mnemonic": "ROL",
+      "function": "Rotation Left",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 32,
+      "mnemonic": "RCR",
+      "function": "Rotation Right with Carry",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 33,
+      "mnemonic": "RCL",
+      "function": "Rotation Left with Carry",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 34,
+      "mnemonic": "SFTR",
+      "function": "Bit Shift Right",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 35,
+      "mnemonic": "SFTL",
+      "function": "Bit Shift Left",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 36,
+      "mnemonic": "WSFR",
+      "function": "Word Shift Right",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 37,
+      "mnemonic": "WSFL",
+      "function": "Word Shift Left",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 38,
+      "mnemonic": "SFWR",
+      "function": "Shift write [FIFO/FILO control]",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 39,
+      "mnemonic": "SFRD",
+      "function": "Shift read [FIFO control]",
+      "category": "Rotation and Shift Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 40,
+      "mnemonic": "ZRST",
+      "function": "Zone Reset",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 41,
+      "mnemonic": "DECO",
+      "function": "Decode",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 42,
+      "mnemonic": "ENCO",
+      "function": "Encode",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 43,
+      "mnemonic": "SUM",
+      "function": "Sum of Active Bits",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 44,
+      "mnemonic": "BON",
+      "function": "Check Specified Bit Status",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 45,
+      "mnemonic": "MEAN",
+      "function": "Mean",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 46,
+      "mnemonic": "ANS",
+      "function": "Timed Annunciator Set",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 47,
+      "mnemonic": "ANR",
+      "function": "Annunciator Reset",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 48,
+      "mnemonic": "SQR",
+      "function": "Square Root",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 49,
+      "mnemonic": "FLT",
+      "function": "Conversion to Floating Point",
+      "category": "Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 50,
+      "mnemonic": "REF",
+      "function": "Refresh",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 51,
+      "mnemonic": "REFF",
+      "function": "Refresh and filter adjust",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 52,
+      "mnemonic": "MTR",
+      "function": "Input Matrix",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 53,
+      "mnemonic": "HSCS",
+      "function": "High-speed counter set",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 54,
+      "mnemonic": "HSCR",
+      "function": "High-speed counter reset",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 55,
+      "mnemonic": "HSZ",
+      "function": "High-speed counter zone compare",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 56,
+      "mnemonic": "SPD",
+      "function": "Speed Detection",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 57,
+      "mnemonic": "PLSY",
+      "function": "Pulse Y Output",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 58,
+      "mnemonic": "PWM",
+      "function": "Pulse Width Modulation",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 59,
+      "mnemonic": "PLSR",
+      "function": "Acceleration/deceleration setup",
+      "category": "High-Speed Processing",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 60,
+      "mnemonic": "IST",
+      "function": "Initial State",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 61,
+      "mnemonic": "SER",
+      "function": "Search a Data Stack",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 62,
+      "mnemonic": "ABSD",
+      "function": "Absolute drum sequencer",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 63,
+      "mnemonic": "INCD",
+      "function": "Incremental drum sequencer",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 64,
+      "mnemonic": "TTMR",
+      "function": "Teaching Timer",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 65,
+      "mnemonic": "STMR",
+      "function": "Special Timer",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 66,
+      "mnemonic": "ALT",
+      "function": "Alternate State",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 67,
+      "mnemonic": "RAMP",
+      "function": "Ramp Variable Value",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 68,
+      "mnemonic": "ROTC",
+      "function": "Rotary Table Control",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 69,
+      "mnemonic": "SORT",
+      "function": "SORT Tabulated Data",
+      "category": "Handy Instruction",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 70,
+      "mnemonic": "TKY",
+      "function": "Ten Key Input",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 71,
+      "mnemonic": "HKY",
+      "function": "Hexadecimal Input",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 72,
+      "mnemonic": "DSW",
+      "function": "Digital switch (thumbwheel input)",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 73,
+      "mnemonic": "SEGD",
+      "function": "Seven Segment Decoder",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 74,
+      "mnemonic": "SEGL",
+      "function": "Seven Segment With Latch",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 75,
+      "mnemonic": "ARWS",
+      "function": "Arrow Switch",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 76,
+      "mnemonic": "ASC",
+      "function": "ASCII code data input",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 77,
+      "mnemonic": "PR",
+      "function": "Print (ASCII Code)",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 78,
+      "mnemonic": "FROM",
+      "function": "Read From A Special Function Block",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 79,
+      "mnemonic": "TO",
+      "function": "Write To A Special Function Block",
+      "category": "External FX I/O Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 80,
+      "mnemonic": "RS",
+      "function": "Serial Communication",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 81,
+      "mnemonic": "PRUN",
+      "function": "Parallel Run (Octal Mode)",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 82,
+      "mnemonic": "ASCI",
+      "function": "Hexadecimal to ASCII Conversion",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 83,
+      "mnemonic": "HEX",
+      "function": "ASCII to Hexadecimal Conversion",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 84,
+      "mnemonic": "CCD",
+      "function": "Check Code",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 85,
+      "mnemonic": "VRRD",
+      "function": "Volume Read",
+      "category": "External FX Device",
+      "fx3u": "○ *2",
+      "fx3uc": "○ *2"
+    },
+    {
+      "fnc": 86,
+      "mnemonic": "VRSC",
+      "function": "Volume Scale",
+      "category": "External FX Device",
+      "fx3u": "○ *2",
+      "fx3uc": "○ *2"
+    },
+    {
+      "fnc": 87,
+      "mnemonic": "RS2",
+      "function": "Serial Communication 2",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 88,
+      "mnemonic": "PID",
+      "function": "PID Control Loop",
+      "category": "External FX Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 102,
+      "mnemonic": "ZPUSH",
+      "function": "Batch Store of Index Register",
+      "category": "Data Transfer",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 103,
+      "mnemonic": "ZPOP",
+      "function": "Batch POP of Index Register",
+      "category": "Data Transfer",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 110,
+      "mnemonic": "ECMP",
+      "function": "Floating Point Compare",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 111,
+      "mnemonic": "EZCP",
+      "function": "Floating Point Zone Compare",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 112,
+      "mnemonic": "EMOV",
+      "function": "Floating Point Move",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 116,
+      "mnemonic": "ESTR",
+      "function": "Floating Point to Character String Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 117,
+      "mnemonic": "EVAL",
+      "function": "Character String to Floating Point Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 118,
+      "mnemonic": "EBCD",
+      "function": "Floating Point to Scientific Notation Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 119,
+      "mnemonic": "EBIN",
+      "function": "Scientific Notation to Floating Point Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 120,
+      "mnemonic": "EADD",
+      "function": "Floating Point Addition",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 121,
+      "mnemonic": "ESUB",
+      "function": "Floating Point Subtraction",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 122,
+      "mnemonic": "EMUL",
+      "function": "Floating Point Multiplication",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 123,
+      "mnemonic": "EDIV",
+      "function": "Floating Point Division",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 124,
+      "mnemonic": "EXP",
+      "function": "Floating Point Exponent",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 125,
+      "mnemonic": "LOGE",
+      "function": "Floating Point Natural Logarithm",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 126,
+      "mnemonic": "LOG10",
+      "function": "Floating Point Common Logarithm",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 127,
+      "mnemonic": "ESQR",
+      "function": "Floating Point Square Root",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 128,
+      "mnemonic": "ENEG",
+      "function": "Floating Point Negation",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 129,
+      "mnemonic": "INT",
+      "function": "Floating Point to Integer Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 130,
+      "mnemonic": "SIN",
+      "function": "Floating Point Sine",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 131,
+      "mnemonic": "COS",
+      "function": "Floating Point Cosine",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 132,
+      "mnemonic": "TAN",
+      "function": "Floating Point Tangent",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 133,
+      "mnemonic": "ASIN",
+      "function": "Floating Point Arc Sine -1",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 134,
+      "mnemonic": "ACOS",
+      "function": "Floating Point Arc Cosine -1",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 135,
+      "mnemonic": "ATAN",
+      "function": "Floating Point Arc Tangent -1",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 136,
+      "mnemonic": "RAD",
+      "function": "Floating Point Degrees to Radians Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 137,
+      "mnemonic": "DEG",
+      "function": "Floating Point Radians to Degrees Conversion",
+      "category": "Floating Point",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 140,
+      "mnemonic": "WSUM",
+      "function": "Sum of Word Data",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 141,
+      "mnemonic": "WTOB",
+      "function": "WORD to BYTE",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 142,
+      "mnemonic": "BTOW",
+      "function": "BYTE to WORD",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 143,
+      "mnemonic": "UNI",
+      "function": "4-bit Linking of Word Data",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 144,
+      "mnemonic": "DIS",
+      "function": "4-bit Grouping of Word Data",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 147,
+      "mnemonic": "SWAP",
+      "function": "Byte Swap",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 149,
+      "mnemonic": "SORT2",
+      "function": "Sort Tabulated Data 2",
+      "category": "Data Operation 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 150,
+      "mnemonic": "DSZR",
+      "function": "DOG Search Zero Return",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 151,
+      "mnemonic": "DVIT",
+      "function": "Interrupt Positioning",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 152,
+      "mnemonic": "TBL",
+      "function": "Batch Data Positioning Mode",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 155,
+      "mnemonic": "ABS",
+      "function": "Absolute Current Value Read",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 156,
+      "mnemonic": "ZRN",
+      "function": "Zero Return",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 157,
+      "mnemonic": "PLSV",
+      "function": "Variable Speed Pulse Output",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 158,
+      "mnemonic": "DRVI",
+      "function": "Drive to Increment",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 159,
+      "mnemonic": "DRVA",
+      "function": "Drive to Absolute",
+      "category": "Positioning Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 160,
+      "mnemonic": "TCMP",
+      "function": "RTC data compare",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 161,
+      "mnemonic": "TZCP",
+      "function": "RTC data zone compare",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 162,
+      "mnemonic": "TADD",
+      "function": "RTC data addition",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 163,
+      "mnemonic": "TSUB",
+      "function": "RTC data subtraction",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 164,
+      "mnemonic": "HTOS",
+      "function": "Hour to second conversion",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 165,
+      "mnemonic": "STOH",
+      "function": "Second to hour conversion",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 166,
+      "mnemonic": "TRD",
+      "function": "Read RTC data",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 167,
+      "mnemonic": "TWR",
+      "function": "Set RTC data",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 169,
+      "mnemonic": "HOUR",
+      "function": "Hour Meter",
+      "category": "Real Time Clock Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 170,
+      "mnemonic": "GRY",
+      "function": "Decimal to Gray Code Conversion",
+      "category": "External Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 171,
+      "mnemonic": "GBIN",
+      "function": "Gray Code to Decimal Conversion",
+      "category": "External Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 176,
+      "mnemonic": "RD3A",
+      "function": "Read form Dedicated Analog Block",
+      "category": "External Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 177,
+      "mnemonic": "WR3A",
+      "function": "Write to Dedicated Analog Block",
+      "category": "External Device",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 182,
+      "mnemonic": "COMRD",
+      "function": "Read device comment data",
+      "category": "Others",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 184,
+      "mnemonic": "RND",
+      "function": "Random Number Generation",
+      "category": "Others",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 186,
+      "mnemonic": "DUTY",
+      "function": "Timing pulse generation",
+      "category": "Others",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 188,
+      "mnemonic": "CRC",
+      "function": "Cyclic Redundancy Check",
+      "category": "Others",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 189,
+      "mnemonic": "HCMOV",
+      "function": "High-speed counter move",
+      "category": "Others",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 192,
+      "mnemonic": "BK+",
+      "function": "Block Data Addition",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 193,
+      "mnemonic": "BK-",
+      "function": "Block Data Subtraction",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 194,
+      "mnemonic": "BKCMP=",
+      "function": "Block Data Compare (S1) = (S2)",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 195,
+      "mnemonic": "BKCMP>",
+      "function": "Block Data Compare (S1) > (S2)",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 196,
+      "mnemonic": "BKCMP<",
+      "function": "Block Data Compare (S1) < (S2)",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 197,
+      "mnemonic": "BKCMP<>",
+      "function": "Block Data Compare (S1) ≠ (S2)",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 198,
+      "mnemonic": "BKCMP<=",
+      "function": "Block Data Compare (S1) ≦ (S2)",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 199,
+      "mnemonic": "BKCMP>=",
+      "function": "Block Data Compare (S1) ≧ (S2)",
+      "category": "Block Data Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 200,
+      "mnemonic": "STR",
+      "function": "BIN to Character String Conversion",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 201,
+      "mnemonic": "VAL",
+      "function": "Character String to BIN Conversion",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 202,
+      "mnemonic": "$+",
+      "function": "Link Character Strings",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 203,
+      "mnemonic": "LEN",
+      "function": "Character String Length Detection",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 204,
+      "mnemonic": "RIGHT",
+      "function": "Extracting Character String Data from the Right",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 205,
+      "mnemonic": "LEFT",
+      "function": "Extracting Character String Data from the Left",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 206,
+      "mnemonic": "MIDR",
+      "function": "Random Selection of Character Strings",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 207,
+      "mnemonic": "MIDW",
+      "function": "Random Replacement of Character Strings",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 208,
+      "mnemonic": "INSTR",
+      "function": "Character string search",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 209,
+      "mnemonic": "$MOV",
+      "function": "Character String Transfer",
+      "category": "Character String Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 210,
+      "mnemonic": "FDEL",
+      "function": "Deleting Data from Tables",
+      "category": "Data Operation 3",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 211,
+      "mnemonic": "FINS",
+      "function": "Inserting Data to Tables",
+      "category": "Data Operation 3",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 212,
+      "mnemonic": "POP",
+      "function": "Shift Last Data Read [FILO Control]",
+      "category": "Data Operation 3",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 213,
+      "mnemonic": "SFR",
+      "function": "16-bit data n Bit Shift Right with Carry",
+      "category": "Data Operation 3",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 214,
+      "mnemonic": "SFL",
+      "function": "16-bit data n Bit Shift Left with Carry",
+      "category": "Data Operation 3",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 224,
+      "mnemonic": "LD=",
+      "function": "Load Compare (S1) = (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 225,
+      "mnemonic": "LD>",
+      "function": "Load Compare (S1) > (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 226,
+      "mnemonic": "LD<",
+      "function": "Load Compare (S1) < (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 228,
+      "mnemonic": "LD<>",
+      "function": "Load Compare (S1) ≠ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 229,
+      "mnemonic": "LD<=",
+      "function": "Load Compare (S1) ≦ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 230,
+      "mnemonic": "LD>=",
+      "function": "Load Compare (S1) ≧ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 232,
+      "mnemonic": "AND=",
+      "function": "AND Compare (S1) = (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 233,
+      "mnemonic": "AND>",
+      "function": "AND Compare (S1) > (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 234,
+      "mnemonic": "AND<",
+      "function": "AND Compare (S1) < (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 236,
+      "mnemonic": "AND<>",
+      "function": "AND Compare (S1) ≠ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 237,
+      "mnemonic": "AND<=",
+      "function": "AND Compare (S1) ≦ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 238,
+      "mnemonic": "AND>=",
+      "function": "AND Compare (S1) ≧ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 240,
+      "mnemonic": "OR=",
+      "function": "OR Compare (S1) = (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 241,
+      "mnemonic": "OR>",
+      "function": "OR Compare (S1) > (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 242,
+      "mnemonic": "OR<",
+      "function": "OR Compare (S1) < (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 244,
+      "mnemonic": "OR<>",
+      "function": "OR Compare (S1) ≠ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 245,
+      "mnemonic": "OR<=",
+      "function": "OR Compare (S1) ≦ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 246,
+      "mnemonic": "OR>=",
+      "function": "OR Compare (S1) ≧ (S2)",
+      "category": "Data Comparison",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 256,
+      "mnemonic": "LIMIT",
+      "function": "Limit Control",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 257,
+      "mnemonic": "BAND",
+      "function": "Dead Band Control",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 258,
+      "mnemonic": "ZONE",
+      "function": "Zone Control",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 259,
+      "mnemonic": "SCL",
+      "function": "Scaling (Coordinate by Point Data)",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 260,
+      "mnemonic": "DABIN",
+      "function": "Decimal ASCII to BIN Conversion",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *1"
+    },
+    {
+      "fnc": 261,
+      "mnemonic": "BINDA",
+      "function": "BIN to Decimal ASCII Conversion",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *1"
+    },
+    {
+      "fnc": 269,
+      "mnemonic": "SCL2",
+      "function": "Scaling 2 (Coordinate by X/Y Data)",
+      "category": "Data Table Operation",
+      "fx3u": "○",
+      "fx3uc": "○ *2"
+    },
+    {
+      "fnc": 270,
+      "mnemonic": "IVCK",
+      "function": "Inverter Status Check",
+      "category": "External Device Communication",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 271,
+      "mnemonic": "IVDR",
+      "function": "Inverter Drive",
+      "category": "External Device Communication",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 272,
+      "mnemonic": "IVRD",
+      "function": "Inverter Parameter Read",
+      "category": "External Device Communication",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 273,
+      "mnemonic": "IVWR",
+      "function": "Inverter Parameter Write",
+      "category": "External Device Communication",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 274,
+      "mnemonic": "IVBWR",
+      "function": "Inverter Parameter Block Write",
+      "category": "External Device Communication",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 275,
+      "mnemonic": "IVMC",
+      "function": "Inverter Multi Command",
+      "category": "External Device Communication",
+      "fx3u": "○ *3",
+      "fx3uc": "○ *3"
+    },
+    {
+      "fnc": 276,
+      "mnemonic": "ADPRW",
+      "function": "MODBUS Read / Write",
+      "category": "External Device Communication",
+      "fx3u": "○ *5",
+      "fx3uc": "○ *5"
+    },
+    {
+      "fnc": 278,
+      "mnemonic": "RBFM",
+      "function": "Divided BFM Read",
+      "category": "Data Transfer 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 279,
+      "mnemonic": "WBFM",
+      "function": "Divided BFM Write",
+      "category": "Data Transfer 2",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 280,
+      "mnemonic": "HSCT",
+      "function": "High-Speed Counter Compare With Data Table",
+      "category": "High-Speed Processing 2",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 290,
+      "mnemonic": "LOADR",
+      "function": "Load From ER",
+      "category": "Extension File Register Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 291,
+      "mnemonic": "SAVER",
+      "function": "Save to ER",
+      "category": "Extension File Register Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 292,
+      "mnemonic": "INITR",
+      "function": "Initialize R and ER",
+      "category": "Extension File Register Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 293,
+      "mnemonic": "LOGR",
+      "function": "Logging R and ER",
+      "category": "Extension File Register Control",
+      "fx3u": "○",
+      "fx3uc": "○"
+    },
+    {
+      "fnc": 294,
+      "mnemonic": "RWER",
+      "function": "Rewrite to ER",
+      "category": "Extension File Register Control",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 295,
+      "mnemonic": "INITER",
+      "function": "Initialize ER",
+      "category": "Extension File Register Control",
+      "fx3u": "○",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 300,
+      "mnemonic": "FLCRT",
+      "function": "File create / check",
+      "category": "FX3U-CF-ADP Applied Instructions",
+      "fx3u": "○ *",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 301,
+      "mnemonic": "FLDEL",
+      "function": "File delete / CF card format",
+      "category": "FX3U-CF-ADP Applied Instructions",
+      "fx3u": "○ *",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 302,
+      "mnemonic": "FLWR",
+      "function": "Data write",
+      "category": "FX3U-CF-ADP Applied Instructions",
+      "fx3u": "○ *",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 303,
+      "mnemonic": "FLRD",
+      "function": "Data read",
+      "category": "FX3U-CF-ADP Applied Instructions",
+      "fx3u": "○ *",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 304,
+      "mnemonic": "FLCMD",
+      "function": "FX3U-CF-ADP command",
+      "category": "FX3U-CF-ADP Applied Instructions",
+      "fx3u": "○ *",
+      "fx3uc": "○ *"
+    },
+    {
+      "fnc": 305,
+      "mnemonic": "FLSTRD",
+      "function": "FX3U-CF-ADP status read",
+      "category": "FX3U-CF-ADP Applied Instructions",
+      "fx3u": "○ *",
+      "fx3uc": "○ *"
+    }
+  ]
+}

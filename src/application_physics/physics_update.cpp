@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // physics_update.cpp
 //
 // Main physics update loop and advanced engine integration.
@@ -173,7 +174,7 @@ void Application::UpdatePhysicsImpl() {
   auto compute_advanced_input_hash = [&]() -> uint64_t {
     uint32_t output_mask = 0;
     for (int i = 0; i < 16; ++i) {
-      if (GetPlcDeviceState("Y" + std::to_string(i))) {
+      if (GetPlcDeviceState(plc_emulator::programming::FormatIOAddress('Y', i))) {
         output_mask |= (1u << i);
       }
     }
@@ -457,9 +458,9 @@ void Application::UpdatePhysicsImpl() {
         if (voltage_it != port_voltages_.end()) {
           x_active = IsPlcInputVoltageActive(voltage_it->second);
         } else {
-          x_active = GetPlcDeviceState("X" + std::to_string(i));
+          x_active = GetPlcDeviceState(plc_emulator::programming::FormatIOAddress('X', i));
         }
-        bool y_active = GetPlcDeviceState("Y" + std::to_string(i));
+        bool y_active = GetPlcDeviceState(plc_emulator::programming::FormatIOAddress('Y', i));
         comp.internalStates[x_key] = x_active ? 1.0f : 0.0f;
         comp.internalStates[y_key] = y_active ? 1.0f : 0.0f;
       }

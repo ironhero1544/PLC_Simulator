@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // app_project.cpp
 //
 // Project/ladder load/save helpers.
@@ -15,7 +16,6 @@
 #include <cctype>
 #include <cstdio>
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -25,10 +25,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #include "nlohmann/json.hpp"
 
@@ -136,45 +132,6 @@ bool ComponentTypeFromString(const std::string& value, ComponentType* out) {
     return false;
   }
   return true;
-}
-
-std::string BuildTempLadderProgramPath() {
-#ifdef _WIN32
-  char temp_dir[MAX_PATH] = {0};
-  DWORD len = GetTempPathA(MAX_PATH, temp_dir);
-  if (len > 0 && len < MAX_PATH) {
-    std::string path(temp_dir);
-    if (!path.empty()) {
-      char last_char = path[path.size() - 1];
-      if (last_char != '\\' && last_char != '/') {
-        path.push_back('\\');
-      }
-      path += "temp_ladder_program.ld";
-      return path;
-    }
-  }
-#endif
-
-  const char* env_temp = std::getenv("TMPDIR");
-#ifdef _WIN32
-  if (!env_temp) {
-    env_temp = std::getenv("TEMP");
-  }
-  if (!env_temp) {
-    env_temp = std::getenv("TMP");
-  }
-#endif
-
-  std::string path =
-      (env_temp && env_temp[0] != '\0') ? std::string(env_temp) : ".";
-  if (!path.empty()) {
-    char last_char = path[path.size() - 1];
-    if (last_char != '\\' && last_char != '/') {
-      path.push_back('/');
-    }
-  }
-  path += "temp_ladder_program.ld";
-  return path;
 }
 
 bool IsSensorComponentType(ComponentType type) {
@@ -410,6 +367,8 @@ LadderProgram BuildProgramForSave(ProgrammingMode* programming_mode) {
 LadderInstructionType Application::StringToInstructionType(
 
     const std::string& str) {
+  if (str == "WRAPPING_SOURCE") return LadderInstructionType::kWrappingSource;
+  if (str == "WRAPPING_DESTINATION") return LadderInstructionType::kWrappingDestination;
 
   if (str == "XIC")
 
@@ -940,9 +899,9 @@ void Application::LoadLadderProgramFromLD(const std::string& filepath) {
 
     std::string i_str = std::to_string(i);
 
-    plc_device_states_["X" + i_str] = false;
+    plc_device_states_[plc_emulator::programming::FormatIOAddress('X', i)] = false;
 
-    plc_device_states_["Y" + i_str] = false;
+    plc_device_states_[plc_emulator::programming::FormatIOAddress('Y', i)] = false;
 
     plc_device_states_["M" + i_str] = false;
 
@@ -1040,6 +999,16 @@ void Application::LoadLadderProgramFromLD(const std::string& filepath) {
 
 }
 
+bool Application::LoadProgrammingProgram(
+    const plc_emulator::programming::ExecutionProgram& program,
+    const LadderProgram& ladder) {
+  if (!compiled_plc_executor_) return false;
+  LadderProgram candidate = ladder;
+  if (!compiled_plc_executor_->LoadProgram(program)) return false;
+  loaded_ladder_program_ = std::move(candidate);
+  return true;
+}
+
 void Application::CompileAndLoadLadderProgram() {
 
   if (!compiled_plc_executor_) {
@@ -1064,69 +1033,15 @@ void Application::CompileAndLoadLadderProgram() {
 
   try {
 
-    // Step 1: Convert ladder program to .ld file
-
-    std::cout << "[INFO] Converting ladder program to OpenPLC .ld format..."
-
-              << std::endl;
-
-
-
-    LadderToLDConverter converter;
-
-    converter.SetDebugMode(enable_debug_logging_);
-
-
-
-
-    const std::string tempLdPath = BuildTempLadderProgramPath();
-
-    bool convertSuccess =
-
-        converter.ConvertToLDFile(loaded_ladder_program_, tempLdPath);
-
-
-
-    if (!convertSuccess) {
-
-      std::cout << "[ERROR] Failed to convert ladder program to .ld format: "
-
-                << converter.GetLastError() << std::endl;
-
-      return;
-
-    }
-
-
-
-    std::cout << "[INFO] Ladder program converted to .ld format successfully"
-
-              << std::endl;
-
-
-
-    // Step 2: Compile .ld file to C++ code
-
-    std::cout << "[INFO] Compiling .ld file to C++ code..." << std::endl;
-
-
-
     OpenPLCCompilerIntegration compiler;
-
     compiler.SetDebugMode(enable_debug_logging_);
-
-    compiler.SetIOConfiguration(16, 16);  // FX3U-32M: 16 inputs, 16 outputs
-
-
-
-    auto compilationResult = compiler.CompileLDFile(tempLdPath);
-    std::remove(tempLdPath.c_str());
-
-
+    compiler.SetIOConfiguration(16, 16);
+    const auto compilationResult =
+        compiler.CompileLadderProgramWithIR(loaded_ladder_program_);
 
     if (!compilationResult.success) {
 
-      std::cout << "[ERROR] Failed to compile .ld file: "
+      std::cout << "[ERROR] Failed to compile ladder: "
 
                 << compilationResult.errorMessage << std::endl;
 
@@ -1140,9 +1055,9 @@ void Application::CompileAndLoadLadderProgram() {
 
     std::cout << "[INFO] Compilation statistics:" << std::endl;
 
-    std::cout << "   - Generated code size: "
+    std::cout << "   - Structured program size: "
 
-              << compilationResult.generatedCode.length() << " characters"
+              << compilationResult.program.instructions.size() << " instructions"
 
               << std::endl;
 
@@ -1305,9 +1220,9 @@ void Application::CreateDefaultTestLadderProgram() {
 
   for (int i = 0; i < 16; i++) {
 
-    plc_device_states_["X" + std::to_string(i)] = false;
+    plc_device_states_[plc_emulator::programming::FormatIOAddress('X', i)] = false;
 
-    plc_device_states_["Y" + std::to_string(i)] = false;
+    plc_device_states_[plc_emulator::programming::FormatIOAddress('Y', i)] = false;
 
   }
 
@@ -1533,9 +1448,9 @@ bool Application::LoadProject(const std::string& filePath) {
 
     for (int i = 0; i <= 15; ++i) {
 
-      plc_device_states_["X" + std::to_string(i)] = false;
+      plc_device_states_[plc_emulator::programming::FormatIOAddress('X', i)] = false;
 
-      plc_device_states_["Y" + std::to_string(i)] = false;
+      plc_device_states_[plc_emulator::programming::FormatIOAddress('Y', i)] = false;
 
     }
 
@@ -1678,8 +1593,8 @@ bool Application::LoadProjectPackage(const std::string& filePath) {
     plc_counter_states_.clear();
 
     for (int i = 0; i <= 15; ++i) {
-      plc_device_states_["X" + std::to_string(i)] = false;
-      plc_device_states_["Y" + std::to_string(i)] = false;
+      plc_device_states_[plc_emulator::programming::FormatIOAddress('X', i)] = false;
+      plc_device_states_[plc_emulator::programming::FormatIOAddress('Y', i)] = false;
     }
     for (int i = 0; i <= 999; ++i) {
       std::string i_str = std::to_string(i);

@@ -1,3 +1,4 @@
+#include "plc_emulator/programming/execution_program.h"
 // programming_mode.cpp
 // Implementation of programming mode.
 
@@ -97,9 +98,9 @@ void ProgrammingMode::Initialize() {
 
     std::string i_str = std::to_string(i);
 
-    device_states_["X" + i_str] = false;
+    device_states_[plc_emulator::programming::FormatIOAddress('X', i)] = false;
 
-    device_states_["Y" + i_str] = false;
+    device_states_[plc_emulator::programming::FormatIOAddress('Y', i)] = false;
 
     device_states_["M" + i_str] = false;
 
@@ -356,11 +357,11 @@ void ProgrammingMode::SyncFromExternalPlc() {
   }
 
   for (int i = 0; i < 16; ++i) {
-    std::string x_addr = "X" + std::to_string(i);
+    std::string x_addr = plc_emulator::programming::FormatIOAddress('X', i);
     device_states_[x_addr] = executor->GetDeviceState(x_addr);
   }
   for (int i = 0; i < 16; ++i) {
-    std::string y_addr = "Y" + std::to_string(i);
+    std::string y_addr = plc_emulator::programming::FormatIOAddress('Y', i);
     device_states_[y_addr] = executor->GetDeviceState(y_addr);
   }
   for (int i = 0; i < 1000; ++i) {
@@ -441,6 +442,12 @@ void ProgrammingMode::ExecutePendingAction() {
 
     case PendingActionType::ADD_INSTRUCTION:
 
+      if (selected_rung_ >= 0 &&
+          selected_rung_ < static_cast<int>(ladder_program_.rungs.size()) &&
+          ladder_program_.rungs[selected_rung_].isEndRung) {
+        AddNewRung();
+        SelectSingleCell(selected_rung_, 0, false);
+      }
       HandleEditAction(pending_action_.instructionType);
 
       break;
@@ -638,6 +645,10 @@ std::string ProgrammingMode::InstructionTypeToString(
     LadderInstructionType type) const {
 
   switch (type) {
+    case LadderInstructionType::kWrappingSource:
+      return "WRAPPING_SOURCE";
+    case LadderInstructionType::kWrappingDestination:
+      return "WRAPPING_DESTINATION";
 
     case LadderInstructionType::XIC:
 
@@ -799,6 +810,8 @@ const std::map<std::string, CounterState>& ProgrammingMode::GetCounterStates()
 LadderInstructionType ProgrammingMode::StringToInstructionType(
 
     const std::string& str) {
+  if (str == "WRAPPING_SOURCE") return LadderInstructionType::kWrappingSource;
+  if (str == "WRAPPING_DESTINATION") return LadderInstructionType::kWrappingDestination;
 
   if (str == "XIC")
 
@@ -880,90 +893,17 @@ void ProgrammingMode::SaveLadderProgramToLD(const std::string& filepath) {
 
 
 
-void ProgrammingMode::TestCompileLDFile(const std::string& ldFilepath) {
-
-  has_compile_attempted_ = true;
-
-  std::cout << "\n[INFO] Testing .ld file compilation..." << std::endl;
-
-  std::cout << "Input file: " << ldFilepath << std::endl;
-
-
-
+void ProgrammingMode::TestCompileLDFile(const std::string& path) {
   OpenPLCCompilerIntegration compiler;
-
-  compiler.SetDebugMode(true);
-
-  compiler.SetIOConfiguration(16, 16);  // FX3U-32M: 16 inputs, 16 outputs
-
-
-
-
-  auto result = compiler.CompileLDFile(ldFilepath);
-
-
-
-  if (result.success) {
-
-    std::cout << "[INFO] Compilation successful!" << std::endl;
-
-    std::cout << "[INFO] Statistics:" << std::endl;
-
-    std::cout << "   - Inputs: " << result.inputCount << std::endl;
-
-    std::cout << "   - Outputs: " << result.outputCount << std::endl;
-
-    std::cout << "   - Memory: " << result.memoryCount << std::endl;
-
-    std::cout << "   - Generated code size: " << result.generatedCode.length()
-
-              << " chars" << std::endl;
-
-
-
-
-    std::string cppFilepath = ldFilepath + ".cpp";
-
-    if (compiler.SaveGeneratedCode(result, cppFilepath)) {
-
-      std::cout << "[INFO] Generated C++ code saved to: " << cppFilepath
-
-                << std::endl;
-
-    }
-
-
-
-
-    std::cout << "\n[INFO] Generated C++ Code Preview:" << std::endl;
-
-    std::cout << "=====================================\n";
-
-    std::string preview = result.generatedCode.substr(
-
-        0, std::min(static_cast<size_t>(500), result.generatedCode.length()));
-
-    std::cout << preview;
-
-    if (result.generatedCode.length() > 500) {
-
-      std::cout << "\n... (truncated, see full code in " << cppFilepath << ")";
-
-    }
-
-    std::cout << "\n=====================================\n" << std::endl;
-
-
-
-  } else {
-
-    std::cout << "[ERROR] Compilation failed!" << std::endl;
-
-    std::cout << "Error: " << result.errorMessage << std::endl;
-
+  const auto result = compiler.CompileLDFile(path);
+  if (!result.success) {
+    std::cerr << "[COMPILE ERROR] " << result.errorMessage << std::endl;
+    return;
   }
-
+  std::cout << "[COMPILE] " << result.program.instructions.size()
+            << " structured OpenPLC instructions" << std::endl;
 }
+
 
 
 
@@ -975,99 +915,8 @@ void ProgrammingMode::TestCompileLDFile(const std::string& ldFilepath) {
 
 
 LadderProgram ProgrammingMode::DeepCopyLadderProgram(
-
     const LadderProgram& source) const {
-
-  LadderProgram copy;
-
-
-
-  // rungs       ?         ?
-
-  copy.rungs.clear();
-
-  copy.rungs.reserve(source.rungs.size());
-
-
-
-  for (const auto& rung : source.rungs) {
-
-    Rung copyRung;
-
-    copyRung.number = rung.number;
-    copyRung.memo = rung.memo;
-
-    copyRung.isEndRung = rung.isEndRung;
-
-
-
-    // cells         ?
-
-    copyRung.cells.clear();
-
-    copyRung.cells.reserve(rung.cells.size());
-
-    for (const auto& cell : rung.cells) {
-
-      LadderInstruction copyCell;
-
-      copyCell.type = cell.type;
-
-      copyCell.address = cell.address;
-
-      copyCell.preset = cell.preset;
-
-      copyCell.isActive = cell.isActive;
-
-      copyRung.cells.push_back(copyCell);
-
-    }
-
-
-
-    copy.rungs.push_back(copyRung);
-
-  }
-
-
-
-  // verticalConnections       ?         ?
-
-  copy.verticalConnections.clear();
-
-  copy.verticalConnections.reserve(source.verticalConnections.size());
-
-  for (const auto& conn : source.verticalConnections) {
-
-    VerticalConnection copyConn;
-
-    copyConn.x = conn.x;
-
-    copyConn.rungs = conn.rungs;
-
-    copy.verticalConnections.push_back(copyConn);
-
-  }
-
-
-
-
-  static int deepcopyLogCounter = 0;
-
-  if ((++deepcopyLogCounter % 200) == 0) {
-
-    std::cout << "[DEBUG] DeepCopy: Copied " << copy.rungs.size() << " rungs and "
-
-              << copy.verticalConnections.size() << " vertical connections"
-
-              << std::endl;
-
-  }
-
-
-
-  return copy;
-
+  return source;
 }
 
 
@@ -1113,34 +962,7 @@ void ProgrammingMode::UpdateUIFromSimulatorState(const SimulatorState& state) {
     counter_states_[address] = counterState;
   }
 
-  for (auto& rung : ladder_program_.rungs) {
-    for (auto& cell : rung.cells) {
-      if (cell.address.empty())
-        continue;
-      if (cell.type == LadderInstructionType::XIC) {
-        cell.isActive = GetDeviceState(cell.address);
-        continue;
-      }
-      if (cell.type == LadderInstructionType::XIO) {
-        cell.isActive = !GetDeviceState(cell.address);
-        continue;
-      }
-      if (cell.type == LadderInstructionType::OTE ||
-          cell.type == LadderInstructionType::SET ||
-          cell.type == LadderInstructionType::RST ||
-          cell.type == LadderInstructionType::TON ||
-          cell.type == LadderInstructionType::CTU ||
-          cell.type == LadderInstructionType::RST_TMR_CTR ||
-          cell.type == LadderInstructionType::BKRST) {
-        cell.isActive = GetDeviceState(cell.address);
-        continue;
-      }
-      auto it = state.deviceStates.find(cell.address);
-      if (it != state.deviceStates.end()) {
-        cell.isActive = it->second;
-      }
-    }
-  }
+  UpdateVisualActiveStates();
 
   static int updateCounter = 0;
   if ((++updateCounter % 100) == 0) {
@@ -1209,6 +1031,12 @@ size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
       hash_combine(seed, hs(cell.address));
 
       hash_combine(seed, hs(cell.preset));
+      hash_combine(seed, hs(cell.mnemonic));
+      hash_combine(seed, hi(cell.wide));
+      hash_combine(seed, hi(cell.pulse));
+      for (const auto& operand : cell.operands) {
+        hash_combine(seed, hs(plc_emulator::programming::FormatOperand(operand)));
+      }
 
     }
 
@@ -1234,6 +1062,9 @@ size_t ProgrammingMode::ComputeProgramHash(const LadderProgram& program) const {
 }
 void ProgrammingMode::MarkDirty() {
   is_dirty_ = true;
+  layout_dirty_ = true;
+  compile_failed_ = false;
+  last_compile_error_.clear();
   UpdateCompileErrorRungsOnEdit();
 }
 

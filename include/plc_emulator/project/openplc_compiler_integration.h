@@ -8,6 +8,8 @@
 #ifndef PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_OPENPLC_COMPILER_INTEGRATION_H_
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_PROJECT_OPENPLC_COMPILER_INTEGRATION_H_
 
+#include "plc_emulator/programming/execution_program.h"
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,8 +24,8 @@ class LadderIRProgram;
 struct LadderProgram;
 
 /*
- * OpenPLC 컴파일러를 호출해 C++ 코드를 생성합니다.
- * Invokes the OpenPLC compiler to produce C++ code.
+ * 래더를 기존 OpenPLC 실행기에 전달할 구조화된 데이터로 변환합니다.
+ * Resolves ladder data for the existing OpenPLC execution path.
  */
 class OpenPLCCompilerIntegration {
  public:
@@ -33,8 +35,8 @@ class OpenPLCCompilerIntegration {
    */
   struct CompilationResult {
     bool success = false;
+    plc_emulator::programming::ExecutionProgram program;
     std::string errorMessage;
-    std::string generatedCode;
     std::string intermediateCode;
     int inputCount = 0;
     int outputCount = 0;
@@ -60,7 +62,7 @@ class OpenPLCCompilerIntegration {
 
   CompilationResult CompileIRProgram(const LadderIRProgram& irProgram);
 
-  bool SaveGeneratedCode(const CompilationResult& result,
+  bool SaveLDProgram(const CompilationResult& result,
                          const std::string& outputPath);
 
  private:
@@ -70,87 +72,7 @@ class OpenPLCCompilerIntegration {
   int output_count_ = 16;
   int memory_count_ = 1000;
 
-  struct LDInstruction {
-    enum Type {
-      LD,
-      LDN,
-      AND,
-      ANDN,
-      OR,
-      ORN,
-      ST,
-      S,
-      R,
-      TON,
-      TOF,
-      CTU,
-      CTD,
-      EQ,
-      NE,
-      GT,
-      LT,
-      GE,
-      LE,
-      ADD,
-      SUB,
-      MUL,
-      DIV,
-      MOD
-    };
 
-    Type type;
-    std::string operand;
-    std::string preset;
-    int lineNumber = 0;
-  };
-
-  struct Variable {
-    enum Type {
-      BOOL_INPUT,
-      BOOL_OUTPUT,
-      BOOL_MEMORY,
-      INT_MEMORY,
-      TIMER,
-      COUNTER
-    };
-    Type type;
-    std::string name;
-    std::string address;
-    int index = 0;
-  };
-
-  std::vector<LDInstruction> instructions_;
-  std::vector<Variable> variables_;
-  std::string last_error_;
-
-  std::string GenerateOpenPLCHeader();
-
-  bool ParseLDContent(const std::string& ldContent);
-
-  bool ParseVariableDeclarations(const std::string& content);
-
-  bool ParseInstructions(const std::string& content);
-
-  std::string GenerateCPPCode(const std::vector<LDInstruction>& instructions);
-
-  std::string GenerateFunctionHeader();
-
-  std::string GenerateVariableDeclarations();
-
-  std::string GenerateIOMapping();
-
-  std::string GenerateExecutionCode(
-      const std::vector<LDInstruction>& instructions);
-
-  std::string TranslateInstruction(const LDInstruction& instruction);
-
-  void SetError(const std::string& error);
-
-  void DebugLog(const std::string& message);
-
-  std::string Trim(const std::string& str);
-
-  LDInstruction::Type StringToInstructionType(const std::string& typeStr);
 };
 
 }  /* namespace plc */
