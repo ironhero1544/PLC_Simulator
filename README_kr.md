@@ -59,7 +59,7 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 - 구문 강조를 포함한 통합 Verilog RTL 에디터
 - RTL 모듈 관리: RTL 라이브러리에서 모듈 생성, 이름 변경, 삭제, 정리
 - 분석, 빌드, 테스트벤치 워크플로우 및 전용 로그 패널
-- RTL 툴체인 관리: Icarus Verilog / GTKWave 원클릭 설치, 검증, 삭제
+- RTL 툴체인 관리: verilator 원클릭 설치, 검증, 삭제
 - `.plccomp` 컴포넌트 패키지: Verilog 소스 포함 또는 런타임 전용 번들로 재사용 가능한 RTL 모듈 내보내기/가져오기
 - RTL 런타임 아티팩트가 `.plcproj` 프로젝트 패키지에 번들되어 크로스 머신 이식 가능
 
@@ -111,7 +111,7 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 | 렌더링/UI | OpenGL, GLFW, GLAD, Dear ImGui |
 | 물리 | 자체(in-house) 멀티 도메인 물리 엔진(전기/공압/기계) + Box2D |
 | PLC/레더 | OpenPLC 호환 LD 변환/실행 파이프라인 |
-| RTL | Icarus Verilog, GTKWave (외부 툴체인, 앱에서 관리) |
+| RTL | verilator (외부 툴체인, 앱에서 관리) |
 | 데이터/입출력 | nlohmann/json, miniz, XML serializer |
 
 이 프로젝트는 범용 외부 게임 엔진이 아니라, 자체 시뮬레이션 엔진을 코어로 사용합니다.
