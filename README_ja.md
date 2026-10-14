@@ -157,7 +157,7 @@ PLC学習は、実機へのアクセス、時間、コストの制約を受け�
 4. **プログラミング → 作成 (F3)** でラダーを入力し、**コンパイル (F4)** します。
 5. シミュレーションを開始し、**モニター (F2)** で入出力と回路状態を確認します。
 
-初めて使う場合は [ボタンとランプの練習](docs/guides/program/05-first-practice.md)から進めてください。
+初めて使う場合は [ボタンとランプの練習](docs/guides/program/05-first-practice.ja.md)から進めてください。
 
 | 配布形式 | 使用方法 |
 | --- | --- |
@@ -171,12 +171,12 @@ PLC学習は、実機へのアクセス、時間、コストの制約を受け�
 **Ctrl+?** (`Ctrl+Shift+/`)、**Ctrl+,** または **Ctrl+/** でヘルプを開き、**操作ガイドを開く**を選びます。
 内蔵ビューアーはオフラインで画像・GIF・表・コード・数式・図を表示します。
 目次・検索・履歴・画像拡大・ウィンドウサイズ変更に対応し、PLC Simulator のウィンドウより前面に表示されます。
-ガイド本文は韓国語です。
+すべての操作・実習ガイドを韓国語・英語・日本語で提供し、内蔵ビューアーはプログラムで選択した言語に合わせて表示します。
 
-- [操作ガイド](docs/guides/program/README.md)
-- [自動化設備の資格試験：公開課題 3](docs/guides/exam03/GUIDE.md)
-- [開始・停止・タイマー・カウンターの基本回路](docs/guides/program/reference-basic-circuits.md)
-- [Full Adder：RTL 部品の作成・配線・操作](docs/guides/program/rtl-full-adder.md)
+- [操作ガイド](docs/guides/program/README.ja.md)
+- [自動化設備の資格試験：公開課題 3](docs/guides/exam03/GUIDE.ja.md)
+- [開始・停止・タイマー・カウンターの基本回路](docs/guides/program/reference-basic-circuits.ja.md)
+- [Full Adder：RTL 部品の作成・配線・操作](docs/guides/program/rtl-full-adder.ja.md)
 
 ## 実行環境
 

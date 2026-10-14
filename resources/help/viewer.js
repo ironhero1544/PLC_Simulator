@@ -1,6 +1,36 @@
 'use strict';
 const pages = window.GUIDE_DOCUMENTS;
-const home = 'docs/guides/program/README.md';
+const requestedLanguage = new URLSearchParams(location.search).get('lang');
+const language = ['en', 'ja'].includes(requestedLanguage) ? requestedLanguage : 'ko';
+const suffix = language === 'ko' ? '' : '.' + language;
+const home = 'docs/guides/program/README' + suffix + '.md';
+const labels = {
+  ko: { menu: '목차 접기', back: '이전 문서', forward: '다음 문서', home: '목차',
+    smaller: '글자 축소', larger: '글자 확대', search: '가이드 검색',
+    placeholder: '배선, 타이머, HMI…', hint: 'Ctrl+F: 문서 안에서 찾기',
+    close: '닫기', picture: '확대한 가이드 이미지', copy: '복사', copied: '복사됨',
+    copyFallback: 'Ctrl+C로 복사' },
+  en: { menu: 'Toggle contents', back: 'Previous document', forward: 'Next document',
+    home: 'Contents', smaller: 'Smaller text', larger: 'Larger text', search: 'Search guides',
+    placeholder: 'Wiring, timers, HMI…', hint: 'Ctrl+F: Find in this document',
+    close: 'Close', picture: 'Enlarged guide image', copy: 'Copy', copied: 'Copied',
+    copyFallback: 'Copy with Ctrl+C' },
+  ja: { menu: '目次の表示切り替え', back: '前の文書', forward: '次の文書',
+    home: '目次', smaller: '文字を縮小', larger: '文字を拡大', search: 'ガイドを検索',
+    placeholder: '配線、タイマー、HMI…', hint: 'Ctrl+F：文書内を検索',
+    close: '閉じる', picture: '拡大したガイド画像', copy: 'コピー', copied: 'コピーしました',
+    copyFallback: 'Ctrl+Cでコピー' }
+}[language];
+document.documentElement.lang = language;
+['menu', 'back', 'forward', 'smaller', 'larger'].forEach(id => {
+  document.getElementById(id).title = labels[id];
+});
+document.getElementById('home').textContent = labels.home;
+document.querySelector('label[for="search"]').textContent = labels.search;
+document.getElementById('search').placeholder = labels.placeholder;
+document.querySelector('.hint').textContent = labels.hint;
+document.getElementById('close-picture').textContent = labels.close;
+document.querySelector('#picture img').alt = labels.picture;
 const content = document.querySelector('#content');
 const main = document.querySelector('#main');
 let current = home, history = [], position = -1, fontSize = 16;
@@ -46,6 +76,7 @@ function show(key, hash = '', record = true) {
     });
   });
   content.querySelectorAll('a').forEach(anchor => {
+    if (!anchor.hasAttribute('href')) return;
     const url = resolve(anchor.getAttribute('href'));
     anchor.href = url.href;
     anchor.addEventListener('click', event => {
@@ -65,8 +96,8 @@ function show(key, hash = '', record = true) {
       const diagram = document.createElement('div'); diagram.className = 'mermaid'; diagram.textContent = code.textContent; pre.replaceWith(diagram); return;
     }
     hljs.highlightElement(code);
-    const button = document.createElement('button'); button.className = 'copy'; button.textContent = '복사';
-    button.onclick = async () => { try { await navigator.clipboard.writeText(code.textContent); button.textContent = '복사됨'; } catch { button.textContent = 'Ctrl+C로 복사'; } };
+    const button = document.createElement('button'); button.className = 'copy'; button.textContent = labels.copy;
+    button.onclick = async () => { try { await navigator.clipboard.writeText(code.textContent); button.textContent = labels.copied; } catch { button.textContent = labels.copyFallback; } };
     pre.prepend(button);
   });
   // Mermaid renders asynchronously; only nodes belonging to this document are used.
@@ -85,6 +116,7 @@ function chapters(query = '') {
   const needle = query.trim().toLowerCase();
   const keys = Object.keys(pages).sort((a,b) => (a === home ? -1 : b === home ? 1 : a.localeCompare(b)));
   keys.forEach(key => {
+    if (pages[key].language !== language) return;
     if (!needle && !key.startsWith('docs/guides/program/')) return;
     if (needle && !(pages[key].title + pages[key].markdown).toLowerCase().includes(needle)) return;
     const button = document.createElement('button'); button.textContent = pages[key].title.replace(/^\d+\.\s*/, '');

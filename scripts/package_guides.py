@@ -11,7 +11,14 @@ def package(root, output):
     source = root / "resources/help"
     output.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, output, dirs_exist_ok=True)
-    queue = list(sorted((root / "docs/guides/program").glob("*.md")))
+    queue = []
+    for folder in ("program", "exam03"):
+        originals = sorted((root / "docs/guides" / folder).glob("*.md"))
+        originals = [p for p in originals if not p.stem.endswith((".en", ".ja"))]
+        for original in originals:
+            queue.append(original)
+            for language in ("en", "ja"):
+                queue.append(original.with_suffix(f".{language}.md"))
     pages = {}
     visited = set()
     while queue:
@@ -29,8 +36,10 @@ def package(root, output):
             continue
         text = path.read_text(encoding="utf-8-sig")
         title = re.search(r"^#\s+(.+)$", text, re.M)
+        language = path.stem.rsplit(".", 1)[-1]
+        language = language if language in {"en", "ja"} else "ko"
         pages[relative] = {"title": title[1] if title else path.stem,
-                           "markdown": text}
+                           "language": language, "markdown": text}
         for link in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", text):
             link = link.strip().split(' "')[0].strip("<>")
             url = urlsplit(link)

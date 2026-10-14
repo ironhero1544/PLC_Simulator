@@ -158,7 +158,7 @@ This project aims to:
 4. Enter ladder logic in **Programming → Edit (F3)**, then **Compile (F4)**.
 5. Start the simulation and use **Monitor (F2)** to inspect inputs, outputs and circuit states.
 
-Start with the [button and lamp practice](docs/guides/program/05-first-practice.md) if you are new to the simulator.
+Start with the [button and lamp practice](docs/guides/program/05-first-practice.en.md) if you are new to the simulator.
 
 | Distribution | How to use it |
 | --- | --- |
@@ -172,12 +172,12 @@ Start with the [button and lamp practice](docs/guides/program/05-first-practice.
 Open help with **Ctrl+?** (`Ctrl+Shift+/`), **Ctrl+,** or **Ctrl+/** and select **Open user guide**.
 The offline reader displays images, GIFs, tables, code, equations and diagrams.
 It supports chapter navigation, search, history, image enlargement and window resizing, and stays above the PLC Simulator window.
-Guide content is currently in Korean.
+All user and exam guides are available in Korean, English, and Japanese. The built-in reader follows the application's selected language.
 
-- [User guide](docs/guides/program/README.md)
-- [Automation equipment certification: public task 3](docs/guides/exam03/GUIDE.md)
-- [Start/stop, timer and counter exercises](docs/guides/program/reference-basic-circuits.md)
-- [Full Adder: build, wire and operate an RTL component](docs/guides/program/rtl-full-adder.md)
+- [User guide](docs/guides/program/README.en.md)
+- [Automation equipment certification: public task 3](docs/guides/exam03/GUIDE.en.md)
+- [Start/stop, timer and counter exercises](docs/guides/program/reference-basic-circuits.en.md)
+- [Full Adder: build, wire and operate an RTL component](docs/guides/program/rtl-full-adder.en.md)
 
 ## Runtime requirements
 

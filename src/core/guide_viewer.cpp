@@ -15,7 +15,7 @@
 namespace plc_emulator {
 namespace {
 
-std::string GuideUrl() {
+std::string GuideUrl(const std::string& language) {
   wchar_t executable[32768] = {};
   const DWORD length = GetModuleFileNameW(nullptr, executable, 32768);
   if (length == 0 || length == 32768) {
@@ -41,7 +41,8 @@ std::string GuideUrl() {
       url += kHex[byte & 15];
     }
   }
-  return url;
+  return url + "?lang=" +
+         (language == "en" || language == "ja" ? language : "ko");
 }
 
 class GuideViewer {
@@ -59,7 +60,8 @@ class GuideViewer {
     }
   }
 
-  void Open(const std::string& title, HWND owner_window) {
+  void Open(const std::string& title, HWND owner_window,
+            const std::string& language) {
     const std::lock_guard lock(mutex_);
     if (view_) {
       const HWND window = static_cast<HWND>(view_->window().value());
@@ -77,8 +79,8 @@ class GuideViewer {
     }
     error_.clear();
     starting_ = true;
-    thread_ = std::thread([this, title, owner_window] {
-      Run(title, owner_window);
+    thread_ = std::thread([this, title, owner_window, language] {
+      Run(title, owner_window, language);
     });
   }
 
@@ -88,7 +90,8 @@ class GuideViewer {
   }
 
  private:
-  void Run(const std::string& title, HWND owner_window) {
+  void Run(const std::string& title, HWND owner_window,
+           const std::string& language) {
     try {
       webview::webview view(false, nullptr);
       view.set_title(title);
@@ -110,7 +113,7 @@ class GuideViewer {
         }
         return std::string("null");
       });
-      view.navigate(GuideUrl());
+      view.navigate(GuideUrl(language));
       {
         const std::lock_guard lock(mutex_);
         view_ = &view;
@@ -145,8 +148,9 @@ GuideViewer& Viewer() {
 
 }  // namespace
 
-void OpenGuideViewer(const std::string& title, void* owner_window) {
-  Viewer().Open(title, static_cast<HWND>(owner_window));
+void OpenGuideViewer(const std::string& title, void* owner_window,
+                     const std::string& language) {
+  Viewer().Open(title, static_cast<HWND>(owner_window), language);
 }
 
 std::string GetGuideViewerError() {

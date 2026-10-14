@@ -1014,7 +1014,7 @@ void Application::RenderShortcutHelpDialog() {
     if (ImGui::Button(TR("ui.help.open_guide", "Open user guide"))) {
       plc_emulator::OpenGuideViewer(
           TR("ui.help.guide_title", "PLC Simulator - User Guide"),
-          glfwGetWin32Window(window_));
+          glfwGetWin32Window(window_), GetActiveLanguageCode());
     }
     const std::string guide_error = plc_emulator::GetGuideViewerError();
     if (!guide_error.empty()) {
