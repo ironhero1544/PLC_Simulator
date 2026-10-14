@@ -15,6 +15,13 @@
 
 namespace plc {
 
+inline bool IsLadderOutput(LadderInstructionType type) {
+  using Type = LadderInstructionType;
+  return type == Type::OTE || type == Type::SET || type == Type::RST ||
+         type == Type::TON || type == Type::CTU || type == Type::RST_TMR_CTR ||
+         type == Type::BKRST || type == Type::APPLICATION;
+}
+
 inline void CanonicalizeVerticalConnections(
     std::vector<VerticalConnection>* connections, int max_rung_index) {
   if (!connections) {

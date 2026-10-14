@@ -8,6 +8,7 @@
 #define PLC_EMULATOR_INCLUDE_PLC_EMULATOR_RTL_RTL_PROJECT_MANAGER_H_
 
 #include "plc_emulator/core/data_types.h"
+#include "plc_emulator/rtl/wsl_toolchain.h"
 
 #include <map>
 #include <string>
@@ -66,6 +67,7 @@ struct RtlLibraryEntry {
 };
 
 struct RtlToolchainStatus {
+  plc_emulator::WslDiagnosis doctor;
   bool verilatorFound = false;
   bool bashFound = false;
   bool makeFound = false;
@@ -139,7 +141,8 @@ class RtlProjectManager {
                                      const RtlToolchainStatus& status) const;
 
   std::string SerializeLibraryJson() const;
-  std::string SerializeProjectRtlJson() const;
+  std::string SerializeProjectRtlJson(
+      const std::vector<std::string>& module_ids) const;
   std::string SerializeEntryJson(const RtlLibraryEntry& entry,
                                  bool includeSourceFiles = true) const;
   bool DeserializeLibraryJson(const std::string& jsonText, bool merge = false);
@@ -170,10 +173,6 @@ class RtlProjectManager {
       const std::string& displayName,
       const std::string& ignoredModuleId = "") const;
 
-    bool RunCommandCapture(const std::string& command,
-                           std::string* output,
-                           const RtlToolchainStatus& status,
-                           unsigned int timeout_ms = 30000) const;
   bool AnalyzeWithRegex(RtlLibraryEntry* entry) const;
   bool RunVerilatorLint(const RtlLibraryEntry& entry,
                         const RtlToolchainStatus& status,

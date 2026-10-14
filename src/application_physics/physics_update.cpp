@@ -1,4 +1,9 @@
 #include "plc_emulator/programming/execution_program.h"
+
+#include "plc_emulator/components/servo_component.h"
+#include "plc_emulator/physics/storage_sensor_simulation.h"
+
+#include "plc_emulator/components/pneumatic_component.h"
 // physics_update.cpp
 //
 // Main physics update loop and advanced engine integration.
@@ -47,7 +52,7 @@ uint64_t ComputeAdvancedTopologyHash(
     HashCombine(&seed, static_cast<uint64_t>(wire.fromPortId));
     HashCombine(&seed, static_cast<uint64_t>(wire.toComponentId));
     HashCombine(&seed, static_cast<uint64_t>(wire.toPortId));
-    HashCombine(&seed, wire.isElectric ? 1U : 0U);
+    HashCombine(&seed, static_cast<unsigned>(wire.kind));
   }
   return seed;
 }
@@ -103,6 +108,10 @@ bool HasNonFiniteAdvancedState(const plc::PhysicsEngine* engine) {
 namespace plc {
 
 void Application::UpdatePhysicsImpl() {
+  if (physics_paused_) {
+    physics_time_initialized_ = false;
+    return;
+  }
   using clock = std::chrono::steady_clock;
   constexpr double kPhysicsStep = 1.0 / 240.0;
   constexpr double kPlcStep = kPlcScanStepSeconds;
@@ -220,6 +229,14 @@ void Application::UpdatePhysicsImpl() {
     }
 
     bool advanced_ready =
+        std::none_of(placed_components_.begin(), placed_components_.end(),
+                     [](const PlacedComponent& component) {
+                       return plc_emulator::UsesSharedPneumaticRuntime(
+                           component.type) ||
+                           plc_emulator::IsServoSystem(component.type) ||
+                           component.type == ComponentType::kDcMotorDriver ||
+                           plc_emulator::IsStorageSensorPart(component.type);
+                     }) &&
         run_advanced && !advanced_ran_this_frame && !advanced_physics_disabled_ &&
         advanced_inputs_dirty_ &&
         is_plc_running_ &&

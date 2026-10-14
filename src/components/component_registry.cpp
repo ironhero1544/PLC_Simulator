@@ -1,4 +1,9 @@
 #include "plc_emulator/components/component_registry.h"
+#include "plc_emulator/components/storage_sensor_def.h"
+
+#include "plc_emulator/components/servo_def.h"
+
+#include "plc_emulator/components/sensor_cylinder_def.h"
 
 #include "plc_emulator/components/button_unit_def.h"
 #include "plc_emulator/components/box_def.h"
@@ -47,6 +52,25 @@ const ComponentDefinition* const kDefinitions[] = {
     GetTowerLampDefinition(),
     GetEmergencyStopDefinition(),
     GetRtlModuleDefinition(),
+    plc_emulator::GetSensorCylinderDefinition(),
+    plc_emulator::GetSuctionCylinderDefinition(),
+    plc_emulator::GetStopperCylinderDefinition(),
+    plc_emulator::GetVacuumGeneratorDefinition(),
+    plc_emulator::GetDcMotorDefinition(),
+    plc_emulator::GetDcMotorDriverDefinition(),
+    plc_emulator::GetServoMotorDefinition(),
+    plc_emulator::GetServoAmplifierDefinition(),
+    plc_emulator::GetServoLiftDefinition(),
+    plc_emulator::GetLiftSuctionDefinition(),
+    plc_emulator::GetAcSupplyDefinition(),
+    plc_emulator::GetWarehouseDefinition(),
+    plc_emulator::GetDrivenWarehouseDefinition(),
+    plc_emulator::GetMagazineDefinition(),
+    plc_emulator::GetFiberAmplifierDefinition(),
+    plc_emulator::GetFiberTransmitterDefinition(),
+    plc_emulator::GetFiberReceiverDefinition(),
+    plc_emulator::GetTouchPanelDefinition(),
+
 };
 
 int GetDefinitionCount() {

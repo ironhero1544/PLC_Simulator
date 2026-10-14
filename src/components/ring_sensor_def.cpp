@@ -52,6 +52,8 @@ void InitRingSensorDefaults(PlacedComponent* comp) {
   if (!comp) {
     return;
   }
+  comp->z_config = {1, 2, 1};
+  comp->z_state.current_height = 1;
   component_input::SetSensorDetected(comp, false);
   comp->internalStates[state_keys::kIsPowered] = 0.0f;
 }

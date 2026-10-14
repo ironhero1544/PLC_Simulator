@@ -33,12 +33,32 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <string>
 
 namespace plc {
 namespace {
 Application* g_physics_warning_app = nullptr;
+
+std::string ResolveFontPath(const char* name) {
+  const std::filesystem::path relative =
+      std::filesystem::path("resources") / "fonts" / name;
+#ifdef _WIN32
+  wchar_t executable[MAX_PATH] = {};
+  const DWORD length = GetModuleFileNameW(nullptr, executable, MAX_PATH);
+  if (length > 0 && length < MAX_PATH) {
+    const auto path =
+        std::filesystem::path(executable).parent_path() / relative;
+    std::error_code error;
+    if (std::filesystem::is_regular_file(path, error)) {
+      const auto utf8 = path.u8string();
+      return std::string(utf8.begin(), utf8.end());
+    }
+  }
+#endif
+  return relative.generic_string();
+}
 
 void PhysicsWarningDialogCallback(const char* message) {
   if (g_physics_warning_app && message) {
@@ -527,6 +547,9 @@ void Application::Run() {
 }
 
 void Application::Shutdown() {
+  if (rtl_doctor_action_future_.valid()) rtl_doctor_action_future_.wait();
+  if (rtl_toolchain_future_.valid()) rtl_toolchain_future_.wait();
+  if (rtl_async_task_future_.valid()) rtl_async_task_future_.wait();
   if (rtl_runtime_manager_) {
     rtl_runtime_manager_->ShutdownAll();
   }
@@ -790,19 +813,22 @@ bool Application::RebuildImGuiFonts(float auto_font_scale) {
       0xD7A3, 0x2010, 0x205E, 0xFF01, 0xFF5E, 0,
   };
 
-  io.Fonts->AddFontFromFileTTF("resources/fonts/unifont.ttf", font_size,
+  const std::string unifont_path = ResolveFontPath("unifont.ttf");
+  const std::string japanese_path = ResolveFontPath("JP.ttf");
+  const std::string monospace_path = ResolveFontPath("JetBrainsMono.ttf");
+  io.Fonts->AddFontFromFileTTF(unifont_path.c_str(), font_size,
                                &font_config, korean_ranges);
 
   ImFontConfig merge_config = font_config;
   merge_config.MergeMode = true;
   const ImWchar* jp_ranges = io.Fonts->GetGlyphRangesJapanese();
-  io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
+  io.Fonts->AddFontFromFileTTF(japanese_path.c_str(), font_size,
                                &merge_config, jp_ranges);
   ImFontConfig mono_config = font_config;
   mono_config.MergeMode = false;
   mono_config.PixelSnapH = true;
   rtl_editor_font_ = io.Fonts->AddFontFromFileTTF(
-      "resources/fonts/JetBrainsMono.ttf",
+      monospace_path.c_str(),
       16.0f * ui_settings_.font_scale * auto_font_scale,
       &mono_config, io.Fonts->GetGlyphRangesDefault());
   if (rtl_editor_font_) {
@@ -810,9 +836,9 @@ bool Application::RebuildImGuiFonts(float auto_font_scale) {
     mono_merge_config.MergeMode = true;
     mono_merge_config.PixelSnapH = true;
     mono_merge_config.DstFont = rtl_editor_font_;
-    io.Fonts->AddFontFromFileTTF("resources/fonts/unifont.ttf", font_size,
+    io.Fonts->AddFontFromFileTTF(unifont_path.c_str(), font_size,
                                  &mono_merge_config, korean_ranges);
-    io.Fonts->AddFontFromFileTTF("resources/fonts/JP.ttf", font_size,
+    io.Fonts->AddFontFromFileTTF(japanese_path.c_str(), font_size,
                                  &mono_merge_config, jp_ranges);
   }
   io.Fonts->Build();

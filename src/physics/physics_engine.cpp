@@ -1,3 +1,4 @@
+#include "plc_emulator/components/plc_ports.h"
 // physics_engine.cpp
 // Implementation of physics engine.
 //
@@ -13,6 +14,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+
+#include "plc_emulator/components/component_registry.h"
 
 namespace plc {
 
@@ -103,7 +106,7 @@ PortInfo GetComponentPortInfo(ComponentType type) {
 
   switch (type) {
     case ComponentType::PLC:
-      info.electricalPorts = 32;  // X0-X15(16) + Y0-Y15(16)
+      info.electricalPorts = plc_emulator::kPlcPortCapacity;
       info.isElectricalActive = true;
       break;
 
@@ -208,6 +211,18 @@ PortInfo GetComponentPortInfo(ComponentType type) {
 
     case ComponentType::RTL_MODULE:
       break;
+    default: {
+      const ComponentDefinition* definition = GetComponentDefinition(type);
+      if (!definition) break;
+      for (int index = 0; index < definition->port_count; ++index) {
+        const PortType port_type = definition->ports[index].type;
+        if (port_type == PortType::ELECTRIC) ++info.electricalPorts;
+        if (port_type == PortType::PNEUMATIC) ++info.pneumaticPorts;
+      }
+      info.isElectricalActive = info.electricalPorts > 0;
+      info.isPneumaticActive = info.pneumaticPorts > 0;
+      break;
+    }
   }
 
   return info;
@@ -321,7 +336,7 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
   }
 
   engine->componentPortToElectricalNode =
-      Allocate2DArray<int>(maxComponents, 32);
+      Allocate2DArray<int>(maxComponents, plc_emulator::kPlcPortCapacity);
   if (!engine->componentPortToElectricalNode) {
     delete engine->electricalNetwork;
     delete engine->pneumaticNetwork;
@@ -387,7 +402,7 @@ int Create(PhysicsEngine* engine, int maxComponents, int maxWires) {
     for (int i = 0; i < maxComponents; i++) {
       engine->componentIdToPhysicsIndex[i] = -1;
 
-      for (int j = 0; j < 32; j++) {
+      for (int j = 0; j < plc_emulator::kPlcPortCapacity; j++) {
         engine->componentPortToElectricalNode[i][j] = -1;
       }
       for (int j = 0; j < 16; j++) {
@@ -478,7 +493,7 @@ void CleanupMechanicalSystem(MechanicalSystem* mech) {
 
 int InitializeElectricalNetwork(PhysicsEngine* engine) {
   ElectricalNetwork* elec = engine->electricalNetwork;
-  elec->maxNodes = engine->maxComponents * 32;
+  elec->maxNodes = engine->maxComponents * plc_emulator::kPlcPortCapacity;
   elec->maxEdges = engine->maxComponents * 50;
 
   elec->nodes = SafeAllocateArray<ElectricalNode>(elec->maxNodes);
@@ -1228,7 +1243,7 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
             break;
 
           case ComponentType::PLC:
-            if (p < 16) {
+            if (plc_emulator::PlcInputIndex(p) >= 0) {
               node.inputImpedance[0] = 10000.0f;
             } else {
               node.outputImpedance[0] = 1.0f;
@@ -1242,7 +1257,7 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
         }
 
         if (comp.instanceId >= 0 && comp.instanceId < engine->maxComponents &&
-            p >= 0 && p < 32 &&
+            p >= 0 && p < plc_emulator::kPlcPortCapacity &&
             engine->componentPortToElectricalNode != nullptr) {
           engine->componentPortToElectricalNode[comp.instanceId][p] =
               elec->nodeCount;
@@ -1349,7 +1364,7 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
   for (int w = 0; w < wireCount; w++) {
     const Wire& wire = wires[w];
 
-    if (wire.isElectric) {
+    if ((wire.kind == WireKind::kElectric)) {
       ElectricalNetwork* elec = engine->electricalNetwork;
       if (elec->edgeCount >= elec->maxEdges)
         continue;
@@ -1393,7 +1408,7 @@ int BuildNetworksFromWiring(PhysicsEngine* engine, const Wire* wires,
 
         elec->edgeCount++;
       }
-    } else {
+    } else if (wire.kind == WireKind::kPneumatic) {
       PneumaticNetwork* pneu = engine->pneumaticNetwork;
       if (pneu->edgeCount >= pneu->maxEdges)
         continue;

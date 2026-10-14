@@ -1,3 +1,4 @@
+#include "plc_emulator/components/plc_ports.h"
 // physics_ports.cpp
 //
 // Port mapping helpers for the physics layer.
@@ -15,7 +16,7 @@ std::vector<std::pair<int, bool>> Application::GetPortsForComponent(
   int max_ports = 0;
   switch (comp.type) {
     case ComponentType::PLC:
-      max_ports = 32;
+      max_ports = plc_emulator::kPlcPortCapacity;
       break;
     case ComponentType::FRL:
       max_ports = 1;

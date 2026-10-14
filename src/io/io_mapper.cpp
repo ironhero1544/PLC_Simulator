@@ -1,3 +1,4 @@
+#include "plc_emulator/components/plc_ports.h"
 #include "plc_emulator/programming/execution_program.h"
 // io_mapper.cpp
 //
@@ -32,7 +33,7 @@ IOMapper* CreateIOMapper() {
 
   // Initialize internal state.
   mapper->isInitialized = false;
-  mapper->maxInputPorts = 16;   // FX3U defaults.
+  mapper->maxInputPorts = plc_emulator::kPlcInputCount;   // FX3U defaults.
   mapper->maxOutputPorts = 16;  // FX3U defaults.
 
   // Allocate tracing state.
@@ -147,15 +148,15 @@ MappingResult IOMapper_ExtractMapping(
     std::string plcAddress;
 
     if (isInput && inputCounter < mapper->maxInputPorts) {
-      plcAddress = mapper->GeneratePLCAddress(mapper, inputCounter, true,
+      plcAddress = mapper->GeneratePLCAddress(mapper, plc_emulator::PlcInputIndex(connection.fromPortId), true,
                                               PortType::ELECTRIC);
       inputCounter++;
     } else if (!isInput && outputCounter < mapper->maxOutputPorts) {
-      plcAddress = mapper->GeneratePLCAddress(mapper, outputCounter, false,
+      plcAddress = mapper->GeneratePLCAddress(mapper, connection.fromPortId - 16, false,
                                               PortType::ELECTRIC);
       outputCounter++;
     } else {
-      result.AddError("Exceeded maximum port count (X: 16, Y: 16)");
+      result.AddError("Exceeded maximum port count (X: 24, Y: 16)");
       continue;
     }
 
@@ -274,7 +275,7 @@ std::vector<int> IOMapper_TraceWireConnection(IOMapper* mapper,
 
     // Visit wires from the current component.
     for (const auto& wire : *wires) {
-      if (!wire.isElectric)
+      if (!(wire.kind == WireKind::kElectric))
         continue;  // Track electrical wires only.
 
       int nextId = -1;
@@ -310,7 +311,7 @@ ConnectionTrace IOMapper_TraceSpecificConnection(
 
   // Find wires connected to the port.
   for (const auto& wire : *wires) {
-    if (!wire.isElectric)
+    if (!(wire.kind == WireKind::kElectric))
       continue;
 
     if (wire.fromComponentId == plcComponentId &&
@@ -341,15 +342,7 @@ std::string IOMapper_GeneratePLCAddress(IOMapper* mapper, int portId,
 
   (void)type;
 
-  std::ostringstream oss;
-
-  if (isInput) {
-    oss << "X" << portId;
-  } else {
-    oss << "Y" << portId;
-  }
-
-  return oss.str();
+  return plc_emulator::programming::FormatIOAddress(isInput ? 'X' : 'Y', portId);
 }
 
 bool IOMapper_IsValidPLCAddress(const std::string& address) {
@@ -380,7 +373,7 @@ bool IOMapper_ValidateConnection(
       toValid = true;
   }
 
-  return fromValid && toValid && wire->isElectric;
+  return fromValid && toValid && (wire->kind == WireKind::kElectric);
 }
 
 bool IOMapper_ValidateMappingResult(IOMapper* mapper,
@@ -446,7 +439,7 @@ int IOMapper_GetOtherComponentId(const Wire* wire, int currentComponentId) {
 int IOMapper_GetMaxPortCount(ComponentType type) {
   switch (type) {
     case ComponentType::PLC:
-      return 32;
+      return plc_emulator::kPlcPortCapacity;
     case ComponentType::MANIFOLD:
       return 5;
     case ComponentType::VALVE_DOUBLE:
@@ -549,7 +542,7 @@ bool IOMapper_IsElectricPort(const PlacedComponent* component, int portId) {
 bool IOMapper_IsPLCInputPort(const PlacedComponent* plcComponent, int portId) {
   (void)plcComponent;  // unused parameter
   // FX3U ports: 0-15 input (X), 16-31 output (Y).
-  return portId >= 0 && portId < 16;
+  return plc_emulator::PlcInputIndex(portId) >= 0;
 }
 
 

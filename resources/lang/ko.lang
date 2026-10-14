@@ -1,4 +1,4 @@
-﻿# Menu
+# Menu
 menu.settings=설정
 menu.language=언어
 menu.project=프로젝트
@@ -20,8 +20,6 @@ ui.header.btn_stop=중지
 
 # Toolbar
 ui.toolbar.tool_select=선택도구
-ui.toolbar.tool_pneumatic=공압 배선
-ui.toolbar.tool_electric=전기 배선
 ui.toolbar.load_project=프로젝트 불러오기
 
 # Status bar
@@ -257,7 +255,7 @@ ui.wiring.tag_color=색상
 # Global shortcut help popup
 ui.help.shortcuts.title=단축키 안내
 ui.help.shortcuts.open_help=이 도움말 열기
-ui.help.shortcuts.open_1=Ctrl + ?
+ui.help.shortcuts.open_1=Ctrl + ,
 ui.help.shortcuts.open_2=Ctrl + /
 ui.help.shortcuts.common=공통
 ui.help.shortcuts.common_run_stop=RUN/STOP: 상단 헤더 버튼 사용
@@ -266,11 +264,9 @@ ui.help.shortcuts.common_save_load=모드별 툴바: 실배선 JSON / 프로그�
 ui.help.shortcuts.common_save_project=Ctrl+S: 프로젝트 패키지(.plcproj) 저장
 ui.help.shortcuts.quick_start=빠른 시작
 ui.help.shortcuts.quick_wiring_drag=부품 리스트에서 캔버스로 드래그하여 배치
-ui.help.shortcuts.quick_wiring_connect=포트에서 다른 포트로 드래그해 배선 연결
-ui.help.shortcuts.quick_tools=툴 버튼: 선택도구 / 공압 배선 / 전기 배선 / 배선 임베딩
+ui.help.shortcuts.quick_wiring_connect=배선 도구로 시작 포트와 도착 포트를 차례로 클릭해 연결
+ui.help.shortcuts.quick_tools=도구 버튼: 선택 / 배선 / 태그
 ui.help.shortcuts.quick_tool_select=선택도구: 부품/배선 선택 및 이동
-ui.help.shortcuts.quick_tool_pneumatic=공압 배선: 공압 라인 생성
-ui.help.shortcuts.quick_tool_electric=전기 배선: 전기 라인 생성
 ui.help.shortcuts.quick_tool_tag=배선 임베딩: 배선 태그 추가/수정
 ui.help.shortcuts.wiring_mode=배선 모드
 ui.help.shortcuts.wiring_rotate=부품 회전: R (Shift+R: 반대 방향)
@@ -278,7 +274,7 @@ ui.help.shortcuts.wiring_delete=선택 삭제: Delete
 ui.help.shortcuts.wiring_select_toggle=선택도구: Ctrl+클릭으로 부품/배선 선택 추가 또는 해제
 ui.help.shortcuts.wiring_select_box=선택도구: 빈 캔버스 드래그로 영역 선택
 ui.help.shortcuts.wiring_select_box_add=선택도구: Ctrl+드래그로 영역 추가 또는 해제
-ui.help.shortcuts.wiring_tool_cycle=Q: 툴 순환 전환 (선택도구 -> 공압 배선 -> 전기 배선 -> 배선 임베딩)
+ui.help.shortcuts.wiring_tool_cycle=Q: 도구 순환 (선택 → 배선 → 태그)
 ui.help.shortcuts.wiring_tag=Tag 도구: 배선을 클릭해 태그 추가/수정
 ui.help.shortcuts.wiring_zoom=확대/축소: 마우스 휠 / 트랙패드 핀치 / 터치 핀치
 ui.help.shortcuts.wiring_pan=이동: 가운데 드래그 / Alt + 우클릭 드래그 / Shift + 휠(가로)
@@ -289,7 +285,7 @@ ui.help.shortcuts.wiring_z_order_items=맨 앞으로 / 맨 뒤로 / 앞으로 �
 ui.help.shortcuts.programming_mode=프로그래밍 모드
 ui.help.shortcuts.prog_f2_f3=F2/F3: 모니터/편집
 ui.help.shortcuts.prog_f5_f6_f7=F5/F6/F7: XIC/XIO/Coil
-ui.help.shortcuts.prog_f9=F9 / Shift+F9: 세로 추가/삭제
+ui.help.shortcuts.prog_f9=F9: 가로선 / Shift+F9: 세로 연결
 ui.help.shortcuts.prog_edit_keys=Delete / Insert / Enter
 ui.help.shortcuts.prog_undo_redo=Ctrl+Z / Ctrl+Y: 실행 취소/다시 실행
 ui.help.shortcuts.prog_ctrl_arrow=Ctrl+화살표: 라인 경로 전환
@@ -394,7 +390,7 @@ ui.rtl.no_sources_status=수정이 불가능한 부품이며 빌드가 필요 �
 
 # RTL Toolchain
 ui.rtl.toolchain_title=RTL 툴체인 설정
-ui.rtl.wsl_status=네이티브 Windows: %s
+ui.rtl.wsl_status=WSL2: %s
 ui.rtl.verilator_status=Verilator: %s
 ui.rtl.make_status=make: %s
 ui.rtl.compiler_status=컴파일러 (g++): %s
@@ -446,3 +442,203 @@ ui.rtl.not_built=빌드 안 됨
 ui.rtl.loading_toolchain=RTL 툴체인 상태 로딩 중...
 ui.rtl.not_loaded=툴체인 상태가 아직 로드되지 않았습니다.
 ui.rtl.loading_wsl=네이티브 RTL 툴체인 상태를 불러오는 중입니다. 처음에는 시간이 걸릴 수 있습니다.
+
+ui.toolbar.tool_wire=배선
+ui.help.shortcuts.quick_tool_wire=배선: 시작 핀에 따라 전기/공압/광 연결 자동 결정
+ui.wiring.incompatible_port=핀 타입 또는 역할이 호환되지 않습니다
+
+ui.z_layers.title=물리 Z-레이어
+ui.z_layers.pause=시뮬레이션 일시정지 후 편집
+ui.z_layers.description=물리 높이는 캔버스 그리기 순서와 독립입니다.
+ui.z_layers.minimum=최소 높이
+ui.z_layers.maximum=최대 높이
+ui.z_layers.initial=초기 높이
+ui.z_layers.height=설치 높이
+ui.z_layers.apply=높이 적용
+ui.z_layers.invalid=높이 범위가 올바르지 않습니다
+
+component.sensor_cylinder.name=센서 내장 복동 실린더
+component.sensor_cylinder.desc=위쪽 일체형 단자대 · 전진/후진 센서 출력
+component.suction_cylinder.name=센서 내장 흡착 실린더
+component.suction_cylinder.desc=아래 방향 흡착 헤드 · 별도 진공 배관
+component.stopper_cylinder.name=스토퍼 실린더
+component.stopper_cylinder.desc=하강 판으로 공작물 정지 · UP/DOWN 센서
+component.vacuum_generator.name=공압식 진공발생기
+component.vacuum_generator.desc=P 양압 공급으로 VAC 진공 생성
+ui.wiring.context.front_preview=수평으로 보기 (정면)
+
+component.dc_motor.name=DC 모터
+component.dc_motor.desc=DC 모터
+component.servo_motor.name=서보 모터
+component.servo_motor.desc=U/V/W · PE · 엔코더 연결형 AC 서보 모터
+component.servo_amp.name=서보앰프
+component.servo_amp.desc=범용 펄스 지령 · 3상 AC 전원 서보앰프
+component.servo_lift.name=서보 리프트
+component.servo_lift.desc=서보 리프트
+component.lift_suction.name=리프트·흡착 실린더 일체형
+component.lift_suction.desc=리프트·흡착 실린더 일체형
+component.ac_supply.name=3상 AC 전원
+component.ac_supply.desc=3상 AC 전원
+ui.axis.settings=축 설정
+ui.axis.pulses=회전당 펄스 수
+ui.axis.lead=리드 (mm/회전)
+ui.axis.stroke=스트로크 (mm)
+ui.axis.speed=최대 속도 (회전/초)
+ui.axis.acceleration=가속도 (회전/초²)
+ui.axis.apply=축 설정 적용
+
+# Storage / optical / HMI components
+component.warehouse.name=6칸 저장창고
+component.warehouse.desc=높이별 2슬롯 · 수동 수납 구조
+component.fiber_amp.name=광화이버 센서 증폭부
+component.fiber_amp.desc=TX/RX 투과형 · 전원과 SIG 출력
+component.fiber_tx.name=광화이버 송신 헤드
+component.fiber_tx.desc=광 송신부 · 음의 X 방향 렌즈
+component.fiber_rx.name=광화이버 수신 헤드
+component.fiber_rx.desc=광 수신부 · 음의 X 방향 렌즈
+component.touch_panel.name=터치패널
+component.touch_panel.desc=범용 PLC 통신 · M 버튼과 D 표시
+ui.fiber.fault=광 연결 오류
+ui.fiber.distance=최대 감지 거리
+ui.fiber.alignment=정렬 허용 폭
+ui.fiber.width=감지 폭
+ui.fiber.dark_on=Dark-ON (차광 시 출력)
+ui.fiber.apply=SET / MODE 적용
+ui.hmi.controls=PLC 패널 조작
+ui.hmi.forward=전진
+ui.hmi.reverse=후진
+ui.hmi.home=원점
+ui.hmi.display=표시 D 주소
+ui.hmi.momentary=누르는 동안만 켜짐
+ui.hmi.apply=화면 적용
+
+ui.fiber.ok=광 연결 정상
+ui.fiber.power=24V / 0V 전원을 확인하세요
+ui.fiber.link=TX / RX 광 연결을 확인하세요
+ui.fiber.align_error=헤드 방향·거리·높이를 확인하세요
+
+ui.hmi.edit_screen=화면 편집
+ui.hmi.editor=HMI 화면 편집
+ui.hmi.editor_hint=추가 → 드래그로 배치 · 우측 하단으로 크기 조절 · 방향키로 미세 이동
+ui.hmi.button=버튼
+ui.hmi.lamp=표시등
+ui.hmi.number=숫자 표시
+ui.hmi.text=고정 글자
+ui.hmi.label=표시 이름
+ui.hmi.address=PLC 주소
+ui.hmi.position=위치
+ui.hmi.size=크기
+ui.hmi.font_size=글자 크기
+ui.hmi.unit=단위
+ui.hmi.decimals=소수점 자리
+ui.hmi.on_color=ON 색상
+ui.hmi.delete_widget=위젯 삭제
+ui.hmi.invalid=PLC 주소·버튼 주소 중복·화면 범위를 확인하세요.
+ui.hmi.cancel=취소
+
+ui.wiring.simulation_paused=시뮬레이션 일시정지 중
+ui.hmi.paused_hint=시뮬레이션 일시정지 중 · 편집창을 닫으면 재개됩니다.
+
+ui.hmi.snap=5px 격자 맞춤
+ui.hmi.widgets=위젯 목록
+ui.hmi.duplicate=복제
+ui.hmi.left=좌측
+ui.hmi.center=가로 중앙
+ui.hmi.right=우측
+ui.hmi.top=상단
+ui.hmi.middle=세로 중앙
+ui.hmi.bottom=하단
+
+ui.hmi.select_hint=화면이나 위젯 목록에서 항목을 선택하면 속성을 편집할 수 있습니다.
+
+ui.component_list.filter_exam=자동화설비산업기사
+component.dc_driver.name=DC 모터 드라이버
+component.dc_driver.desc=PLC PWM 듀티로 속도, DIR 신호로 방향을 제어하는 24V DC 드라이버
+
+ui.component_list.function_all=전체 기능
+ui.component_list.function_input=입력
+ui.component_list.function_output=출력
+ui.component_list.function_pneumatic=공압
+ui.component_list.function_power=전원
+ui.component_list.function_other=기타
+ui.component_list.function_control=제어
+
+ui.programming.shortcut_f8=F8: [] 응용 명령
+ui.programming.shortcut_shift_f7=Shift+F7: 상승 펄스 접점 (LDP)
+ui.programming.shortcut_shift_f8=Shift+F8: 하강 펄스 접점 (LDF)
+
+ui.help.shortcuts.mode_tab=Tab: 프로그래밍 / 실배선 모드 전환
+ui.help.shortcuts.engine_f12=F12: PLC 엔진 상태 표시
+
+ui.rtl.tool_doctor=RTL 도구 진단 (WSL2)
+ui.rtl.doctor_description=RTL 분석·빌드는 WSL2를 사용하고 부품 워커는 Windows에서 직접 실행합니다.
+ui.rtl.doctor_default=기본 배포판
+ui.rtl.doctor_distribution=배포판
+ui.rtl.doctor_cpu=빌드 CPU 사용량
+ui.rtl.doctor_save=저장 후 진단
+ui.rtl.doctor_diagnose=저장된 환경 진단
+ui.rtl.doctor_save_failed=WSL 설정 저장에 실패했습니다.
+ui.rtl.doctor_busy=작업 중...
+ui.rtl.doctor_action_done=작업이 완료되었습니다.
+ui.rtl.doctor_install_wsl=WSL2 / Ubuntu 설치
+ui.rtl.doctor_install_tools=RTL 도구 설치 / 복구
+ui.rtl.doctor_start=선택 배포판 시작
+ui.rtl.doctor_stop=선택 배포판 중지
+ui.rtl.doctor_convert=선택 배포판을 WSL2로 전환
+ui.rtl.doctor_update=WSL 업데이트
+ui.rtl.doctor_note=도구 설치는 Ubuntu/Debian의 apt를 사용합니다. WSL 설치 시 관리자 권한이나 재시작이 필요할 수 있습니다.
+
+
+ui.rtl.doctor_host=WSL 호스트
+ui.rtl.doctor_wsl2=WSL2 배포판
+ui.rtl.doctor_kernel=Linux 커널
+ui.rtl.doctor_compiler=C++ 컴파일러
+
+ui.rtl.doctor_mingw=MinGW Windows 컴파일러
+ui.hmi.message=상태 메시지
+ui.hmi.page=화면
+ui.hmi.add_page=화면 추가
+ui.hmi.page_name=화면 이름
+ui.hmi.navigate=화면 전환 버튼
+ui.hmi.target_page=전환할 화면
+ui.hmi.message_text=표시 문구
+ui.warehouse.cylinder=창고 구동 실린더
+ui.warehouse.travel=창고 이동 거리
+ui.hmi.visibility=ON일 때 표시할 비트 (빈칸: 항상 표시)
+
+component.magazine.name=공작물 매거진
+component.magazine.desc=공급 실린더 후진 시 최하단 공작물 자동 공급
+
+component.driven_warehouse.name=공압 구동 6칸 저장창고
+component.driven_warehouse.desc=70mm 복동실린더·직선가이드·이동 받침대 일체형
+
+ui.hmi.operate=HMI 조작
+ui.wiring.context.edit_label=부품 이름 편집
+ui.wiring.context.show_label=이름 표시하기
+ui.wiring.context.label_hint=Enter로 적용 · 빈 이름은 숨김
+
+ui.header.convert_before_run=시작하기 전에 F4로 래더를 변환하세요.
+
+ui.render_layers.title=표시 레이어
+ui.render_layers.up=위로
+ui.render_layers.down=아래로
+ui.render_layers.front=맨 앞으로
+ui.render_layers.back=맨 뒤로
+ui.render_layers.opacity=불투명도
+ui.render_layers.hide=숨기기
+ui.render_layers.show=보이기
+ui.render_layers.hidden=숨김 
+ui.render_layers.group_name=그룹 이름
+ui.render_layers.group=선택 그룹화 / 이름 변경
+ui.render_layers.ungroup=그룹 해제
+ui.render_layers.drag=선택 항목 이동
+ui.render_layers.help=위쪽 항목이 앞에 표시됩니다. Ctrl: 추가 선택 · Shift: 범위 선택.
+ui.render_layers.select_help=왼쪽 선택 칸을 드래그하면 여러 항목을 선택합니다.
+ui.render_layers.drag_help=항목을 드래그하여 순서를 바꾸거나 그룹 제목에 놓아 묶으세요.
+ui.render_layers.canvas_help=캔버스의 사각형 선택도 여기서 함께 편집할 수 있습니다.
+
+ui.help.window=도움말###ShortcutGuide
+ui.help.open_guide=사용법 가이드 열기
+ui.help.guide_title=PLC Simulator 사용법 가이드
+
+ui.help.guide_error=가이드를 열 수 없습니다. 가이드 파일과 WebView2 Runtime 설치 상태를 확인하세요.

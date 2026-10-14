@@ -164,8 +164,13 @@ inline ImVec2 GetCylinderRodTipWorld(const PlacedComponent& cylinder) {
   float piston_position = cylinder.internalStates.count(state_keys::kPosition)
                               ? cylinder.internalStates.at(state_keys::kPosition)
                               : 0.0f;
+  if (cylinder.type == ComponentType::kLiftSuction) {
+    return LocalToWorldCached(cylinder, ImVec2(119 + piston_position, 161));
+  }
   return LocalToWorldCached(cylinder,
-                            ImVec2(170.0f - piston_position, 25.0f));
+                            ImVec2(170.0f - piston_position,
+                                   cylinder.type == ComponentType::CYLINDER
+                                       ? 25.0f : 43.0f));
 }
 
 inline ImVec2 GetLimitSwitchCenterWorld(const PlacedComponent& sensor) {

@@ -15,11 +15,38 @@ FetchContent_MakeAvailable(googletest)
 # 테스트 활성화
 enable_testing()
 
+if(WIN32 AND TARGET nlohmann_json::nlohmann_json)
+  add_executable(rtl_wsl_tests
+    rtl_wsl_test.cpp
+    ../src/rtl/wsl_toolchain.cpp
+    ../src/rtl/rtl_project_manager.cpp
+    ../src/rtl/rtl_runtime_manager.cpp
+    ../src/core/windows_power_utils.cpp)
+  target_include_directories(rtl_wsl_tests PRIVATE ../include)
+  target_link_libraries(rtl_wsl_tests PRIVATE
+    nlohmann_json::nlohmann_json shell32)
+  target_compile_definitions(rtl_wsl_tests PRIVATE
+    _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+  if(MSVC)
+    target_compile_options(rtl_wsl_tests PRIVATE /utf-8)
+  endif()
+  add_test(NAME rtl_wsl COMMAND rtl_wsl_tests)
+endif()
+
+add_executable(lang_manager_tests lang_manager_test.cpp)
+target_include_directories(lang_manager_tests PRIVATE ../include)
+add_test(NAME lang_manager COMMAND lang_manager_tests
+  "${PROJECT_SOURCE_DIR}/resources/lang/ko.lang"
+  "${PROJECT_SOURCE_DIR}/resources/lang/en.lang"
+  "${PROJECT_SOURCE_DIR}/resources/lang/ja.lang")
+
 add_executable(ladder_rewrite_tests
   ladder_rewrite_test.cpp
   physical_runtime_test.cpp
   ../src/physics/component_physics_adapter.cpp
   ../src/physics/pneumatic_simulation.cpp
+  ../src/physics/servo_simulation.cpp
+  ../src/physics/storage_sensor_simulation.cpp
   ../src/physics/box2d_simulation.cpp
   ../src/programming/execution_program.cpp
   ../src/programming/compiled_plc_executor.cpp

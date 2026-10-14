@@ -1,4 +1,11 @@
+#include "plc_emulator/components/plc_ports.h"
 #include "plc_emulator/programming/execution_program.h"
+
+#include "plc_emulator/physics/servo_simulation.h"
+#include "plc_emulator/components/dc_motor_driver.h"
+#include "plc_emulator/physics/storage_sensor_simulation.h"
+
+#include "plc_emulator/components/pneumatic_component.h"
 // physics_electrical.cpp
 //
 // Electrical simulation helpers.
@@ -134,7 +141,7 @@ void Application::SimulateElectricalImpl() {
   }
 
   enum class VoltageType { NONE, V24, V5, V0 };
-  constexpr int kMaxPortsPerComponent = 32;
+  constexpr int kMaxPortsPerComponent = plc_emulator::kPlcPortCapacity;
   constexpr int kMaxElectricalComponents = 512;
   constexpr int kMaxElectricalPorts =
       kMaxElectricalComponents * kMaxPortsPerComponent;
@@ -150,7 +157,7 @@ void Application::SimulateElectricalImpl() {
     std::array<int, kMaxElectricalPorts> rank;
     std::array<int, kMaxElectricalPorts> port_net_id;
     std::array<int, kMaxElectricalPorts> root_to_net;
-    std::array<int, kMaxElectricalPorts> net_voltage;
+    std::array<float, kMaxElectricalPorts> net_voltage;
     int net_count = 0;
     std::array<ComponentType, kMaxElectricalComponents> component_types;
     uint64_t last_wiring_hash = 0;
@@ -173,7 +180,7 @@ void Application::SimulateElectricalImpl() {
       hash_combine(&seed, static_cast<uint64_t>(wire.fromPortId));
       hash_combine(&seed, static_cast<uint64_t>(wire.toComponentId));
       hash_combine(&seed, static_cast<uint64_t>(wire.toPortId));
-      hash_combine(&seed, wire.isElectric ? 1U : 0U);
+      hash_combine(&seed, static_cast<unsigned>(wire.kind));
     }
     return seed;
   };
@@ -255,9 +262,23 @@ void Application::SimulateElectricalImpl() {
     }
 
     for (const auto& wire : wires_) {
-      if (!wire.isElectric) {
+      if (!(wire.kind == WireKind::kElectric)) {
         continue;
       }
+      bool dc_signal = true;
+      for (const int id : {wire.fromComponentId, wire.toComponentId}) {
+        const PlacedComponent* component = FindComponentById(id);
+        if (!component) { dc_signal = false; break; }
+        const int port_id = id == wire.fromComponentId
+                                ? wire.fromPortId : wire.toPortId;
+        const auto ports = GetRuntimePortsForComponent(*component);
+        const auto port = std::find_if(ports.begin(), ports.end(),
+            [port_id](const Port& value) { return value.id == port_id; });
+        if (port == ports.end() || !plc_emulator::IsServoSignalRole(port->role)) {
+          dc_signal = false; break;
+        }
+      }
+      if (!dc_signal) continue;
       int from_index = -1;
       int to_index = -1;
       if (wire.fromComponentId >= 0 &&
@@ -418,22 +439,29 @@ void Application::SimulateElectricalImpl() {
   cache.net_count = net_count;
   auto clear_net_voltages = [&]() {
     for (int i = 0; i < cache.net_count; ++i) {
-      cache.net_voltage[i] = static_cast<int>(VoltageType::NONE);
+      cache.net_voltage[i] = -1.0f;
     }
   };
 
+  // Conflicts remain invalid for this solve, even if a third source is added.
+  auto assign_voltage = [&](int net_id, float drive) {
+    if (net_id < 0 || !std::isfinite(drive)) return;
+    float& slot = cache.net_voltage[net_id];
+    if (slot == -1.0f) slot = drive;
+    else if (slot >= 0 && std::abs(slot - drive) > 0.001f) slot = -2.0f;
+  };
   auto assign_net_driver = [&](int net_id, VoltageType drive) {
-    if (net_id < 0) {
-      return;
-    }
-    int& slot = cache.net_voltage[net_id];
-    if (slot == static_cast<int>(VoltageType::NONE)) {
-      slot = static_cast<int>(drive);
-      return;
-    }
-    if (slot != static_cast<int>(drive)) {
-      slot = static_cast<int>(VoltageType::NONE);
-    }
+    const float voltage = drive == VoltageType::V24 ? 24.0f
+                        : drive == VoltageType::V5 ? 5.0f : 0.0f;
+    assign_voltage(net_id, voltage);
+  };
+  const auto current_voltage = [&](int id, int port) {
+    const int index = get_index(id, port);
+    return index < 0 ? -1.0f : cache.net_voltage[cache.port_net_id[index]];
+  };
+  const auto drive_port = [&](int id, int port, float voltage) {
+    const int index = get_index(id, port);
+    if (index >= 0) assign_voltage(cache.port_net_id[index], voltage);
   };
 
   auto assign_drivers = [&]() {
@@ -466,6 +494,79 @@ void Application::SimulateElectricalImpl() {
     }
 
     for (const auto& comp : placed_components_) {
+      if (comp.type != ComponentType::kServoAmplifier) continue;
+      const int supply = get_index(comp.instanceId, 4);
+      const int ground = get_index(comp.instanceId, 5);
+      if (supply < 0 || ground < 0 ||
+          cache.net_voltage[cache.port_net_id[supply]] !=
+              24.0f ||
+          cache.net_voltage[cache.port_net_id[ground]] !=
+              0.0f) continue;
+      const bool states[] = {comp.axis_state.ready, comp.axis_state.in_position,
+                             comp.axis_state.alarm != 0};
+      for (int output = 0; output < 3; ++output) {
+        const int port = get_index(comp.instanceId, 11 + output);
+        if (states[output] && port >= 0) {
+          assign_net_driver(cache.port_net_id[port],
+              plc_input_mode_ == PlcInputMode::SOURCE ? VoltageType::V0
+                                                     : VoltageType::V24);
+        }
+      }
+    }
+
+    plc_emulator::UpdateFiberSensors(&placed_components_, wires_, port_voltages_);
+    for (const auto& comp : placed_components_) {
+      if (comp.type != ComponentType::kFiberAmplifier || !comp.fiber_state.output)
+        continue;
+      const int supply = get_index(comp.instanceId, 0);
+      const int ground = get_index(comp.instanceId, 1);
+      const int output = get_index(comp.instanceId, 2);
+      if (supply < 0 || ground < 0 || output < 0 ||
+          cache.net_voltage[cache.port_net_id[supply]] !=
+              24.0f ||
+          cache.net_voltage[cache.port_net_id[ground]] !=
+              0.0f) continue;
+      assign_net_driver(cache.port_net_id[output],
+          GetSensorOutputMode(comp) == SensorOutputMode::NPN
+              ? VoltageType::V0 : VoltageType::V24);
+    }
+
+    // Read supply from the current network solve, never a stale sensor flag.
+    for (const auto& comp : placed_components_) {
+      if (!plc_emulator::IsSensorCylinder(comp.type)) {
+        continue;
+      }
+      const int supply = get_index(comp.instanceId, 2);
+      const int ground = get_index(comp.instanceId, 3);
+      if (supply < 0 || ground < 0 ||
+          cache.net_voltage[cache.port_net_id[supply]] !=
+              24.0f ||
+          cache.net_voltage[cache.port_net_id[ground]] !=
+              0.0f) {
+        continue;
+      }
+      const VoltageType drive = GetSensorOutputMode(comp) == SensorOutputMode::NPN
+                                    ? VoltageType::V0 : VoltageType::V24;
+      const bool vacuum_confirmed =
+          plc_emulator::ReadPneumaticState(comp, "vacuum_pressure") <= -0.2f &&
+          std::any_of(placed_components_.begin(), placed_components_.end(),
+                      [&](const auto& piece) {
+                        return IsWorkpiece(piece.type) &&
+                               piece.carry_state.owner_id == comp.instanceId;
+                      });
+      for (const int port : {4, 5, 7}) {
+        const bool active = port == 4
+            ? plc_emulator::IsForwardEndpoint(comp)
+            : (port == 5 ? plc_emulator::IsReverseEndpoint(comp)
+                         : vacuum_confirmed);
+        const int output = get_index(comp.instanceId, port);
+        if (active && output >= 0) {
+          assign_net_driver(cache.port_net_id[output], drive);
+        }
+      }
+    }
+
+    for (const auto& comp : placed_components_) {
       if (comp.type != ComponentType::RTL_MODULE) {
         continue;
       }
@@ -491,24 +592,51 @@ void Application::SimulateElectricalImpl() {
         }
       }
     }
+    for (auto& comp : placed_components_) {
+      if (comp.type != ComponentType::kDcMotorDriver) continue;
+      std::array<float, 6> inputs;
+      for (int port = 0; port < 6; ++port)
+        inputs[port] = current_voltage(comp.instanceId, port);
+      int sources = 0;
+      double duty = 0;
+      for (const auto& wire : wires_) {
+        if (wire.kind != WireKind::kElectric) continue;
+        int source_id = -1;
+        int source_port = -1;
+        if (wire.fromComponentId == comp.instanceId && wire.fromPortId == 5) {
+          source_id = wire.toComponentId;
+          source_port = wire.toPortId;
+        } else if (wire.toComponentId == comp.instanceId && wire.toPortId == 5) {
+          source_id = wire.fromComponentId;
+          source_port = wire.fromPortId;
+        }
+        const auto* source = FindComponentById(source_id);
+        if (!source || source->type != ComponentType::PLC ||
+            source_port < 16 || source_port >= 20) continue;
+        ++sources;
+        if (is_plc_running_ && compiled_plc_executor_) {
+          const int channel = source_port - 16;
+          const auto pwm = compiled_plc_executor_->GetPhysicalPwmDutyRatio(channel);
+          duty = pwm.value_or(GetPlcDeviceState(
+              plc_emulator::programming::FormatIOAddress('Y', channel)) ? 1.0 : 0.0);
+        }
+      }
+      const auto output = plc_emulator::ResolveDcDriverVoltages(
+          inputs, duty, sources == 1, plc_output_mode_ == PlcOutputMode::SINK);
+      comp.axis_state.ready = output.powered;
+      comp.axis_state.alarm = output.fault ? 1 : 0;
+      if (output.powered) {
+        drive_port(comp.instanceId, 7, output.motor_plus);
+        drive_port(comp.instanceId, 8, output.motor_minus);
+      }
+    }
   };
 
   auto update_port_voltages = [&]() {
     for (int i = 0; i < cache.port_count; ++i) {
-      int net_id = cache.port_net_id[i];
-      float voltage = -1.0f;
-      if (net_id >= 0) {
-        VoltageType net_voltage =
-            static_cast<VoltageType>(cache.net_voltage[net_id]);
-        if (net_voltage == VoltageType::V24) {
-          voltage = 24.0f;
-        } else if (net_voltage == VoltageType::V5) {
-          voltage = 5.0f;
-        } else if (net_voltage == VoltageType::V0) {
-          voltage = 0.0f;
-        }
-      }
-      port_voltages_[cache.ports[i]] = voltage;
+      const int net_id = cache.port_net_id[i];
+      const float voltage = net_id < 0 ? -1.0f : cache.net_voltage[net_id];
+      port_voltages_[cache.ports[i]] = voltage >= 0 ? voltage : -1.0f;
     }
   };
 
@@ -534,8 +662,8 @@ void Application::SimulateElectricalImpl() {
     if (comp.type != ComponentType::PLC) {
       continue;
     }
-    for (int i = 0; i < 16; ++i) {
-      auto key = std::make_pair(comp.instanceId, i);
+    for (int i = 0; i < plc_emulator::kPlcInputCount; ++i) {
+      auto key = std::make_pair(comp.instanceId, plc_emulator::PlcInputPort(i));
       float voltage = 0.0f;
       if (port_voltages_.count(key)) {
         voltage = port_voltages_.at(key);

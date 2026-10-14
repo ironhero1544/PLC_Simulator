@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PLCSimulator VERSION 1.1.0)
+project(PLCSimulator VERSION 2.0.0)
 
 cmake_policy(SET CMP0077 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
@@ -9,72 +9,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ============================================================================
-# Windows 네이티브 RTL 도구 설정 (Offline Mode - verilator.zst 사용)
-# ============================================================================
-if(WIN32 AND NOT MSVC)
-    # Tools 디렉토리 경로
-    get_filename_component(TOOLS_DIR "${CMAKE_SOURCE_DIR}/tools" ABSOLUTE)
-    set(SETUP_TOOLS_SCRIPT "${TOOLS_DIR}/setup_tools.ps1")
-    
-    # MinGW64와 Verilator 경로
-    set(MINGW64_PATH "${TOOLS_DIR}/mingw64")
-    set(VERILATOR_PATH "${TOOLS_DIR}/verilator")
-    set(VERILATOR_ZST "${TOOLS_DIR}/verilator.zst")
-    
-    # 도구가 없으면 자동으로 설정 스크립트 실행
-    if((NOT EXISTS "${MINGW64_PATH}/bin/g++.exe" OR NOT EXISTS "${VERILATOR_PATH}/bin/verilator.exe") AND EXISTS "${SETUP_TOOLS_SCRIPT}")
-        message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        message(STATUS "RTL Tools Setup Required (Offline Mode)")
-        message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        message(STATUS "Detected missing tools. Running setup_tools.ps1...")
-        message(STATUS "This will extract verilator.zst and setup MinGW64.")
-        message(STATUS "")
-        
-        # PowerShell로 설정 스크립트 실행
-        execute_process(
-            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${SETUP_TOOLS_SCRIPT}"
-            RESULT_VARIABLE SETUP_RESULT
-            OUTPUT_VARIABLE SETUP_OUTPUT
-            ERROR_VARIABLE SETUP_ERROR
-        )
-        
-        if(NOT SETUP_RESULT EQUAL 0)
-            message(WARNING "Setup script exited with code: ${SETUP_RESULT}")
-            message(WARNING "Output: ${SETUP_OUTPUT}")
-            message(WARNING "Error: ${SETUP_ERROR}")
-        else()
-            message(STATUS "✓ Setup completed successfully")
-        endif()
-        
-        message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    endif()
-    
-    # 도구 경로 검증
-    if(EXISTS "${MINGW64_PATH}/bin/g++.exe")
-        message(STATUS "✓ MinGW64 found at: ${MINGW64_PATH}")
-        if(NOT CMAKE_C_COMPILER)
-            set(CMAKE_C_COMPILER "${MINGW64_PATH}/bin/gcc.exe" CACHE PATH "C Compiler")
-        endif()
-        if(NOT CMAKE_CXX_COMPILER)
-            set(CMAKE_CXX_COMPILER "${MINGW64_PATH}/bin/g++.exe" CACHE PATH "C++ Compiler")
-        endif()
-    else()
-        message(WARNING "MinGW64 not found at: ${MINGW64_PATH}")
-        message(WARNING "Run: powershell -NoProfile -ExecutionPolicy Bypass -File \"${SETUP_TOOLS_SCRIPT}\"")
-    endif()
-    
-    if(EXISTS "${VERILATOR_PATH}/bin/verilator.exe")
-        message(STATUS "✓ Verilator found at: ${VERILATOR_PATH}")
-        set(VERILATOR_ROOT "${VERILATOR_PATH}/share/verilator" CACHE PATH "Verilator installation root")
-        message(STATUS "  VERILATOR_ROOT set to: ${VERILATOR_ROOT}")
-    else()
-        message(WARNING "Verilator not found at: ${VERILATOR_PATH}")
-        if(EXISTS "${VERILATOR_ZST}")
-            message(STATUS "Note: verilator.zst found - will be extracted by setup script")
-        endif()
-    endif()
-endif()
+# RTL tools run in a user-selected WSL2 distribution.
+# Configuring the Windows application never installs or changes host tools.
 
 option(BUILD_MAIN_APP "Build main PLC simulator app" ON)
 option(BUILD_HAPTICS_BRIDGE "Build WinRT haptics bridge DLL" OFF)
@@ -188,6 +124,7 @@ if(BUILD_MAIN_APP)
     add_executable(PLCSimulator
             src/main.cpp
 
+            src/core/guide_viewer.cpp
             src/core/application.cpp
             src/application/app_layout.cpp
             src/application/app_lod.cpp
@@ -216,6 +153,13 @@ if(BUILD_MAIN_APP)
             src/components/box_def.cpp
             src/components/conveyor_def.cpp
             src/components/cylinder_def.cpp
+            src/components/sensor_cylinder_def.cpp
+            src/components/servo_def.cpp
+            src/components/storage_sensor_def.cpp
+            src/physics/storage_sensor_simulation.cpp
+            src/wiring/application_storage_sensors.cpp
+            src/wiring/application_hmi_editor.cpp
+            src/physics/servo_simulation.cpp
             src/components/emergency_stop_def.cpp
             src/components/frl_def.cpp
             src/components/inductive_sensor_def.cpp
@@ -238,6 +182,8 @@ if(BUILD_MAIN_APP)
 
             src/wiring/application_components.cpp
             src/wiring/application_wiring.cpp
+            src/wiring/application_z_layers.cpp
+            src/wiring/application_render_layers.cpp
             src/wiring/application_ports.cpp
             src/wiring/application_snap.cpp
 
@@ -297,6 +243,7 @@ if(BUILD_MAIN_APP)
             src/io/io_mapper.cpp
 
             src/rtl/rtl_project_manager.cpp
+            src/rtl/wsl_toolchain.cpp
             src/rtl/rtl_runtime_manager.cpp
 
             src/data/data_repository.cpp
@@ -313,6 +260,10 @@ if(BUILD_MAIN_APP)
 
     if(WIN32)
         target_sources(PLCSimulator PRIVATE resources/icon/app_icon.rc)
+        configure_file(resources/icon/version.rc.in
+                "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
+        target_sources(PLCSimulator PRIVATE
+                "${CMAKE_CURRENT_BINARY_DIR}/version.rc")
     endif()
 
     target_include_directories(PLCSimulator PRIVATE
@@ -328,6 +279,17 @@ if(BUILD_MAIN_APP)
             ${imgui_SOURCE_DIR}
             ${imgui_SOURCE_DIR}/backends
     )
+
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_custom_target(guide_resources ALL
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_SOURCE_DIR}/scripts/package_guides.py"
+            --root "${CMAKE_SOURCE_DIR}"
+            --output "$<TARGET_FILE_DIR:PLCSimulator>/resources/help"
+        VERBATIM)
+    add_dependencies(PLCSimulator guide_resources)
+    install(DIRECTORY "$<TARGET_FILE_DIR:PLCSimulator>/resources/help/"
+        DESTINATION resources/help COMPONENT Runtime)
 
     set(FONT_DIR ${CMAKE_SOURCE_DIR}/resources/fonts)
     if(EXISTS ${FONT_DIR})
@@ -387,13 +349,15 @@ if(BUILD_MAIN_APP)
             runtimeobject
             comdlg32
             winmm
+            advapi32 ole32 shell32 shlwapi user32 version
     )
 
-    if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(WIN32)
         set_target_properties(PLCSimulator PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
 
     if(MSVC)
+        target_link_options(PLCSimulator PRIVATE /ENTRY:mainCRTStartup)
         target_compile_options(PLCSimulator PRIVATE
                 /W4 /WX /permissive- /Zc:__cplusplus /Zc:inline /utf-8
                 $<$<CONFIG:Release>:/O2>
@@ -456,7 +420,13 @@ endif()
 
 if(BUILD_MAIN_APP)
     install(TARGETS PLCSimulator
-            RUNTIME DESTINATION .)
+            RUNTIME DESTINATION . COMPONENT Runtime)
+
+    if(MSVC)
+        set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "." COMPONENT Runtime)
+        set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT Runtime)
+        include(InstallRequiredSystemLibraries)
+    endif()
 
     # Bundle required MinGW runtime DLLs for portable install/installer output.
     if(MINGW)
@@ -471,7 +441,7 @@ if(BUILD_MAIN_APP)
             set(RUNTIME_DLL_PATH "${MINGW_BIN_DIR}/${RUNTIME_DLL}")
             if(EXISTS "${RUNTIME_DLL_PATH}")
                 install(FILES "${RUNTIME_DLL_PATH}"
-                        DESTINATION ".")
+                        DESTINATION "." COMPONENT Runtime)
             else()
                 message(WARNING "Required MinGW runtime DLL not found: ${RUNTIME_DLL_PATH}")
             endif()
@@ -480,55 +450,19 @@ if(BUILD_MAIN_APP)
 
     if(TARGET haptics_bridge)
         install(TARGETS haptics_bridge
-                RUNTIME DESTINATION .
-                LIBRARY DESTINATION .
-                ARCHIVE DESTINATION .)
+                RUNTIME DESTINATION . COMPONENT Runtime
+                LIBRARY DESTINATION . COMPONENT Runtime)
     endif()
 
     if(EXISTS "${CMAKE_SOURCE_DIR}/resources")
         install(DIRECTORY "${CMAKE_SOURCE_DIR}/resources/"
-                DESTINATION "resources")
+                DESTINATION "resources" COMPONENT Runtime)
     endif()
 
-    if(EXISTS "${CMAKE_SOURCE_DIR}/tools/setup_tools.ps1")
-        install(FILES "${CMAKE_SOURCE_DIR}/tools/setup_tools.ps1"
-                DESTINATION "tools")
-    endif()
-    if(EXISTS "${CMAKE_SOURCE_DIR}/tools/verify_setup.ps1")
-        install(FILES "${CMAKE_SOURCE_DIR}/tools/verify_setup.ps1"
-                DESTINATION "tools")
-    endif()
-    if(EXISTS "${CMAKE_SOURCE_DIR}/tools/Delete_setup.ps1")
-        install(FILES "${CMAKE_SOURCE_DIR}/tools/Delete_setup.ps1"
-                DESTINATION "tools")
-    endif()
-
-    if(EXISTS "${CMAKE_SOURCE_DIR}/README.md")
-        install(FILES "${CMAKE_SOURCE_DIR}/README.md"
-                DESTINATION ".")
-    endif()
-
-    if(EXISTS "${CMAKE_SOURCE_DIR}/README_kr.md")
-        install(FILES "${CMAKE_SOURCE_DIR}/README_kr.md"
-                DESTINATION ".")
-    endif()
-
-    if(EXISTS "${CMAKE_SOURCE_DIR}/README_ja.md")
-        install(FILES "${CMAKE_SOURCE_DIR}/README_ja.md"
-                DESTINATION ".")
-    endif()
-
-    set(PLC_LICENSE_FILE "")
-    if(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
-        set(PLC_LICENSE_FILE "${CMAKE_SOURCE_DIR}/LICENSE-GPL-3.0.txt")
-    elseif(EXISTS "${CMAKE_SOURCE_DIR}/LICENSE")
-        set(PLC_LICENSE_FILE "${CMAKE_SOURCE_DIR}/LICENSE")
-    endif()
-
-    if(PLC_LICENSE_FILE)
-        install(FILES "${PLC_LICENSE_FILE}"
-                DESTINATION ".")
-    endif()
+    install(FILES "${CMAKE_SOURCE_DIR}/docs/RTL_WSL_TOOLCHAIN.md"
+            DESTINATION "docs" COMPONENT Runtime)
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+            DESTINATION "." COMPONENT Runtime)
 
     # =============================================================================
     # CPack
@@ -547,6 +481,8 @@ if(BUILD_MAIN_APP)
 
     set(CPACK_PACKAGE_INSTALL_DIRECTORY "PLCSimulator")
     set(CPACK_MONOLITHIC_INSTALL ON)
+    set(CPACK_INSTALL_CMAKE_PROJECTS
+            "${CMAKE_BINARY_DIR};${PROJECT_NAME};Runtime;/")
 
     if(PLC_LICENSE_FILE)
         set(CPACK_RESOURCE_FILE_LICENSE "${PLC_LICENSE_FILE}")
@@ -565,10 +501,8 @@ if(BUILD_MAIN_APP)
         set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
         set(CPACK_NSIS_MODIFY_PATH ON)
-        set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
-            "IfFileExists \\\"$INSTDIR\\\\tools\\\\Delete_setup.ps1\\\" 0 +4\n"
-            "MessageBox MB_YESNO|MB_ICONQUESTION \\\"Run Delete_setup.ps1 to remove installed RTL toolchain files and PATH entries?\\\" IDNO +2\n"
-            "ExecWait '\\\"$SYSDIR\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\\" -NoProfile -ExecutionPolicy Bypass -File \\\"$INSTDIR\\\\tools\\\\Delete_setup.ps1\\\"'\n")
+        set(CPACK_VERBATIM_VARIABLES ON)
+
 
         if(EXISTS "${CMAKE_SOURCE_DIR}/resources/icon/icon.ico")
             set(CPACK_NSIS_MUI_ICON "${CMAKE_SOURCE_DIR}/resources/icon/icon.ico")

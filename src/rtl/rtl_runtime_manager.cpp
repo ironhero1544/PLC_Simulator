@@ -123,25 +123,6 @@ void SetAllRtlOutputs(const PlacedComponent& comp,
 const char* kRtlClockLevelKey = "rtl_clock_level";
 const char* kRtlResetActiveKey = "rtl_reset_active";
 
-std::string GetBundledToolPathPrefix(const RtlToolchainStatus& status) {
-#ifdef _WIN32
-  if (status.mingwBinPath.empty()) {
-    return "";
-  }
-  std::string result = status.mingwBinPath;
-  // MSYS2 usr/bin: perl, python, sh 등 Verilator 런타임 의존성
-  if (!status.msys2Root.empty()) {
-    std::string usrBin = status.msys2Root + "\\usr\\bin";
-    result += ";" + usrBin;
-  }
-  return result;
-#else
-  (void)status;
-  return "";
-#endif
-}
-
-
 }  // namespace
 
 struct RtlRuntimeManager::WorkerProcess {
@@ -333,7 +314,7 @@ bool RtlRuntimeManager::EnsureProcessStarted(const PlacedComponent& comp,
     }
     return false;
   }
-  RtlToolchainStatus status = project_manager_->DetectToolchain();
+  const RtlToolchainStatus status;
   std::string command = project_manager_->GetWorkerLaunchCommand(*entry, status);
   if (command.empty()) {
     if (diagnostics) {
@@ -379,7 +360,7 @@ bool RtlRuntimeManager::EnsureProcessStarted(const PlacedComponent& comp,
     return false;
   }
 
-  STARTUPINFOA startup_info;
+  STARTUPINFOW startup_info;
   std::memset(&startup_info, 0, sizeof(startup_info));
   startup_info.cb = sizeof(startup_info);
   startup_info.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
@@ -391,35 +372,12 @@ bool RtlRuntimeManager::EnsureProcessStarted(const PlacedComponent& comp,
   PROCESS_INFORMATION process_info;
   std::memset(&process_info, 0, sizeof(process_info));
 
-  std::vector<char> command_buffer(command.begin(), command.end());
-  command_buffer.push_back('\0');
-
-  char originalPath[32767] = {0};
-  DWORD originalPathLen = GetEnvironmentVariableA("PATH", originalPath,
-                                                  static_cast<DWORD>(sizeof(originalPath)));
-  std::string previous_path =
-      (originalPathLen > 0 && originalPathLen < sizeof(originalPath))
-          ? std::string(originalPath, originalPathLen)
-          : std::string();
-  std::string effective_path = GetBundledToolPathPrefix(status);
-  if (!previous_path.empty()) {
-    effective_path += ";" + previous_path;
-  }
-  SetEnvironmentVariableA("PATH", effective_path.c_str());
-  if (!status.verilatorRoot.empty()) {
-    SetEnvironmentVariableA("VERILATOR_ROOT", status.verilatorRoot.c_str());
-  }
-
-  BOOL created = CreateProcessA(nullptr, command_buffer.data(), nullptr, nullptr,
+  const std::wstring wide_command = plc_emulator::WslToolchain::ToWide(command);
+  std::vector<wchar_t> command_buffer(wide_command.begin(), wide_command.end());
+  command_buffer.push_back(L'\0');
+  BOOL created = CreateProcessW(nullptr, command_buffer.data(), nullptr, nullptr,
                                 TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
                                 &startup_info, &process_info);
-
-  if (originalPathLen > 0 && originalPathLen < sizeof(originalPath)) {
-    SetEnvironmentVariableA("PATH", previous_path.c_str());
-  } else {
-    SetEnvironmentVariableA("PATH", nullptr);
-  }
-  SetEnvironmentVariableA("VERILATOR_ROOT", nullptr);
   CloseHandle(child_stdin_read);
   CloseHandle(child_stdout_write);
   if (!created) {
@@ -452,7 +410,7 @@ bool RtlRuntimeManager::EnsureProcessStarted(const PlacedComponent& comp,
   (void)comp;
   (void)command;
   if (diagnostics) {
-    *diagnostics = "RTL runtime requires native Windows.";
+    *diagnostics = "RTL runtime requires Windows.";
   }
   return false;
 #endif
@@ -578,7 +536,7 @@ bool RtlRuntimeManager::SendEvalRequest(
   (void)voltages;
   (void)output_values;
   if (diagnostics) {
-    *diagnostics = "RTL runtime requires native Windows.";
+    *diagnostics = "RTL runtime requires Windows.";
   }
   return false;
 #endif

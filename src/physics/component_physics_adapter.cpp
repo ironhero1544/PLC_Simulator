@@ -1,5 +1,7 @@
 #include "plc_emulator/physics/component_physics_adapter.h"
 
+#include "plc_emulator/components/pneumatic_component.h"
+
 #include "plc_emulator/components/state_keys.h"
 
 #include <cmath>
@@ -70,6 +72,22 @@ void UpdateSensorElectrical(PlacedComponent* comp,
                 voltages.at(minus_port) < 0.1f;
   comp->internalStates[state_keys::kIsPowered] =
       (has_24v && has_0v) ? 1.0f : 0.0f;
+}
+
+void UpdateIntegratedSensorElectrical(
+    PlacedComponent* comp, const std::map<PortRef, float>& voltages) {
+  if (!comp) {
+    return;
+  }
+  const auto supply = voltages.find({comp->instanceId, 2});
+  const auto ground = voltages.find({comp->instanceId, 3});
+  const bool powered = supply != voltages.end() && supply->second > 23 &&
+      ground != voltages.end() && std::abs(ground->second) < 0.1f;
+  comp->internalStates[state_keys::kIsPowered] = powered ? 1.0f : 0.0f;
+  comp->internalStates["sensor_fwd"] =
+      powered && plc_emulator::IsForwardEndpoint(*comp) ? 1.0f : 0.0f;
+  comp->internalStates["sensor_rev"] =
+      powered && plc_emulator::IsReverseEndpoint(*comp) ? 1.0f : 0.0f;
 }
 
 void UpdateConveyorElectrical(PlacedComponent* comp,
@@ -210,7 +228,8 @@ void UpdateCylinderPhysics(PlacedComponent* comp,
                            float friction_coeff,
                            float activation_threshold,
                            float force_scale) {
-  if (!comp || comp->type != ComponentType::CYLINDER) {
+  if (!comp || (!plc_emulator::IsLinearPneumaticCylinder(comp->type) &&
+                !plc_emulator::IsSensorCylinder(comp->type))) {
     return;
   }
 
@@ -264,7 +283,9 @@ void UpdateCylinderPhysics(PlacedComponent* comp,
   current_velocity += acceleration * delta_time;
   current_position += current_velocity * delta_time;
 
-  const float max_stroke = 160.0f;
+  const float max_stroke = comp->type == ComponentType::kDrivenWarehouse
+                               ? plc_emulator::kWarehouseDriveStroke
+                               : plc_emulator::kCylinderStroke;
   if (current_position < 0.0f) {
     current_position = 0.0f;
     if (current_velocity < 0) {
@@ -293,60 +314,43 @@ void UpdateCylinderPhysics(PlacedComponent* comp,
 }  // namespace
 
 const ComponentPhysicsAdapter* GetComponentPhysicsAdapter(ComponentType type) {
-  constexpr int kComponentTypeCount = 21;
-  static_assert(static_cast<int>(ComponentType::RTL_MODULE) ==
-                    kComponentTypeCount - 1,
-                "Update physics adapter table for new component types.");
-
-  static const ComponentPhysicsAdapter kAdapters[kComponentTypeCount] = {
-      // PLC
-      {nullptr, nullptr, nullptr},
-      // FRL
-      {nullptr, nullptr, nullptr},
-      // MANIFOLD
-      {nullptr, nullptr, nullptr},
-      // LIMIT_SWITCH
-      {nullptr, nullptr, nullptr},
-      // SENSOR
-      {UpdateSensorElectrical, nullptr, nullptr},
-      // CYLINDER
-      {nullptr, nullptr, UpdateCylinderPhysics},
-      // VALVE_SINGLE
-      {UpdateValveElectrical, nullptr, nullptr},
-      // VALVE_DOUBLE
-      {UpdateValveElectrical, UpdateValveLogic, nullptr},
-      // BUTTON_UNIT
-      {UpdateButtonUnitElectrical, nullptr, nullptr},
-      // POWER_SUPPLY
-      {nullptr, nullptr, nullptr},
-      // WORKPIECE_METAL
-      {nullptr, nullptr, nullptr},
-      // WORKPIECE_NONMETAL
-      {nullptr, nullptr, nullptr},
-      // RING_SENSOR
-      {UpdateSensorElectrical, nullptr, nullptr},
-      // METER_VALVE
-      {nullptr, nullptr, nullptr},
-      // INDUCTIVE_SENSOR
-      {UpdateSensorElectrical, nullptr, nullptr},
-      // CONVEYOR
-      {UpdateConveyorElectrical, nullptr, nullptr},
-      // PROCESSING_CYLINDER
-      {UpdateProcessingCylinderElectrical, nullptr, nullptr},
-      // BOX
-      {nullptr, nullptr, nullptr},
-      // TOWER_LAMP
-      {UpdateTowerLampElectrical, nullptr, nullptr},
-      // EMERGENCY_STOP
-      {nullptr, nullptr, nullptr},
-      // RTL_MODULE
-      {nullptr, nullptr, nullptr}};
-
-  int index = static_cast<int>(type);
-  if (index < 0 || index >= kComponentTypeCount) {
-    return nullptr;
+  static const ComponentPhysicsAdapter kEmpty{};
+  static const ComponentPhysicsAdapter kSensor{
+      UpdateSensorElectrical, nullptr, nullptr};
+  static const ComponentPhysicsAdapter kCylinder{
+      nullptr, nullptr, UpdateCylinderPhysics};
+  static const ComponentPhysicsAdapter kIntegratedCylinder{
+      UpdateIntegratedSensorElectrical, nullptr, UpdateCylinderPhysics};
+  static const ComponentPhysicsAdapter kSingleValve{
+      UpdateValveElectrical, nullptr, nullptr};
+  static const ComponentPhysicsAdapter kDoubleValve{
+      UpdateValveElectrical, UpdateValveLogic, nullptr};
+  static const ComponentPhysicsAdapter kButton{
+      UpdateButtonUnitElectrical, nullptr, nullptr};
+  static const ComponentPhysicsAdapter kConveyor{
+      UpdateConveyorElectrical, nullptr, nullptr};
+  static const ComponentPhysicsAdapter kProcessing{
+      UpdateProcessingCylinderElectrical, nullptr, nullptr};
+  static const ComponentPhysicsAdapter kTower{
+      UpdateTowerLampElectrical, nullptr, nullptr};
+  switch (type) {
+    case ComponentType::SENSOR:
+    case ComponentType::INDUCTIVE_SENSOR:
+    case ComponentType::RING_SENSOR: return &kSensor;
+    case ComponentType::CYLINDER: return &kCylinder;
+    case ComponentType::kDrivenWarehouse:
+    case ComponentType::kSensorCylinder:
+    case ComponentType::kSuctionCylinder:
+    case ComponentType::kStopperCylinder:
+    case ComponentType::kLiftSuction: return &kIntegratedCylinder;
+    case ComponentType::VALVE_SINGLE: return &kSingleValve;
+    case ComponentType::VALVE_DOUBLE: return &kDoubleValve;
+    case ComponentType::BUTTON_UNIT: return &kButton;
+    case ComponentType::CONVEYOR: return &kConveyor;
+    case ComponentType::PROCESSING_CYLINDER: return &kProcessing;
+    case ComponentType::TOWER_LAMP: return &kTower;
+    default: return &kEmpty;
   }
-  return &kAdapters[index];
 }
 
 }  // namespace plc

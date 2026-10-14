@@ -9,9 +9,8 @@
 #include <set>
 #include <string>
 
-// PLC_RTL_WSL_BACKEND: Windows + WSL2 기반 Verilator 런타임 백엔드.
-// CMakeLists.txt의 target_compile_definitions 에서 활성화됩니다.
-// 미정의 시 RTL 컴포넌트는 로드되지만 시뮬레이션은 비활성화됩니다.
+// WSL2 Verilator + MinGW로 빌드한 Windows 네이티브 EXE 워커를 실행합니다.
+// 부품 실행에는 WSL2 또는 컴파일러가 필요하지 않습니다.
 
 namespace plc {
 

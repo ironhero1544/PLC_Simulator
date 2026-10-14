@@ -1,3 +1,4 @@
+#include "plc_emulator/components/storage_sensor_def.h"
 // application_components.cpp
 //
 // Component rendering functions.
@@ -6,14 +7,18 @@
 
 #include "plc_emulator/core/application.h"
 
+#include "plc_emulator/core/render_layer.h"
+
 #include "plc_emulator/components/component_registry.h"
 #include "plc_emulator/components/component_behavior.h"
 #include "plc_emulator/components/processing_cylinder_def.h"
 #include "plc_emulator/components/state_keys.h"
+#include "plc_emulator/components/pneumatic_component.h"
 #include "plc_emulator/core/component_transform.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 #include <algorithm>  // For std::remove_if
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -44,8 +49,55 @@ bool IsComponentVisibleByFilter(ComponentCategory category, int filter) {
 enum class ListFilter {
   ALL = 0,
   AUTOMATION = 1,
-  SEMICONDUCTOR = 2
+  SEMICONDUCTOR = 2,
+  kAutomationExam = 3
 };
+
+// Functional filtering is independent of the qualification filter.
+int GetComponentFunctionGroup(ComponentType type) {
+  switch (type) {
+    case ComponentType::BUTTON_UNIT:
+    case ComponentType::EMERGENCY_STOP:
+    case ComponentType::LIMIT_SWITCH:
+    case ComponentType::SENSOR:
+    case ComponentType::INDUCTIVE_SENSOR:
+    case ComponentType::RING_SENSOR:
+    case ComponentType::kFiberAmplifier:
+    case ComponentType::kFiberTransmitter:
+    case ComponentType::kFiberReceiver:
+      return 1;
+    case ComponentType::TOWER_LAMP:
+    case ComponentType::CONVEYOR:
+    case ComponentType::kDcMotor:
+    case ComponentType::kServoMotor:
+    case ComponentType::kServoLift:
+      return 2;
+    case ComponentType::FRL:
+    case ComponentType::MANIFOLD:
+    case ComponentType::METER_VALVE:
+    case ComponentType::VALVE_SINGLE:
+    case ComponentType::VALVE_DOUBLE:
+    case ComponentType::CYLINDER:
+    case ComponentType::PROCESSING_CYLINDER:
+    case ComponentType::kSensorCylinder:
+    case ComponentType::kSuctionCylinder:
+    case ComponentType::kStopperCylinder:
+    case ComponentType::kVacuumGenerator:
+    case ComponentType::kLiftSuction:
+      return 3;
+    case ComponentType::POWER_SUPPLY:
+    case ComponentType::kAcSupply:
+      return 4;
+    case ComponentType::PLC:
+    case ComponentType::kTouchPanel:
+    case ComponentType::kDcMotorDriver:
+    case ComponentType::kServoAmplifier:
+    case ComponentType::RTL_MODULE:
+      return 5;
+    default:
+      return 6;
+  }
+}
 
 struct ComponentListEntry {
   const ComponentDefinition* def = nullptr;
@@ -73,6 +125,24 @@ const std::vector<ComponentType>& GetFunctionAxisOrder() {
       ComponentType::VALVE_SINGLE,
       ComponentType::VALVE_DOUBLE,
       ComponentType::CYLINDER,
+      ComponentType::kSensorCylinder,
+      ComponentType::kSuctionCylinder,
+      ComponentType::kStopperCylinder,
+      ComponentType::kVacuumGenerator,
+      ComponentType::kDcMotor,
+      ComponentType::kDcMotorDriver,
+      ComponentType::kServoMotor,
+      ComponentType::kServoAmplifier,
+      ComponentType::kServoLift,
+      ComponentType::kLiftSuction,
+      ComponentType::kAcSupply,
+      ComponentType::kWarehouse,
+      ComponentType::kDrivenWarehouse,
+      ComponentType::kFiberAmplifier,
+      ComponentType::kFiberTransmitter,
+      ComponentType::kFiberReceiver,
+      ComponentType::kTouchPanel,
+
       ComponentType::PROCESSING_CYLINDER,
       ComponentType::CONVEYOR,
       ComponentType::TOWER_LAMP,
@@ -100,10 +170,11 @@ std::vector<ComponentListEntry> BuildComponentList(ListFilter filter) {
   for (int i = 0; i < count; ++i) {
     const ComponentDefinition* def = GetComponentDefinitionByIndex(i);
     if (!def || !IsComponentVisibleByFilter(def->category,
-                                            static_cast<int>(filter))) {
+                                            filter == ListFilter::kAutomationExam ? 1 : static_cast<int>(filter))) {
       continue;
     }
-    if (def->type == ComponentType::RTL_MODULE) {
+    if (def->type == ComponentType::RTL_MODULE ||
+        def->type == ComponentType::kMagazine) {
       continue;
     }
     entries.push_back({def, i});
@@ -433,6 +504,10 @@ void Application::DeleteSelectedComponent() {
                      }),
       wires_.end());
 
+  for (auto& component : placed_components_) {
+    if (is_selected_id(component.instanceId)) ReleaseHmiButtons(&component);
+  }
+
   placed_components_.erase(
       std::remove_if(placed_components_.begin(), placed_components_.end(),
                      [&](const PlacedComponent& comp) {
@@ -440,6 +515,9 @@ void Application::DeleteSelectedComponent() {
                      }),
       placed_components_.end());
 
+  for (auto& piece : placed_components_) {
+    if (is_selected_id(piece.carry_state.owner_id)) piece.carry_state = {};
+  }
   ClearComponentSelection();
   RepairPrimaryWireSelection();
 }
@@ -448,7 +526,31 @@ Application::ComponentMoveSession Application::BuildComponentMoveSession(
     int instanceId, ImVec2 mousePos) const {
   ComponentMoveSession session;
   session.anchor_component_id = instanceId;
+  const PlacedComponent* anchor = nullptr;
+  const PlacedComponent* owner = nullptr;
+  for (const auto& component : placed_components_) {
+    if (component.instanceId == instanceId) anchor = &component;
+  }
+  if (anchor) {
+    for (const auto& component : placed_components_) {
+      if (component.instanceId == anchor->carry_state.owner_id) owner = &component;
+    }
+  }
+  if (anchor && IsWorkpieceType(anchor->type) && owner &&
+      IsWarehouseType(owner->type) && anchor->carry_state.slot_id >= 1) {
+    const Size display = GetComponentDisplaySize(*anchor);
+    session.drag_start_offset = {display.width / 2, display.height / 2};
+    session.offsets.push_back({instanceId, session.drag_start_offset});
+    return session;
+  }
   const bool move_selected_group = HasSelectedComponents();
+  for (const auto& component : placed_components_) {
+    if (!plc::IsWarehouseType(component.type) ||
+        !(move_selected_group ? component.selected : component.instanceId == instanceId)) continue;
+    if (std::any_of(placed_components_.begin(), placed_components_.end(),
+        [&](const auto& part) { return part.carry_state.owner_id == component.instanceId; }))
+      return session;
+  }
   for (const auto& comp : placed_components_) {
     const bool should_move =
         move_selected_group ? comp.selected : (comp.instanceId == instanceId);
@@ -476,6 +578,7 @@ void Application::ApplyComponentMoveManualDragState(
       continue;
     }
     if (active) {
+      comp->carry_state = {};
       comp->internalStates[state_keys::kIsManualDrag] = 1.0f;
       comp->internalStates[state_keys::kVelX] = 0.0f;
       comp->internalStates[state_keys::kVelY] = 0.0f;
@@ -518,19 +621,8 @@ void Application::EndComponentMoveSession() {
 
 void Application::RenderPlacedComponents(ImDrawList* draw_list) {
   // [PPT: ??? ???] for??? ?????? ???????? ?????????????????.
-  std::vector<size_t> draw_order(placed_components_.size());
-  for (size_t i = 0; i < placed_components_.size(); ++i) {
-    draw_order[i] = i;
-  }
-  std::sort(draw_order.begin(), draw_order.end(),
-            [&](size_t a, size_t b) {
-              const auto& comp_a = placed_components_[a];
-              const auto& comp_b = placed_components_[b];
-              if (comp_a.z_order != comp_b.z_order) {
-                return comp_a.z_order < comp_b.z_order;
-              }
-              return comp_a.instanceId < comp_b.instanceId;
-            });
+  static thread_local std::vector<size_t> draw_order;
+  plc_emulator::SortRenderLayerIndices(placed_components_, &draw_order);
 
   const ImGuiIO& io = ImGui::GetIO();
   const bool ghost_mode = io.KeyShift && HasSelectedComponents();
@@ -545,8 +637,57 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
   float view_min_y = std::min(view_top_left.y, view_bottom_right.y) - cull_margin;
   float view_max_y = std::max(view_top_left.y, view_bottom_right.y) + cull_margin;
 
+  // Show the configured cylinder linkage and the warehouse travel axis.
+  for (const auto& warehouse : placed_components_) {
+    if (!plc::IsWarehouseType(warehouse.type) ||
+        !plc_emulator::IsRenderVisible(warehouse)) continue;
+    const auto* drive = FindComponentById(warehouse.warehouse_cylinder_id);
+    if (!drive) continue;
+    const Size size = GetComponentDisplaySize(warehouse);
+    const ImVec2 center(warehouse.position.x + size.width * 0.5f,
+                        warehouse.position.y + size.height * 0.5f);
+    const ImVec2 base(center.x - warehouse.warehouse_drive_offset.x,
+                      center.y - warehouse.warehouse_drive_offset.y);
+    const ImVec2 direction = LocalDirToWorld(*drive, {-1.0f, 0.0f});
+    const ImVec2 end(base.x + direction.x * warehouse.warehouse_travel,
+                     base.y + direction.y * warehouse.warehouse_travel);
+    const ImVec2 start_screen = WorldToScreen(base);
+    const ImVec2 end_screen = WorldToScreen(end);
+    const ImU32 guide_color = IM_COL32(25, 110, 130,
+        static_cast<int>(180 * warehouse.render_opacity));
+    draw_list->AddLine(start_screen, end_screen, guide_color,
+                       3.0f * camera_zoom_);
+    draw_list->AddCircle(start_screen, 5.0f * camera_zoom_, guide_color);
+    draw_list->AddCircle(end_screen, 5.0f * camera_zoom_, guide_color);
+    const ImVec2 drive_point = WorldToScreen(LocalToWorld(*drive, {240, 43}));
+    const ImVec2 anchor = WorldToScreen(center);
+    for (int segment = 0; segment < 20; segment += 2) {
+      const float first = segment / 20.0f;
+      const float last = (segment + 1) / 20.0f;
+      draw_list->AddLine(
+          {drive_point.x + (anchor.x - drive_point.x) * first,
+           drive_point.y + (anchor.y - drive_point.y) * first},
+          {drive_point.x + (anchor.x - drive_point.x) * last,
+           drive_point.y + (anchor.y - drive_point.y) * last},
+          guide_color, 2.0f * camera_zoom_);
+    }
+    const ImVec2 label = WorldToScreen({base.x + size.width * 0.5f + 12,
+                                        end.y});
+    char travel_text[64];
+    std::snprintf(travel_text, sizeof(travel_text), "CYL -> WH %.0f mm",
+                  warehouse.warehouse_travel);
+    draw_list->AddText(ImGui::GetFont(), 22.0f * camera_zoom_, label,
+                       guide_color, travel_text);
+  }
+
   for (size_t index : draw_order) {
     auto& comp = placed_components_[index];
+    if (!plc_emulator::IsRenderVisible(comp)) continue;
+    if (comp.carry_state.owner_id >= 0 && comp.carry_state.slot_id >= 1) {
+      const PlacedComponent* owner =
+          FindComponentById(comp.carry_state.owner_id);
+      if (owner && IsWarehouseType(owner->type)) continue;
+    }
     const Size display = GetComponentDisplaySize(comp);
     float comp_min_x = comp.position.x;
     float comp_min_y = comp.position.y;
@@ -577,6 +718,8 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
     const int vtx_start = draw_list->VtxBuffer.Size;
     if (def && def->Render) {
       def->Render(draw_list, comp, render_origin, camera_zoom_);
+      if (comp.type == ComponentType::PROCESSING_CYLINDER)
+        RenderProcessingCylinderHead(draw_list, comp, render_origin, camera_zoom_);
     } else {
       ImVec2 end_pos = {render_origin.x + comp.size.width * camera_zoom_,
                         render_origin.y + comp.size.height * camera_zoom_};
@@ -588,9 +731,9 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
     TransformDrawListVertices(draw_list, vtx_start, vtx_end, display_center,
                               comp.rotation_quadrants, comp.flip_x,
                               comp.flip_y);
-    if (ghost_mode && !comp.selected) {
-      ApplyAlphaToDrawList(draw_list, vtx_start, vtx_end, ghost_alpha);
-    }
+    const float opacity = comp.render_opacity *
+        ((ghost_mode && !comp.selected) ? ghost_alpha : 1.0f);
+    ApplyAlphaToDrawList(draw_list, vtx_start, vtx_end, opacity);
 
     // ??????????? ????????
     if (comp.selected) {
@@ -607,36 +750,50 @@ void Application::RenderPlacedComponents(ImDrawList* draw_list) {
     }
   }
 
-  for (size_t index : draw_order) {
-    const auto& comp = placed_components_[index];
-    if (comp.type != ComponentType::PROCESSING_CYLINDER) {
-      continue;
-    }
+  // Keep user labels upright even when the physical component is rotated.
+  for (const auto& comp : placed_components_) {
     const Size display = GetComponentDisplaySize(comp);
-    float comp_min_x = comp.position.x;
-    float comp_min_y = comp.position.y;
-    float comp_max_x = comp.position.x + display.width;
-    float comp_max_y = comp.position.y + display.height;
-    if (comp_max_x < view_min_x || comp_min_x > view_max_x ||
-        comp_max_y < view_min_y || comp_min_y > view_max_y) {
+    if (!plc_emulator::IsRenderVisible(comp) ||
+        !comp.show_custom_label || comp.customLabel.empty() ||
+        comp.carry_state.owner_id >= 0) {
       continue;
     }
-    ImVec2 screen_top_left = WorldToScreen({comp.position.x, comp.position.y});
-    ImVec2 render_origin =
-        GetComponentRenderOrigin(comp, screen_top_left, camera_zoom_);
-    ImVec2 display_center(
-        screen_top_left.x + display.width * camera_zoom_ * 0.5f,
-        screen_top_left.y + display.height * camera_zoom_ * 0.5f);
-    const int vtx_start = draw_list->VtxBuffer.Size;
-    RenderProcessingCylinderHead(draw_list, comp, render_origin, camera_zoom_);
-    const int vtx_end = draw_list->VtxBuffer.Size;
-    TransformDrawListVertices(draw_list, vtx_start, vtx_end, display_center,
-                              comp.rotation_quadrants, comp.flip_x,
-                              comp.flip_y);
-    if (ghost_mode && !comp.selected) {
-      ApplyAlphaToDrawList(draw_list, vtx_start, vtx_end, ghost_alpha);
-    }
+    const ImVec2 origin = WorldToScreen(comp.position);
+    const float font_size = std::max(18.0f, 22.0f * camera_zoom_);
+    ImFont* font = ImGui::GetFont();
+    const ImVec2 text_size = font->CalcTextSizeA(
+        font_size, FLT_MAX, 0.0f, comp.customLabel.c_str());
+    const ImVec2 label_pos(origin.x, origin.y - text_size.y - 5.0f);
+    const int label_start = draw_list->VtxBuffer.Size;
+    draw_list->AddRectFilled(
+        {label_pos.x - 3.0f, label_pos.y - 2.0f},
+        {label_pos.x + text_size.x + 3.0f, label_pos.y + text_size.y + 2.0f},
+        IM_COL32(255, 255, 255, 235), 2.0f);
+    draw_list->AddText(font, font_size, label_pos,
+                       IM_COL32(45, 50, 58, 255), comp.customLabel.c_str());
+    ApplyAlphaToDrawList(draw_list, label_start, draw_list->VtxBuffer.Size,
+                         comp.render_opacity);
   }
+  for (const auto& warehouse : placed_components_) {
+    if (!plc::IsWarehouseType(warehouse.type) ||
+        !plc_emulator::IsRenderVisible(warehouse)) continue;
+    const bool occupied = std::any_of(placed_components_.begin(),
+        placed_components_.end(), [&](const auto& part) {
+          return part.carry_state.owner_id == warehouse.instanceId &&
+                 part.carry_state.slot_id >= 1;
+        });
+    if (!occupied && !IsPointInsideComponent(warehouse,
+        ScreenToWorld(ImGui::GetMousePos()))) continue;
+    const ImVec2 origin = WorldToScreen(
+        plc_emulator::WarehouseOverlayOrigin(warehouse, camera_zoom_));
+    const int overlay_start = draw_list->VtxBuffer.Size;
+    plc_emulator::RenderStorageSensorFront(
+        draw_list, warehouse, origin,
+        plc_emulator::kWarehouseOverlayScale * camera_zoom_, placed_components_);
+    ApplyAlphaToDrawList(draw_list, overlay_start, draw_list->VtxBuffer.Size,
+                         warehouse.render_opacity);
+  }
+
 }
 
 void Application::RenderComponentList() {
@@ -658,14 +815,14 @@ void Application::RenderComponentList() {
     ImGui::Text("%s", TR("ui.component_list.title", "Components"));
     ImGui::PopStyleColor();
 
-    float toggle_size = 26.0f * layout_scale;
-    float right_padding = 36.0f * layout_scale;
-    float filter_width = 120.0f * layout_scale;
-    float total_width = ImGui::GetWindowWidth();
-    float filter_start_x =
-        (total_width - filter_width) * 0.5f;
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(filter_start_x);
+    const float toggle_size = std::max(
+        {26.0f * layout_scale, ImGui::GetFrameHeight(),
+         ImGui::CalcTextSize("Z").x + 2 * ImGui::GetStyle().FramePadding.x});
+    ImGui::Spacing();
+    ImGui::SetCursorPosX(15 * layout_scale);
+    const float filter_width = std::max(
+        60.0f, ImGui::GetContentRegionAvail().x - 3 * toggle_size -
+                   3 * ImGui::GetStyle().ItemSpacing.x);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f * layout_scale);
     ImGui::PushItemWidth(filter_width);
     const char* filter_label = TR("ui.component_list.filter_all", "All");
@@ -673,6 +830,8 @@ void Application::RenderComponentList() {
       filter_label = TR("ui.component_list.filter_auto", "Automation");
     } else if (component_list_filter_ == ComponentListFilter::SEMICONDUCTOR) {
       filter_label = TR("ui.component_list.filter_semi", "Semiconductor");
+    } else if (component_list_filter_ == ComponentListFilter::kAutomationExam) {
+      filter_label = TR("ui.component_list.filter_exam", "Automation equipment exam");
     }
 
     if (ImGui::BeginCombo("##ComponentFilter", filter_label,
@@ -693,13 +852,28 @@ void Application::RenderComponentList() {
                   ComponentListFilter::SEMICONDUCTOR)) {
         component_list_filter_ = ComponentListFilter::SEMICONDUCTOR;
       }
+      if (ImGui::Selectable(
+              TR("ui.component_list.filter_exam", "Automation equipment exam"),
+              component_list_filter_ == ComponentListFilter::kAutomationExam)) {
+        component_list_filter_ = ComponentListFilter::kAutomationExam;
+      }
       ImGui::EndCombo();
     }
     ImGui::PopItemWidth();
     ImGui::PopStyleVar();
 
     ImGui::SameLine();
-    ImGui::SetCursorPosX(total_width - right_padding - toggle_size);
+    if (ImGui::Button("Z##ZLayersToggle", {toggle_size, toggle_size})) {
+      show_z_layer_panel_ = !show_z_layer_panel_;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("L##RenderLayersToggle", {toggle_size, toggle_size})) {
+      show_render_layer_panel_ = !show_render_layer_panel_;
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", TR("ui.render_layers.title", "Display layers"));
+    }
+    ImGui::SameLine();
     ImVec2 toggle_pos = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("ViewToggle", ImVec2(toggle_size, toggle_size));
     if (ImGui::IsItemClicked()) {
@@ -732,8 +906,29 @@ void Application::RenderComponentList() {
       list_filter = ListFilter::AUTOMATION;
     } else if (component_list_filter_ == ComponentListFilter::SEMICONDUCTOR) {
       list_filter = ListFilter::SEMICONDUCTOR;
+    } else if (component_list_filter_ == ComponentListFilter::kAutomationExam) {
+      list_filter = ListFilter::kAutomationExam;
     }
+    const char* function_labels[] = {
+        TR("ui.component_list.function_all", "All functions"),
+        TR("ui.component_list.function_input", "Input"),
+        TR("ui.component_list.function_output", "Output"),
+        TR("ui.component_list.function_pneumatic", "Pneumatic"),
+        TR("ui.component_list.function_power", "Power"),
+        TR("ui.component_list.function_control", "Control"),
+        TR("ui.component_list.function_other", "Other")};
+    ImGui::SetCursorPosX(15 * layout_scale);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+    ImGui::Combo("##ComponentFunctionFilter", &component_function_filter_,
+                 function_labels, IM_ARRAYSIZE(function_labels));
+    ImGui::Spacing();
     std::vector<ComponentListEntry> entries = BuildComponentList(list_filter);
+    if (component_function_filter_ != 0) {
+      std::erase_if(entries, [this](const ComponentListEntry& entry) {
+        return GetComponentFunctionGroup(entry.def->type) !=
+               component_function_filter_;
+      });
+    }
     int visible_count = 0;
     auto open_rtl_library = [this]() {
       show_rtl_library_panel_ = true;
@@ -748,6 +943,7 @@ void Application::RenderComponentList() {
       }
       return text.substr(0, max_chars - 3) + "...";
     };
+    ImGui::SetCursorPosX(10 * layout_scale);
     if (component_list_view_mode_ == ComponentListViewMode::ICON) {
       float spacing = 6.0f * layout_scale;
       float content_width = ImGui::GetContentRegionAvail().x;
@@ -835,6 +1031,7 @@ void Application::RenderComponentList() {
         }
       }
       if (rtl_project_manager_ &&
+          (component_function_filter_ == 0 || component_function_filter_ == 5) &&
           (component_list_filter_ == ComponentListFilter::ALL ||
            component_list_filter_ == ComponentListFilter::SEMICONDUCTOR)) {
         for (const auto& rtl_entry : rtl_project_manager_->GetLibrary()) {
@@ -1051,6 +1248,7 @@ void Application::RenderComponentList() {
         ImGui::SetCursorPosX(10 * layout_scale);
       }
       if (rtl_project_manager_ &&
+          (component_function_filter_ == 0 || component_function_filter_ == 5) &&
           (component_list_filter_ == ComponentListFilter::ALL ||
            component_list_filter_ == ComponentListFilter::SEMICONDUCTOR)) {
         for (const auto& rtl_entry : rtl_project_manager_->GetLibrary()) {

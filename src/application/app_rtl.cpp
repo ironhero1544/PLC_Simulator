@@ -5,6 +5,8 @@
  */
 
 #include "plc_emulator/core/application.h"
+
+#include "plc_emulator/components/pneumatic_component.h"
 #include "plc_emulator/lang/lang_manager.h"
 #include "plc_emulator/components/component_registry.h"
 #include "plc_emulator/components/state_keys.h"
@@ -499,11 +501,19 @@ std::vector<RtlEditorDiagnosticMarker> ParseRtlDiagnosticsForSource(
   const std::string normalized_source = NormalizeSourcePath(source_path);
   const std::string base_name = SourceBaseName(normalized_source);
   const std::regex location_regex(
-      R"(([^:\r\n]+(?:/[^:\r\n]+)*\.(?:v|sv|vh|svh)):(\d+)(?::(\d+))?:?\s*(.*))");
+      R"(([^:\r\n]+\.(?:v|sv|vh|svh)):(\d+)(?::(\d+))?:?\s*(.*))");
 
   std::istringstream stream(diagnostics);
   std::string line;
   while (std::getline(stream, line)) {
+    // Compiler command lines have no HDL location. Avoid regex backtracking
+    // through their long paths and flags when displaying a successful build.
+    if (line.find(".v:") == std::string::npos &&
+        line.find(".sv:") == std::string::npos &&
+        line.find(".vh:") == std::string::npos &&
+        line.find(".svh:") == std::string::npos) {
+      continue;
+    }
     std::smatch match;
     if (!std::regex_search(line, match, location_regex) || match.size() < 5) {
       continue;
@@ -948,7 +958,8 @@ void Application::PollRtlToolchainRefresh() {
 }
 
 void Application::RequestRtlAnalyzeAsync(const std::string& moduleId) {
-  if (!rtl_project_manager_ || rtl_async_task_running_) {
+  if (!rtl_project_manager_ || rtl_async_task_running_ ||
+      rtl_doctor_action_future_.valid() || rtl_toolchain_loading_) {
     return;
   }
   RtlLibraryEntry* entry = rtl_project_manager_->FindEntryById(moduleId);
@@ -1018,7 +1029,8 @@ void Application::RequestRtlAnalyzeAsync(const std::string& moduleId) {
 }
 
 void Application::RequestRtlBuildAsync(const std::string& moduleId) {
-  if (!rtl_project_manager_ || rtl_async_task_running_) {
+  if (!rtl_project_manager_ || rtl_async_task_running_ ||
+      rtl_doctor_action_future_.valid() || rtl_toolchain_loading_) {
     return;
   }
   RtlLibraryEntry* entry = rtl_project_manager_->FindEntryById(moduleId);
@@ -1093,7 +1105,8 @@ void Application::RequestRtlBuildAsync(const std::string& moduleId) {
 }
 
 void Application::RequestRtlTestbenchAsync(const std::string& moduleId) {
-  if (!rtl_project_manager_ || rtl_async_task_running_) {
+  if (!rtl_project_manager_ || rtl_async_task_running_ ||
+      rtl_doctor_action_future_.valid() || rtl_toolchain_loading_) {
     return;
   }
   RtlLibraryEntry* entry = rtl_project_manager_->FindEntryById(moduleId);
@@ -1372,7 +1385,9 @@ std::vector<Port> Application::GetRuntimePortsForComponent(
   ports.reserve(def->port_count);
   for (int i = 0; i < def->port_count; ++i) {
     const ComponentPortDef& src = def->ports[i];
-    ports.push_back({src.id, src.rel_pos, src.color, src.is_input, src.type,
+    ports.push_back({src.id, plc_emulator::GetPneumaticPortPosition(
+                                comp, src.id, src.rel_pos),
+                     src.color, src.is_input, src.type,
                      src.role ? src.role : ""});
   }
   return ports;
@@ -1863,188 +1878,163 @@ bool Application::ImportRtlComponentPackage() {
 #endif
 }
 
-bool Application::RunRtlToolScript(const std::string& script_name,
-                                   const std::string& launch_status,
-                                   const std::string& success_status,
-                                   const std::string& failure_status) {
-#ifdef _WIN32
-  namespace fs = std::filesystem;
-
-  fs::path tools_dir = fs::current_path() / "tools";
-  fs::path script_path = tools_dir / script_name;
-
-  if (!fs::exists(script_path)) {
-    char status_buf[1024];
-    plc::FormatString(status_buf, sizeof(status_buf),
-                      "ui.rtl.status_script_missing",
-                      "%s not found: %s", script_name.c_str(),
-                      script_path.string().c_str());
-    rtl_status_message_ = status_buf;
-    return false;
-  }
-
-  std::string params =
-      "-NoProfile -ExecutionPolicy Bypass -File \"" + script_path.string() + "\"";
-  std::string tools_dir_str = tools_dir.string();
-
-  rtl_status_message_ = launch_status;
-
-  std::thread([this, params, tools_dir_str, success_status, failure_status]() {
-    HINSTANCE result = ShellExecuteA(
-        nullptr,
-        "open",
-        "pwsh.exe",
-        params.c_str(),
-        tools_dir_str.c_str(),
-        SW_SHOWNORMAL);
-
-    bool ok = reinterpret_cast<intptr_t>(result) > 32;
-    if (!ok) {
-      // 4. pwsh 실행 실패 시 powershell 시도
-      result = ShellExecuteA(
-          nullptr,
-          "open",
-          "powershell.exe",
-          params.c_str(),
-          tools_dir_str.c_str(),
-          SW_SHOWNORMAL);
-      ok = reinterpret_cast<intptr_t>(result) > 32;
-    }
-
-    rtl_status_message_ = ok
-        ? success_status
-        : (failure_status + " ShellExecute code=" +
-           std::to_string(reinterpret_cast<intptr_t>(result)));
-  }).detach();
-
-  return true;
-#else
-  rtl_status_message_ = TR("ui.rtl.status_tools_windows_only",
-                           "RTL tool scripts are only supported on Windows.");
-  return false;
-#endif
-}
-
-bool Application::InstallRtlToolchain() {
-  return RunRtlToolScript("setup_tools.ps1",
-                          "Starting setup_tools.ps1...",
-                          "Running setup_tools.ps1 with PowerShell.",
-                          "Failed to launch setup_tools.ps1.");
-}
-  
 void Application::RenderRtlToolchainPanel() {
-  if (!show_rtl_toolchain_panel_) {
-    return;
+  if (!rtl_doctor_profile_loaded_) {
+    rtl_doctor_profile_ = plc_emulator::WslToolchain::LoadProfile();
+    rtl_doctor_profile_loaded_ = true;
   }
   PollRtlToolchainRefresh();
-  if (!rtl_toolchain_loading_ && !rtl_toolchain_status_valid_) {
-    RequestRtlToolchainRefresh();
+  if (rtl_doctor_action_future_.valid() &&
+      rtl_doctor_action_future_.wait_for(std::chrono::milliseconds(0)) ==
+          std::future_status::ready) {
+    const auto result = rtl_doctor_action_future_.get();
+    rtl_status_message_ = result.output + "\n" + result.error;
+    if (result.Succeeded() &&
+        rtl_status_message_.find_first_not_of("\r\n ") == std::string::npos)
+      rtl_status_message_ =
+          TR("ui.rtl.doctor_action_done", "Action completed.");
+    const bool stopped =
+        result.Succeeded() &&
+        rtl_doctor_pending_action_ == plc_emulator::WslAction::kStop;
+    rtl_toolchain_status_valid_ = stopped;
+    if (stopped) {
+      rtl_toolchain_status_.doctor.ready = false;
+      rtl_toolchain_status_.doctor.checks.clear();
+      rtl_toolchain_status_.verilatorFound = false;
+      rtl_toolchain_status_.compilerFound = false;
+      rtl_toolchain_status_.makeFound = false;
+    }
   }
-  if (!ImGui::Begin(TR("ui.rtl.toolchain_title", "RTL Toolchain Settings"), &show_rtl_toolchain_panel_)) {
-    ImVec2 window_min = ImGui::GetWindowPos();
-    ImVec2 window_size = ImGui::GetWindowSize();
-    ImVec2 window_max(window_min.x + window_size.x,
-                      window_min.y + window_size.y);
-    RegisterOverlayInputCaptureRect(
-        window_min, window_max,
-        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
-            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+  if (!show_rtl_toolchain_panel_)
+    return;
+  if (!rtl_toolchain_loading_ && !rtl_toolchain_status_valid_ &&
+      !rtl_doctor_action_future_.valid())
+    RequestRtlToolchainRefresh();
+  const bool busy = rtl_toolchain_loading_ ||
+                    rtl_doctor_action_future_.valid() ||
+                    rtl_async_task_running_;
+  ImGui::SetNextWindowSize(ImVec2(720, 680), ImGuiCond_FirstUseEver);
+  const bool visible =
+      ImGui::Begin(TR("ui.rtl.tool_doctor", "RTL Tool Doctor (WSL2)"),
+                   &show_rtl_toolchain_panel_);
+  const ImVec2 minimum = ImGui::GetWindowPos();
+  const ImVec2 size = ImGui::GetWindowSize();
+  RegisterOverlayInputCaptureRect(
+      minimum, {minimum.x + size.x, minimum.y + size.y},
+      ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
+          ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
+  if (!visible) {
     ImGui::End();
     return;
   }
-  {
-    ImVec2 window_min = ImGui::GetWindowPos();
-    ImVec2 window_size = ImGui::GetWindowSize();
-    ImVec2 window_max(window_min.x + window_size.x,
-                      window_min.y + window_size.y);
-    RegisterOverlayInputCaptureRect(
-        window_min, window_max,
-        ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) ||
-            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) ||
-            ImGui::IsAnyItemActive());
+  ImGui::TextWrapped("%s", TR("ui.rtl.doctor_description",
+                              "RTL analysis/build uses WSL2. Component workers "
+                              "run natively on Windows."));
+  ImGui::BeginDisabled(busy);
+  const char* distribution_label =
+      rtl_doctor_profile_.distribution.empty()
+          ? TR("ui.rtl.doctor_default", "Default distribution")
+          : rtl_doctor_profile_.distribution.c_str();
+  if (ImGui::BeginCombo(TR("ui.rtl.doctor_distribution", "Distribution"),
+                        distribution_label)) {
+    if (ImGui::Selectable(TR("ui.rtl.doctor_default", "Default distribution"),
+                          rtl_doctor_profile_.distribution.empty()))
+      rtl_doctor_profile_.distribution.clear();
+    for (const auto& distribution :
+         rtl_toolchain_status_.doctor.distributions) {
+      const std::string label = distribution.name + " [WSL" +
+                                std::to_string(distribution.version) + "]";
+      if (ImGui::Selectable(label.c_str(), rtl_doctor_profile_.distribution ==
+                                               distribution.name))
+        rtl_doctor_profile_.distribution = distribution.name;
+    }
+    ImGui::EndCombo();
   }
-  if (ImGui::Button(TR("ui.common.refresh", "Refresh"))) {
+  ImGui::InputInt(TR("ui.rtl.doctor_cpu", "Build CPU budget"),
+                  &rtl_doctor_profile_.cpu_budget);
+  rtl_doctor_profile_.cpu_budget =
+      std::clamp(rtl_doctor_profile_.cpu_budget, 1, 64);
+  if (ImGui::Button(TR("ui.rtl.doctor_save", "Save and diagnose"))) {
+    if (plc_emulator::WslToolchain::SaveProfile(rtl_doctor_profile_)) {
+      rtl_toolchain_status_valid_ = false;
+      RequestRtlToolchainRefresh();
+    } else
+      rtl_status_message_ =
+          TR("ui.rtl.doctor_save_failed", "Unable to save WSL profile.");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button(TR("ui.rtl.doctor_diagnose", "Diagnose saved profile"))) {
     rtl_toolchain_status_valid_ = false;
     RequestRtlToolchainRefresh();
   }
-  ImGui::SameLine();
-  if (rtl_toolchain_loading_) {
-    ImGui::TextUnformatted(
-        TR("ui.rtl.loading_toolchain", "Loading RTL toolchain status..."));
-  } else if (!rtl_toolchain_status_valid_) {
-    ImGui::TextUnformatted(
-        TR("ui.rtl.not_loaded", "Toolchain status not loaded yet."));
+  ImGui::EndDisabled();
+  if (busy)
+    ImGui::TextUnformatted(TR("ui.rtl.doctor_busy", "Working..."));
+  ImGui::Separator();
+  for (const auto& check : rtl_toolchain_status_.doctor.checks) {
+    const char* label = check.name.c_str();
+    if (check.name == "WSL host")
+      label = TR("ui.rtl.doctor_host", "WSL host");
+    else if (check.name == "WSL2 distribution")
+      label = TR("ui.rtl.doctor_wsl2", "WSL2 distribution");
+    else if (check.name == "Linux kernel")
+      label = TR("ui.rtl.doctor_kernel", "Linux kernel");
+    else if (check.name == "MinGW Windows compiler")
+      label = TR("ui.rtl.doctor_mingw", "MinGW Windows compiler");
+    else if (check.name == "C++ compiler")
+      label = TR("ui.rtl.doctor_compiler", "C++ compiler");
+    ImGui::PushStyleColor(ImGuiCol_Text, check.passed
+                                             ? ImVec4(0.1f, 0.6f, 0.2f, 1)
+                                             : ImVec4(0.9f, 0.2f, 0.1f, 1));
+    const bool expanded = ImGui::TreeNodeEx(
+        check.name.c_str(), ImGuiTreeNodeFlags_None, "%s: %s", label,
+        check.passed ? TR("ui.rtl.found", "Found")
+                     : TR("ui.rtl.missing", "Missing"));
+    ImGui::PopStyleColor();
+    if (expanded) {
+      ImGui::TextWrapped("%s", check.detail.c_str());
+      ImGui::TreePop();
+    }
   }
   ImGui::Separator();
-
-  if (!rtl_toolchain_status_valid_) {
-    ImGui::TextWrapped(
-        "%s", TR("ui.rtl.loading_native_toolchain",
-                 "Loading native RTL toolchain state."));
-    ImGui::TextWrapped("%s", rtl_status_message_.c_str());
-    ImGui::End();
-    return;
-  }
-
-  const RtlToolchainStatus& status = rtl_toolchain_status_;
-  char buf[512];
-
-  plc::FormatString(buf, sizeof(buf), "ui.rtl.verilator_status",
-                    "Verilator: %s",
-                    status.verilatorFound ? TR("ui.rtl.found", "Found")
-                                          : TR("ui.rtl.missing", "Missing"));
-  ImGui::TextUnformatted(buf);
-
-  plc::FormatString(buf, sizeof(buf), "ui.rtl.compiler_status",
-                    "Compiler (g++): %s",
-                    status.compilerFound ? TR("ui.rtl.found", "Found")
-                                         : TR("ui.rtl.missing", "Missing"));
-  ImGui::TextUnformatted(buf);
-
-  plc::FormatString(buf, sizeof(buf), "ui.rtl.make_status", "make: %s",
-                    status.makeFound ? TR("ui.rtl.found", "Found")
-                                     : TR("ui.rtl.missing", "Missing"));
-  ImGui::TextUnformatted(buf);
-
-  ImGui::TextWrapped("%s", status.description.c_str());
-  if (status.verilatorFound) {
-    ImGui::TextWrapped("verilator: %s", status.verilatorPath.c_str());
-  }
-  if (status.compilerFound) {
-    ImGui::TextWrapped("compiler: %s", status.compilerPath.c_str());
-  }
-  if (status.makeFound) {
-    ImGui::TextWrapped("make: %s", status.makePath.c_str());
-  }
-  if (!status.mingwBinPath.empty()) {
-    ImGui::TextWrapped("mingw64/bin: %s", status.mingwBinPath.c_str());
-  }
-  if (!status.msys2Root.empty()) {
-    ImGui::TextWrapped("MSYS2 root: %s", status.msys2Root.c_str());
-  }
-
+  ImGui::BeginDisabled(busy);
+  const auto action_button = [this](const char* label,
+                                    plc_emulator::WslAction action) {
+    if (!ImGui::Button(label))
+      return;
+    auto profile = rtl_doctor_profile_;
+    if (profile.distribution.empty())
+      profile.distribution = rtl_toolchain_status_.doctor.profile.distribution;
+    rtl_doctor_pending_action_ = action;
+    rtl_doctor_action_future_ =
+        std::async(std::launch::async, [profile, action]() {
+          return plc_emulator::WslToolchain::ExecuteAction(action, profile);
+        });
+    rtl_status_message_ = TR("ui.rtl.doctor_busy", "Working...");
+  };
+  action_button(TR("ui.rtl.doctor_install_wsl", "Install WSL2 / Ubuntu"),
+                plc_emulator::WslAction::kInstallWsl);
+  action_button(TR("ui.rtl.doctor_install_tools", "Install / repair RTL tools"),
+                plc_emulator::WslAction::kInstallTools);
+  action_button(TR("ui.rtl.doctor_start", "Start selected distribution"),
+                plc_emulator::WslAction::kStart);
+  action_button(TR("ui.rtl.doctor_stop", "Stop selected distribution"),
+                plc_emulator::WslAction::kStop);
+  action_button(
+      TR("ui.rtl.doctor_convert", "Convert selected distribution to WSL2"),
+      plc_emulator::WslAction::kConvertToWsl2);
+  action_button(TR("ui.rtl.doctor_update", "Update WSL"),
+                plc_emulator::WslAction::kUpdateWsl);
+  ImGui::EndDisabled();
+  ImGui::TextWrapped(
+      "%s",
+      TR("ui.rtl.doctor_note",
+         "Tool installation uses apt in Ubuntu/Debian. Windows may request "
+         "administrator access or a restart for WSL installation."));
   ImGui::Separator();
-  if (ImGui::Button(TR("ui.rtl.install_toolchain",
-                       "Install Native RTL Toolchain"))) {
-    InstallRtlToolchain();
-    rtl_toolchain_status_valid_ = false;
-  }
-  ImGui::SameLine();
-  if (ImGui::Button(TR("ui.rtl.verify_toolchain", "Verify Setup"))) {
-    RunRtlToolScript("verify_setup.ps1",
-                     "Starting verify_setup.ps1...",
-                     "Running verify_setup.ps1 with PowerShell.",
-                     "Failed to launch verify_setup.ps1.");
-  }
-  ImGui::SameLine();
-  if (ImGui::Button(TR("ui.rtl.delete_toolchain", "Delete Tools"))) {
-    RunRtlToolScript("Delete_setup.ps1",
-                     "Starting Delete_setup.ps1...",
-                     "Running Delete_setup.ps1 with PowerShell.",
-                     "Failed to launch Delete_setup.ps1.");
-    rtl_toolchain_status_valid_ = false;
-  }
-
+  ImGui::BeginChild("##RtlDoctorLog", ImVec2(0, 140), true);
+  ImGui::TextWrapped("%s", rtl_status_message_.c_str());
+  ImGui::EndChild();
   ImGui::End();
 }
 

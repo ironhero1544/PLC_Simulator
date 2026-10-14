@@ -217,7 +217,8 @@ namespace plc {
         enum class ComponentListFilter {
           ALL,
           AUTOMATION,
-          SEMICONDUCTOR
+          SEMICONDUCTOR,
+          kAutomationExam
         };
 
         enum class PhysicsLodTier {
@@ -324,6 +325,19 @@ namespace plc {
 
         void UpdateActuators(float delta_time, bool skip_cylinder_update);
         void UpdateActuatorsImpl(float delta_time, bool skip_cylinder_update);
+        void UpdateServoActuators(float delta_time);
+
+        bool ApplyFiberSettings(int component_id, const FiberSettings& settings);
+        bool ApplyHmiSettings(int component_id, const HmiSettings& settings);
+        bool ApplyWarehouseDrive(int component_id, int cylinder_id, float travel);
+        bool SetHmiButton(int component_id, int button, bool pressed);
+        void ReleaseHmiButtons(PlacedComponent* component);
+        bool OpenHmiEditor(int component_id);
+        void CloseHmiEditor();
+        void RenderHmiEditor(int component_id);
+        void UpdateStorageSensorDevices();
+        void RenderStorageSensorControls(int component_id);
+        bool ApplyAxisSettings(int component_id, const AxisSettings& settings);
 
         std::vector<std::pair<int, bool>> GetPortsForComponent(
                 const PlacedComponent& comp);
@@ -366,6 +380,7 @@ namespace plc {
         void ProcessDeferredCanvasWheelInput();
 
         void RenderPLCDebugPanel();
+        void SetApplicationMode(Mode mode);
         void RenderRtlLibraryPanel();
         void RenderRtlEditor();
         void RenderRtlToolchainPanel();
@@ -414,6 +429,16 @@ namespace plc {
         void RenderTagPopup();
         void OpenTagPopupForWire(int wire_id);
         void RenderComponentContextMenu();
+        void RenderZLayerPanel();
+        enum class RenderLayerEdit { kOpacity, kVisibility, kGroup };
+        void RenderLayerPanel();
+        void ApplyRenderLayerEdit(RenderLayerEdit edit, float value,
+                                  const std::string& group = "",
+                                  bool record_undo = true);
+        void MoveSelectedRenderLayers(int direction, int target_id = -1);
+        void SelectRenderLayerRow(int component_id, bool additive,
+                                  bool range);
+        bool ApplyZLayerConfig(int component_id, const ZLayerConfig& config);
         void OpenComponentContextMenu(int component_id, ImVec2 screen_pos);
         void RotateSelectedComponent(int delta_quadrants);
         WiringUndoState CaptureWiringState() const;
@@ -564,6 +589,29 @@ namespace plc {
         Mode current_mode_;
 
         ToolType current_tool_;
+        bool show_z_layer_panel_ = false;
+        bool show_render_layer_panel_ = false;
+        int render_layer_anchor_id_ = -1;
+        bool render_layer_brush_selecting_ = false;
+        char render_group_buffer_[128] = {};
+        std::vector<size_t> render_layer_order_;
+        AxisSettings axis_edit_settings_;
+        bool show_pneumatic_front_ = false;
+        int pneumatic_front_component_id_ = -1;
+        void RenderPneumaticFrontPreview();
+        bool physics_paused_ = false;
+        int z_edit_component_id_ = -1;
+        ZLayerConfig z_edit_config_;
+        FiberSettings fiber_edit_settings_;
+        HmiSettings hmi_edit_settings_;
+        int hmi_selected_widget_ = -1;
+        int hmi_edit_page_ = 0;
+        bool hmi_grid_snap_ = true;
+        bool hmi_resize_drag_ = false;
+        Position hmi_drag_start_position_;
+        Size hmi_drag_start_size_;
+        int hmi_editor_component_id_ = -1;
+        bool hmi_editor_open_pending_ = false;
 
         bool running_;
 
@@ -601,6 +649,7 @@ namespace plc {
         std::vector<int> box_select_base_wire_ids_;
         ComponentListViewMode component_list_view_mode_;
         ComponentListFilter component_list_filter_;
+        int component_function_filter_ = 0;
 
         std::vector<Wire> wires_;
         int next_wire_id_;
@@ -611,6 +660,7 @@ namespace plc {
         char tag_text_buffer_[64];
 
         bool is_connecting_;
+        WireKind pending_wire_kind_ = WireKind::kElectric;
         int wire_start_component_id_;
         int wire_start_port_id_;
         ImVec2 wire_start_pos_;
@@ -722,6 +772,7 @@ namespace plc {
         ImVec2 pen_component_adjust_start_screen_pos_;
         bool show_restart_popup_;
         bool show_shortcut_help_popup_;
+        bool show_plc_engine_status_ = false;
         bool show_component_context_menu_;
         bool show_rtl_library_panel_;
         bool show_rtl_toolchain_panel_;
@@ -729,6 +780,11 @@ namespace plc {
         bool rtl_toolchain_status_valid_;
         RtlToolchainStatus rtl_toolchain_status_;
         std::future<RtlToolchainStatus> rtl_toolchain_future_;
+        std::future<plc_emulator::WslProcessResult> rtl_doctor_action_future_;
+        plc_emulator::WslProfile rtl_doctor_profile_;
+        plc_emulator::WslAction rtl_doctor_pending_action_ =
+            plc_emulator::WslAction::kStart;
+        bool rtl_doctor_profile_loaded_ = false;
         bool rtl_async_task_running_;
         std::future<RtlAsyncTaskResult> rtl_async_task_future_;
         std::string selected_rtl_module_id_;
@@ -799,15 +855,9 @@ namespace plc {
                                        bool include_source_files);
         bool ImportRtlSources(const std::string& module_id);
         bool ImportRtlComponentPackage();
-        bool RunRtlToolScript(const std::string& script_name,
-                              const std::string& launch_status,
-                              const std::string& success_status,
-                              const std::string& failure_status);
-        bool InstallRtlToolchain();
         void InvalidateRtlSourceTreeCache();
         void RebuildCachedRtlSourceTree(const RtlLibraryEntry& entry);
     };
 
 }  /* namespace plc */
 #endif  /* PLC_EMULATOR_INCLUDE_PLC_EMULATOR_CORE_APPLICATION_H_ */
-

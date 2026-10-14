@@ -122,6 +122,19 @@ bool CompiledPLCExecutor::LoadProgram(
     port.sending = port.receiving = false;
   }
   program_ = std::move(candidate);
+  cell_monitor_sources_.clear();
+  for (size_t index = 0; index < program_.instructions.size(); ++index) {
+    const auto& instruction = program_.instructions[index];
+    if (instruction.rung >= 0 && instruction.cell >= 0)
+      cell_monitor_sources_[{instruction.rung, instruction.cell}].emplace_back(
+          index, SIZE_MAX);
+    for (size_t observation = 0; observation < instruction.observations.size();
+         ++observation) {
+      const auto& source = instruction.observations[observation];
+      cell_monitor_sources_[{source.rung, source.cell}].emplace_back(
+          index, observation);
+    }
+  }
   resolved_program_ = program_;
   BuildSourceSteps();
   InitializeSteps();
@@ -194,26 +207,25 @@ std::optional<bool> CompiledPLCExecutor::GetCellPower(int rung,
                                                       int cell) const {
   if (!has_scan_observations_)
     return std::nullopt;
+  const auto sources = cell_monitor_sources_.find({rung, cell});
+  if (sources == cell_monitor_sources_.end()) return std::nullopt;
   bool found = false;
   bool power = false;
-  for (size_t index = 0; index < program_.instructions.size(); ++index) {
-    const auto& instruction = program_.instructions[index];
-    if (instruction.rung == rung && instruction.cell == cell) {
+  for (const auto& [index, observation_index] : sources->second) {
+    if (observation_index == SIZE_MAX) {
       found = true;
       power = power || instruction_power_[index] != 0;
+      continue;
     }
-    for (const auto& observation : instruction.observations) {
-      if (observation.rung == rung && observation.cell == cell &&
-          observation.gate < observed_gates_[index].size()) {
-        found = true;
-        bool active = observed_gates_[index][observation.gate] != 0;
-        for (const uint32_t incoming : observation.incoming_gates) {
-          active = active && incoming < observed_gates_[index].size() &&
-                   observed_gates_[index][incoming] != 0;
-        }
-        power = power || active;
-      }
-    }
+    const auto& observation =
+        program_.instructions[index].observations[observation_index];
+    if (observation.gate >= observed_gates_[index].size()) continue;
+    found = true;
+    bool active = observed_gates_[index][observation.gate] != 0;
+    for (const uint32_t incoming : observation.incoming_gates)
+      active = active && incoming < observed_gates_[index].size() &&
+               observed_gates_[index][incoming] != 0;
+    power = power || active;
   }
   return found ? std::optional<bool>(power) : std::nullopt;
 }

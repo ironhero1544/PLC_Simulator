@@ -157,6 +157,8 @@ void InitProcessingCylinderDefaults(PlacedComponent* comp) {
   if (!comp) {
     return;
   }
+  comp->z_config = {1.0f, 2.0f, 2.0f};
+  comp->z_state.current_height = 2.0f;
   comp->internalStates[state_keys::kPosition] = 30.0f;
   comp->internalStates[state_keys::kMotorOn] = 0.0f;
   comp->internalStates[state_keys::kRotationAngle] = 0.0f;

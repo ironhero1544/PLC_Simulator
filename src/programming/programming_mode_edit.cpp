@@ -7,6 +7,7 @@
 #include "plc_emulator/programming/ladder_program_utils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
@@ -19,6 +20,17 @@
 namespace plc {
 
 namespace {
+LadderInstructionType InstructionShortcut(int key, bool shift) {
+  if (key == ImGuiKey_F5) return LadderInstructionType::XIC;
+  if (key == ImGuiKey_F6) return LadderInstructionType::XIO;
+  if (key == ImGuiKey_F7) {
+    return shift ? LadderInstructionType::RISING_CONTACT
+                 : LadderInstructionType::OTE;
+  }
+  return shift ? LadderInstructionType::FALLING_CONTACT
+               : LadderInstructionType::APPLICATION;
+}
+
 void AppendVerticalConnectionComponents(int x,
                                         const std::vector<int>& source_rungs,
                                         int rung_offset,
@@ -67,6 +79,92 @@ void to_upper(char* str) {
   }
 }
 
+int ProgrammingMode::InstructionColumns(
+    const LadderInstruction& instruction) const {
+  using Type = LadderInstructionType;
+  if (instruction.type == Type::EMPTY || instruction.type == Type::HLINE ||
+      instruction.type == Type::kWrappingSource ||
+      instruction.type == Type::kWrappingDestination) return 1;
+  int minimum = 1;
+  const bool contact = instruction.type == Type::XIC ||
+      instruction.type == Type::XIO || instruction.type == Type::RISING_CONTACT ||
+      instruction.type == Type::FALLING_CONTACT;
+  if (instruction.type == Type::TON || instruction.type == Type::CTU)
+    minimum = 2;
+  if (instruction.type == Type::APPLICATION || instruction.type == Type::SET ||
+      instruction.type == Type::RST || instruction.type == Type::COMPARISON ||
+      instruction.type == Type::RST_TMR_CTR || instruction.type == Type::BKRST) {
+    minimum = 2;
+  }
+  std::string label = instruction.address;
+  if (minimum > 1 && !contact)
+    label = plc_emulator::programming::FormatCellInput(instruction);
+  const float font_size = ImGui::GetCurrentContext() && ImGui::GetFont()
+      ? std::max(20.0f, ImGui::GetFontSize() * 1.35f) : 20.0f;
+  float text_width = static_cast<float>(label.size()) * font_size * 0.6f;
+  if (ImGui::GetCurrentContext() && ImGui::GetFont())
+    text_width = ImGui::GetFont()->CalcTextSizeA(
+        font_size,
+        std::numeric_limits<float>::max(), 0, label.c_str()).x;
+  const int measured = static_cast<int>(std::ceil(
+      (text_width + (minimum > 1 ? font_size * 3.0f
+                                 : 32.0f * GetLayoutScale())) /
+      std::max(1.0f, ladder_column_width_)));
+  return std::max(minimum, measured);
+}
+
+ProgrammingMode::InstructionSpan ProgrammingMode::GetInstructionSpan(
+    int rung, int anchor) const {
+  InstructionSpan span{anchor, anchor, anchor};
+  if (rung < 0 || rung >= static_cast<int>(ladder_program_.rungs.size()))
+    return span;
+  const auto& cells = ladder_program_.rungs[rung].cells;
+  if (anchor < 0 || anchor >= static_cast<int>(cells.size())) return span;
+  const int columns = InstructionColumns(cells[anchor]);
+  const bool output = IsLadderOutput(cells[anchor].type);
+  const int direction = output ? -1 : 1;
+  for (int offset = 1; offset < columns; ++offset) {
+    const int next = anchor + offset * direction;
+    if (next < 0 || next >= static_cast<int>(cells.size())) break;
+    if (cells[next].type != LadderInstructionType::EMPTY &&
+        cells[next].type != LadderInstructionType::HLINE) break;
+    const int boundary = output ? next + 1 : next;
+    bool blocked = false;
+    for (const auto& connection : ladder_program_.verticalConnections) {
+      if (connection.x == boundary &&
+          std::find(connection.rungs.begin(), connection.rungs.end(), rung) !=
+              connection.rungs.end()) blocked = true;
+    }
+    if (output) {
+      for (int prior = 0; prior < next; ++prior) {
+        if (cells[prior].type != LadderInstructionType::EMPTY &&
+            cells[prior].type != LadderInstructionType::HLINE &&
+            !IsLadderOutput(cells[prior].type) &&
+            GetInstructionSpan(rung, prior).last >= next) blocked = true;
+      }
+    }
+    if (blocked) break;
+    span.first = std::min(span.first, next);
+    span.last = std::max(span.last, next);
+  }
+  return span;
+}
+
+ProgrammingMode::InstructionSpan ProgrammingMode::GetCellSpan(
+    int rung, int column) const {
+  if (rung >= 0 && rung < static_cast<int>(ladder_program_.rungs.size()) &&
+      !ladder_program_.rungs[rung].isEndRung) {
+    const auto& cells = ladder_program_.rungs[rung].cells;
+    for (int anchor = 0; anchor < static_cast<int>(cells.size()); ++anchor) {
+      if (cells[anchor].type == LadderInstructionType::EMPTY ||
+          cells[anchor].type == LadderInstructionType::HLINE) continue;
+      const InstructionSpan span = GetInstructionSpan(rung, anchor);
+      if (column >= span.first && column <= span.last) return span;
+    }
+  }
+  return {column, column, column};
+}
+
 void ProgrammingMode::HandleKeyboardInput(int key) {
   if (key == ImGuiKey_F4 && !is_monitor_mode_) {
     CompileLadderToOpenPLC();
@@ -74,16 +172,11 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
   }
   const bool any_popup_open =
       show_address_popup_ || show_rung_memo_popup_ || show_vertical_dialog_;
-  const bool is_f5_f6_f7 =
-      (key == ImGuiKey_F5 || key == ImGuiKey_F6 || key == ImGuiKey_F7);
+  const bool is_instruction_shortcut =
+      key >= ImGuiKey_F5 && key <= ImGuiKey_F8;
   if (any_popup_open) {
-    if (!is_monitor_mode_ && show_address_popup_ && is_f5_f6_f7) {
-      pending_instruction_type_ =
-          (key == ImGuiKey_F5)   ? (ImGui::GetIO().KeyShift
-              ? LadderInstructionType::RISING_CONTACT : LadderInstructionType::XIC)
-          : (key == ImGuiKey_F6) ? (ImGui::GetIO().KeyShift
-              ? LadderInstructionType::FALLING_CONTACT : LadderInstructionType::XIO)
-                                 : LadderInstructionType::OTE;
+    if (!is_monitor_mode_ && show_address_popup_ && is_instruction_shortcut) {
+      pending_instruction_type_ = InstructionShortcut(key, ImGui::GetIO().KeyShift);
       if (pending_instruction_type_ == LadderInstructionType::OTE) {
         SelectSingleCell(selected_rung_, GetColumnCount() - 1, false);
       }
@@ -167,12 +260,7 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
       case ImGuiKey_F7:
       case ImGuiKey_F8:
         pending_action_.type = PendingActionType::ADD_INSTRUCTION;
-        pending_action_.instructionType =
-              (key == ImGuiKey_F5)   ? (shiftPressed
-                  ? LadderInstructionType::RISING_CONTACT : LadderInstructionType::XIC)
-              : (key == ImGuiKey_F6) ? (shiftPressed
-                  ? LadderInstructionType::FALLING_CONTACT : LadderInstructionType::XIO)
-                                     : LadderInstructionType::OTE;
+        pending_action_.instructionType = InstructionShortcut(key, shiftPressed);
         return;
       case ImGuiKey_F9:
         if (shiftPressed) {
@@ -220,11 +308,13 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
 
   switch (key) {
     case ImGuiKey_LeftArrow:
-      selected_cell_ = std::max(0, selected_cell_ - 1);
+      selected_cell_ = std::max(0,
+          GetCellSpan(selected_rung_, selected_cell_).first - 1);
       rung_selection_mode_ = false;
       break;
     case ImGuiKey_RightArrow:
-      selected_cell_ = std::min(GetColumnCount() - 1, selected_cell_ + 1);
+      selected_cell_ = std::min(GetColumnCount() - 1,
+          GetCellSpan(selected_rung_, selected_cell_).last + 1);
       rung_selection_mode_ = false;
       break;
     case ImGuiKey_UpArrow:
@@ -238,15 +328,10 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
       }
       break;
     case ImGuiKey_F2:
-      if (!is_monitor_mode_) {
-        is_monitor_mode_ = true;
-        scan_time_initialized_ = false;
-        scan_accumulator_ = 0.0;
-        InitializeTimersAndCountersFromProgram();
-      }
+      SetMonitorMode(true);
       break;
     case ImGuiKey_F3:
-      is_monitor_mode_ = false;
+      SetMonitorMode(false);
       break;
   }
 
@@ -286,7 +371,8 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
         if (prev_rung >= static_cast<int>(ladder_program_.rungs.size()) - 1)
           continue;
 
-        if (next != (GetColumnCount() - 1)) {
+        if (next != (GetColumnCount() - 1) &&
+            GetCellSpan(prev_rung, next).anchor == next) {
           auto& dest = ladder_program_.rungs[prev_rung].cells[next];
           if (dest.type == LadderInstructionType::HLINE) {
             dest = LadderInstruction();
@@ -295,7 +381,8 @@ void ProgrammingMode::HandleKeyboardInput(int key) {
           }
         }
 
-        if (c != (GetColumnCount() - 1)) {
+        if (c != (GetColumnCount() - 1) &&
+            GetCellSpan(prev_rung, c).anchor == c) {
           auto& current = ladder_program_.rungs[prev_rung].cells[c];
           if (current.type == LadderInstructionType::EMPTY) {
             current.type = LadderInstructionType::HLINE;
@@ -465,6 +552,7 @@ void ProgrammingMode::SelectSingleCell(int rungIndex,
   }
 
   selected_rung_ = rungIndex;
+  cellIndex = GetCellSpan(rungIndex, cellIndex).anchor;
   selected_cell_ = cellIndex;
   rung_selection_mode_ = false;
   rung_selection_drag_active_ = false;
@@ -486,6 +574,7 @@ void ProgrammingMode::UpdateCellSelection(int rungIndex, int cellIndex) {
     return;
   }
 
+  cellIndex = GetCellSpan(rungIndex, cellIndex).anchor;
   selected_rung_ = rungIndex;
   selected_cell_ = cellIndex;
   rung_selection_mode_ = false;
@@ -538,6 +627,18 @@ bool ProgrammingMode::GetCellSelectionBounds(CellSelectionBounds* bounds) const 
       std::max(0, std::min(cell_selection_anchor_cell_, cell_selection_end_cell_));
   bounds->maxCell =
       std::max(0, std::min(std::max(cell_selection_anchor_cell_, cell_selection_end_cell_), (GetColumnCount() - 1)));
+  for (int pass = 0; pass < GetColumnCount(); ++pass) {
+    const int first = bounds->minCell;
+    const int last = bounds->maxCell;
+    for (int row = bounds->minRung; row <= bounds->maxRung; ++row) {
+      for (const int column : {first, last}) {
+        const InstructionSpan span = GetCellSpan(row, column);
+        bounds->minCell = std::min(bounds->minCell, span.first);
+        bounds->maxCell = std::max(bounds->maxCell, span.last);
+      }
+    }
+    if (first == bounds->minCell && last == bounds->maxCell) break;
+  }
   return bounds->minRung <= bounds->maxRung &&
          bounds->minCell <= bounds->maxCell;
 }
@@ -639,6 +740,15 @@ void ProgrammingMode::PasteCellClipboard() {
   if (targetCell + width > GetColumnCount()) {
     std::cout << "[WARN] Cell clipboard paste exceeds ladder width" << std::endl;
     return;
+  }
+  for (int row = targetRung; row < std::min(targetRung + height, endIndex); ++row) {
+    for (int column = targetCell; column < targetCell + width; ++column) {
+      const InstructionSpan span = GetCellSpan(row, column);
+      if (span.first < targetCell || span.last >= targetCell + width) {
+        inline_input_error_ = "Paste would split an existing instruction";
+        return;
+      }
+    }
   }
 
   PushProgrammingUndoState();
@@ -1068,12 +1178,17 @@ void ProgrammingMode::ConfirmInstruction() {
       selected_cell_ == 0) {
     instruction.type = LadderInstructionType::kWrappingDestination;
   }
-  const bool output = instruction.type == LadderInstructionType::OTE ||
-      instruction.type == LadderInstructionType::SET || instruction.type == LadderInstructionType::RST ||
-      instruction.type == LadderInstructionType::TON || instruction.type == LadderInstructionType::CTU ||
-      instruction.type == LadderInstructionType::APPLICATION;
+  const bool output = IsLadderOutput(instruction.type);
   const int target = output ? static_cast<int>(rung.cells.size()) - 1 : selected_cell_;
   if (target < 0 || target >= static_cast<int>(rung.cells.size())) return;
+  const LadderInstruction previous = rung.cells[target];
+  rung.cells[target] = instruction;
+  const InstructionSpan span = GetInstructionSpan(selected_rung_, target);
+  rung.cells[target] = previous;
+  if (span.last - span.first + 1 < InstructionColumns(instruction)) {
+    inline_input_error_ = "Instruction needs more free columns; use K wrapping";
+    return;
+  }
   const bool had_source =
       rung.cells[target].type == LadderInstructionType::kWrappingSource;
   PushProgrammingUndoState();
@@ -1087,8 +1202,9 @@ void ProgrammingMode::ConfirmInstruction() {
     inline_input_error_.clear();
     return;
   }
-  const int next_cell = output ? target :
-      std::min(target + 1, static_cast<int>(rung.cells.size()) - 1);
+  const int next_cell = output ? target : std::min(
+      GetInstructionSpan(selected_rung_, target).last + 1,
+      static_cast<int>(rung.cells.size()) - 1);
   SelectSingleCell(selected_rung_, next_cell, false);
   show_address_popup_ = false;
   inline_input_error_.clear();

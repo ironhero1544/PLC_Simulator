@@ -79,6 +79,8 @@ inline ImVec2 WorldToLocal(const PlacedComponent& comp, ImVec2 world) {
 
 inline bool IsPointInsideComponent(const PlacedComponent& comp,
                                    ImVec2 world) {
+  if (comp.carry_state.owner_id >= 0 && comp.carry_state.slot_id >= 1)
+    return false;
   ImVec2 local = WorldToLocal(comp, world);
   return local.x >= 0.0f && local.x <= comp.size.width && local.y >= 0.0f &&
          local.y <= comp.size.height;

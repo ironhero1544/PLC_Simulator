@@ -81,6 +81,22 @@ const ComponentPortDef kPorts[] = {
      {1.0f, 0.6f, 0.0f, 1.0f}, "Y16"},
     {31, {205.0f, 155.0f}, PortType::ELECTRIC, false,
      {1.0f, 0.6f, 0.0f, 1.0f}, "Y17"},
+    {33, {30.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X20"},
+    {34, {55.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X21"},
+    {35, {80.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X22"},
+    {36, {105.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X23"},
+    {37, {130.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X24"},
+    {38, {155.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X25"},
+    {39, {180.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X26"},
+    {40, {205.0f, 65.0f}, PortType::ELECTRIC, true,
+     {0.3f, 0.7f, 0.3f, 1.0f}, "X27"},
 };
 
 void RenderPlc(ImDrawList* draw_list,
@@ -95,7 +111,7 @@ void RenderPlc(ImDrawList* draw_list,
                      5.0f * zoom, 0, 2.0f);
 
   ImVec2 input_start = {screen_pos.x + 20 * zoom, screen_pos.y + 15 * zoom};
-  ImVec2 input_end = {screen_pos.x + 230 * zoom, screen_pos.y + 65 * zoom};
+  ImVec2 input_end = {screen_pos.x + 230 * zoom, screen_pos.y + 85 * zoom};
   draw_list->AddRectFilled(input_start, input_end, IM_COL32(232, 232, 232, 255),
                            3.0f * zoom);
   draw_list->AddRect(input_start, input_end, IM_COL32(100, 100, 100, 255),
@@ -227,6 +243,7 @@ void RenderPlc(ImDrawList* draw_list,
                          IM_COL32(255, 255, 255, 255), output_label);
     }
   }
+
 }
 
 void InitPlcDefaults(PlacedComponent* comp) {

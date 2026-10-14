@@ -3,6 +3,12 @@
 // Component logic and actuator updates.
 
 #include "plc_emulator/core/application.h"
+
+#include "plc_emulator/physics/servo_simulation.h"
+
+#include "plc_emulator/components/pneumatic_component.h"
+
+#include "plc_emulator/physics/z_layer.h"
 #include "plc_emulator/components/component_input_resolver.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/physics/component_physics_adapter.h"
@@ -119,6 +125,15 @@ void Application::UpdateActuatorsImpl(float delta_time,
                       &update_context);
   }
 
+  for (auto& component : placed_components_) {
+    if (component.type == ComponentType::kSuctionCylinder ||
+        component.type == ComponentType::kLiftSuction) {
+      const auto pressure = port_pressures_.find({component.instanceId, 6});
+      component.internalStates["vacuum_pressure"] =
+          pressure == port_pressures_.end() ? 0 : pressure->second;
+    }
+  }
+
   constexpr float kProcDrillUp = 30.0f;
   constexpr float kProcDrillDown = 15.0f;
   constexpr float kProcDrillSpeed = 20.0f;
@@ -196,6 +211,8 @@ void Application::UpdateActuatorsImpl(float delta_time,
     }
   }
 
+  UpdateServoActuators(delta_time);
+
   // Sensor and limit switch detection system.
   bool sensors_from_box2d = UpdateSensorsBox2d();
   if (!sensors_from_box2d) {
@@ -220,7 +237,8 @@ void Application::UpdateActuatorsImpl(float delta_time,
         int closestCylinderId = -1;
 
         for (const auto& workpiece : placed_components_) {
-          if (!IsWorkpiece(workpiece.type)) {
+          if (!IsWorkpiece(workpiece.type) ||
+              !plc_emulator::CanInteractAtHeight(sensor, workpiece)) {
             continue;
           }
           ImVec2 workpiece_center = {
@@ -234,7 +252,8 @@ void Application::UpdateActuatorsImpl(float delta_time,
         }
 
         for (const auto& cylinder : placed_components_) {
-          if (cylinder.type == ComponentType::CYLINDER) {
+          if (plc_emulator::IsLinearPneumaticCylinder(cylinder.type) &&
+              plc_emulator::CanInteractAtHeight(sensor, cylinder)) {
             ImVec2 piston_tip = GetCylinderRodTipWorld(cylinder);
             float distance = 0.0f;
             if (IsDirectionalHit(sensor_center, sensor_forward, piston_tip,
@@ -268,6 +287,44 @@ void Application::UpdateActuatorsImpl(float delta_time,
   }
 
   UpdateWorkpieceInteractions(deltaTime);
+  UpdateStorageSensorDevices();
+}
+
+void Application::UpdateServoActuators(float delta_time) {
+  static thread_local std::vector<std::pair<int, int>> status;
+  status.clear();
+  const auto flags = [](const AxisDriveState& axis) {
+    return (axis.ready ? 1 : 0) | (axis.in_position ? 2 : 0) |
+           (axis.alarm != 0 ? 4 : 0);
+  };
+  for (const auto& component : placed_components_) {
+    if (component.type == ComponentType::kServoAmplifier)
+      status.emplace_back(component.instanceId, flags(component.axis_state));
+  }
+  static thread_local std::vector<plc_emulator::PulseSource> pulses;
+  pulses.clear();
+  if (compiled_plc_executor_) {
+    for (const auto& component : placed_components_) {
+      if (component.type != ComponentType::PLC) continue;
+      for (int output = 0; output < 4; ++output) {
+        const auto total = compiled_plc_executor_->GetPhysicalPulseTotal(output);
+        if (total) {
+          pulses.push_back({component.instanceId, output, total->forward,
+              total->reverse, total->epoch, total->direction_output});
+        }
+      }
+    }
+  }
+  plc_emulator::StepServoNetwork(&placed_components_, wires_, port_voltages_,
+      pulses, delta_time, plc_output_mode_ == PlcOutputMode::SINK);
+  for (const auto& [id, previous] : status) {
+    const PlacedComponent* component = FindComponentById(id);
+    if (component && flags(component->axis_state) != previous) {
+      // Publish state transitions before the PLC scan in this physics step.
+      SimulateElectrical();
+      break;
+    }
+  }
 }
 
 void Application::UpdateBasicPhysicsImpl(float delta_time) {
@@ -366,7 +423,8 @@ void Application::UpdateBasicPhysicsImpl(float delta_time) {
         int closestCylinderId = -1;
         (void)closestCylinderId;  // Unused variable.
         for (const auto& workpiece : placed_components_) {
-          if (!IsWorkpiece(workpiece.type)) {
+          if (!IsWorkpiece(workpiece.type) ||
+              !plc_emulator::CanInteractAtHeight(sensor, workpiece)) {
             continue;
           }
           ImVec2 workpiece_center = {
@@ -380,7 +438,8 @@ void Application::UpdateBasicPhysicsImpl(float delta_time) {
         }
 
         for (const auto& cylinder : placed_components_) {
-          if (cylinder.type == ComponentType::CYLINDER) {
+          if (plc_emulator::IsLinearPneumaticCylinder(cylinder.type) &&
+              plc_emulator::CanInteractAtHeight(sensor, cylinder)) {
             ImVec2 piston_tip = GetCylinderRodTipWorld(cylinder);
             float distance = 0.0f;
             if (IsDirectionalHit(sensor_center, sensor_forward, piston_tip,

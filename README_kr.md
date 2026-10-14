@@ -11,6 +11,8 @@
 
 [프로젝트 개발 보고서](docs/Project_History.md) · [1.1.0 패치 노트](PATCH_NOTES_1.1.0.md)
 
+[프로그램 사용법 가이드](docs/guides/program/README.md) · [산업기사 3번 실습 가이드](docs/guides/exam03/GUIDE.md)
+
 ## 이 프로젝트를 만든 이유
 
 PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.  
@@ -59,7 +61,7 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 - 구문 강조를 포함한 통합 Verilog RTL 에디터
 - RTL 모듈 관리: RTL 라이브러리에서 모듈 생성, 이름 변경, 삭제, 정리
 - 분석, 빌드, 테스트벤치 워크플로우 및 전용 로그 패널
-- RTL 툴체인 관리: verilator 원클릭 설치, 검증, 삭제
+- WSL2 RTL Tool Doctor: 배포판/CPU 선택, 진단, 도구 설치, 시작/중지, WSL2 전환 및 업데이트 ([사용 안내](docs/RTL_WSL_TOOLCHAIN.md))
 - `.plccomp` 컴포넌트 패키지: Verilog 소스 포함 또는 런타임 전용 번들로 재사용 가능한 RTL 모듈 내보내기/가져오기
 - RTL 런타임 아티팩트가 `.plcproj` 프로젝트 패키지에 번들되어 크로스 머신 이식 가능
 
@@ -74,7 +76,7 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 
 - 배선, 레더, RTL 데이터를 담는 통합 프로젝트 패키지 형식 (`.plcproj`)
 - 배선 및 프로그래밍 모드에서 `Ctrl+S` 빠른 저장
-- NSIS 설치 프로그램에 언인스톨 시 RTL 툴체인 정리 옵션 포함
+- NSIS 설치 프로그램: 제거 시 공유 WSL 배포판과 도구는 유지
 - 1.0.x 프로젝트 파일과 하위 호환
 
 ### 다국어 및 도움말
@@ -90,7 +92,7 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 - C++20 컴파일러
 - OpenGL 런타임
 - Git (FetchContent 의존성 다운로드용)
-- *(선택)* 이전 Windows 버전에서 RTL 툴체인 스크립트 실행 시 PowerShell 7+
+- *(RTL 사용 시)* Windows의 WSL2, Linux 배포판, Verilator 5.x 이상, g++, make 및 MinGW-w64 POSIX (Windows 워커 EXE 생성); 도구 설치는 Ubuntu/Debian 지원
 
 ## 서드파티 라이브러리
 
@@ -152,7 +154,7 @@ src/                    # 현재 사용 중인 구현 코드
   rtl/                  # RTL 프로젝트/라이브러리/런타임 관리
   project/              # 프로젝트 파일 저장/불러오기, GX2 CSV
 resources/              # 폰트, i18n 언어 파일, 에셋
-tools/                  # RTL 툴체인 설치/검증/삭제 스크립트
+tools/                  # 기존 네이티브 RTL 스크립트 (WSL2 Tool Doctor에서는 사용하지 않음)
 tests/                  # 단위/통합 테스트
 legacy/                 # 구 MVP 코드 (참조 전용, 빌드 제외)
 ```

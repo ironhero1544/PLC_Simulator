@@ -1,9 +1,16 @@
+#include "plc_emulator/physics/storage_sensor_simulation.h"
 #include "plc_emulator/programming/execution_program.h"
+
+#include "plc_emulator/components/pneumatic_component.h"
 // app_project.cpp
 //
 // Project/ladder load/save helpers.
 
 #include "plc_emulator/core/application.h"
+
+#include "plc_emulator/components/wiring_port_rules.h"
+#include "plc_emulator/physics/z_layer.h"
+#include "plc_emulator/physics/ring_feed_simulation.h"
 #include "plc_emulator/components/component_registry.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/programming/ladder_program_utils.h"
@@ -22,6 +29,7 @@
 #include <limits>
 #include <map>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +40,88 @@ using json = nlohmann::json;
 
 namespace plc {
 namespace {
+
+std::vector<std::string> GetProjectRtlModuleIds(const json& layout) {
+  std::vector<std::string> module_ids;
+  const auto components = layout.find("components");
+  if (components == layout.end() || !components->is_array()) return module_ids;
+  for (const auto& component : *components) {
+    if (!component.is_object() ||
+        component.value("type", "") != "RTL_MODULE") continue;
+    const auto rtl = component.find("rtl");
+    if (rtl == component.end() || !rtl->is_object()) continue;
+    for (const char* key : {"module_id", "override_id"}) {
+      const std::string id = rtl->value(key, "");
+      if (!id.empty() &&
+          std::find(module_ids.begin(), module_ids.end(), id) == module_ids.end())
+        module_ids.push_back(id);
+    }
+  }
+  return module_ids;
+}
+
+FiberSettings ReadFiberSettings(const json& value) {
+  return {value.at("max_distance").get<double>(),
+          value.at("alignment_tolerance").get<double>(),
+          value.at("beam_width").get<double>(), value.at("dark_on").get<bool>()};
+}
+HmiSettings ReadHmiSettings(const json& value) {
+  HmiSettings settings;
+  settings.pages = value.value("pages", settings.pages);
+  if (!value.contains("widgets")) {
+    const auto buttons = value.at("buttons").get<std::array<std::string, 3>>();
+    for (size_t i = 0; i < buttons.size(); ++i) {
+      settings.widgets[i].address = buttons[i];
+      settings.widgets[i].momentary = value.at("momentary").get<bool>();
+    }
+    settings.widgets[3].address = value.at("display").get<std::string>();
+  } else {
+    const auto& widgets = value.at("widgets");
+    if (!widgets.is_array() || widgets.size() > kMaxHmiWidgets)
+      throw std::runtime_error("Invalid HMI widget list");
+    const float source_width = value.value("screen_width", 246.0f);
+    const float source_height = value.value("screen_height", 117.0f);
+    if (!std::isfinite(source_width) || !std::isfinite(source_height) ||
+        source_width <= 0 || source_height <= 0)
+      throw std::runtime_error("Invalid HMI screen dimensions");
+    const float scale_x = kHmiScreenWidth / source_width;
+    const float scale_y = kHmiScreenHeight / source_height;
+    settings.widgets.clear();
+    settings.widgets.reserve(widgets.size());
+    for (const auto& item : widgets) {
+      HmiWidget widget;
+      const std::string type = item.at("type").get<std::string>();
+      if (type == "button") widget.type = HmiWidgetType::kButton;
+      else if (type == "lamp") widget.type = HmiWidgetType::kLamp;
+      else if (type == "number") widget.type = HmiWidgetType::kNumber;
+      else if (type == "text") widget.type = HmiWidgetType::kText;
+      else if (type == "message") widget.type = HmiWidgetType::kMessage;
+      else throw std::runtime_error("Invalid HMI widget type");
+      widget.text = item.at("text").get<std::string>();
+      widget.address = item.at("address").get<std::string>();
+      widget.position = {item.at("x").get<float>(), item.at("y").get<float>()};
+      widget.size = {item.at("width").get<float>(), item.at("height").get<float>()};
+      widget.momentary = item.at("momentary").get<bool>();
+      widget.unit = item.at("unit").get<std::string>();
+      widget.decimals = item.at("decimals").get<int>();
+      widget.font_size = item.at("font_size").get<float>();
+      widget.on_color = item.at("on_color").get<uint32_t>();
+      widget.page = item.value("page", 0);
+      widget.target_page = item.value("target_page", -1);
+      widget.visibility_address = item.value("visibility_address", std::string{});
+      widget.messages = item.value("messages", widget.messages);
+      if (!std::isfinite(widget.font_size) || widget.font_size < 6 || widget.font_size > 32)
+        throw std::runtime_error("Invalid HMI font size");
+      widget.position.x *= scale_x;
+      widget.position.y *= scale_y;
+      widget.size.width *= scale_x;
+      widget.size.height *= scale_y;
+      widget.font_size = std::clamp(widget.font_size * std::min(scale_x, scale_y), 6.0f, 32.0f);
+      settings.widgets.push_back(std::move(widget));
+    }
+  }
+  return settings;
+}
 
 const char* ComponentTypeToString(ComponentType type) {
   switch (type) {
@@ -47,6 +137,25 @@ const char* ComponentTypeToString(ComponentType type) {
       return "SENSOR";
     case ComponentType::CYLINDER:
       return "CYLINDER";
+    case ComponentType::kSensorCylinder: return "SENSOR_CYLINDER";
+    case ComponentType::kSuctionCylinder: return "SUCTION_CYLINDER";
+    case ComponentType::kStopperCylinder: return "STOPPER_CYLINDER";
+    case ComponentType::kVacuumGenerator: return "VACUUM_GENERATOR";
+    case ComponentType::kDcMotor: return "DC_MOTOR";
+    case ComponentType::kDcMotorDriver: return "DC_MOTOR_DRIVER";
+    case ComponentType::kServoMotor: return "SERVO_MOTOR";
+    case ComponentType::kServoAmplifier: return "SERVO_AMPLIFIER";
+    case ComponentType::kServoLift: return "SERVO_LIFT";
+    case ComponentType::kLiftSuction: return "LIFT_SUCTION";
+    case ComponentType::kAcSupply: return "AC_SUPPLY";
+    case ComponentType::kWarehouse: return "WAREHOUSE";
+    case ComponentType::kDrivenWarehouse: return "DRIVEN_WAREHOUSE";
+    case ComponentType::kMagazine: return "MAGAZINE";
+    case ComponentType::kFiberAmplifier: return "FIBER_AMPLIFIER";
+    case ComponentType::kFiberTransmitter: return "FIBER_TRANSMITTER";
+    case ComponentType::kFiberReceiver: return "FIBER_RECEIVER";
+    case ComponentType::kTouchPanel: return "TOUCH_PANEL";
+
     case ComponentType::VALVE_SINGLE:
       return "VALVE_SINGLE";
     case ComponentType::VALVE_DOUBLE:
@@ -96,6 +205,43 @@ bool ComponentTypeFromString(const std::string& value, ComponentType* out) {
     *out = ComponentType::LIMIT_SWITCH;
   } else if (value == "SENSOR") {
     *out = ComponentType::SENSOR;
+  } else if (value == "SENSOR_CYLINDER") {
+    *out = ComponentType::kSensorCylinder;
+  } else if (value == "SUCTION_CYLINDER") {
+    *out = ComponentType::kSuctionCylinder;
+  } else if (value == "STOPPER_CYLINDER") {
+    *out = ComponentType::kStopperCylinder;
+  } else if (value == "DC_MOTOR_DRIVER") {
+    *out = ComponentType::kDcMotorDriver;
+
+  } else if (value == "DC_MOTOR") {
+    *out = ComponentType::kDcMotor;
+  } else if (value == "SERVO_MOTOR") {
+    *out = ComponentType::kServoMotor;
+  } else if (value == "SERVO_AMPLIFIER") {
+    *out = ComponentType::kServoAmplifier;
+  } else if (value == "SERVO_LIFT") {
+    *out = ComponentType::kServoLift;
+  } else if (value == "LIFT_SUCTION") {
+    *out = ComponentType::kLiftSuction;
+  } else if (value == "MAGAZINE") {
+    *out = ComponentType::kMagazine;
+  } else if (value == "DRIVEN_WAREHOUSE") {
+    *out = ComponentType::kDrivenWarehouse;
+  } else if (value == "WAREHOUSE") {
+    *out = ComponentType::kWarehouse;
+  } else if (value == "FIBER_AMPLIFIER") {
+    *out = ComponentType::kFiberAmplifier;
+  } else if (value == "FIBER_TRANSMITTER") {
+    *out = ComponentType::kFiberTransmitter;
+  } else if (value == "FIBER_RECEIVER") {
+    *out = ComponentType::kFiberReceiver;
+  } else if (value == "TOUCH_PANEL") {
+    *out = ComponentType::kTouchPanel;
+  } else if (value == "AC_SUPPLY") {
+    *out = ComponentType::kAcSupply;
+  } else if (value == "VACUUM_GENERATOR") {
+    *out = ComponentType::kVacuumGenerator;
   } else if (value == "CYLINDER") {
     *out = ComponentType::CYLINDER;
   } else if (value == "VALVE_SINGLE") {
@@ -135,7 +281,9 @@ bool ComponentTypeFromString(const std::string& value, ComponentType* out) {
 }
 
 bool IsSensorComponentType(ComponentType type) {
-  return type == ComponentType::SENSOR ||
+  return type == ComponentType::kFiberAmplifier ||
+         plc_emulator::IsSensorCylinder(type) ||
+         type == ComponentType::SENSOR ||
          type == ComponentType::INDUCTIVE_SENSOR ||
          type == ComponentType::RING_SENSOR;
 }
@@ -540,7 +688,7 @@ void Application::OnElectricalConfigChanged() {
 
 std::string Application::SerializeLayoutJson() const {
   json root;
-  root["version"] = 2;
+  root["version"] = 3;
   root["next_instance_id"] = next_instance_id_;
   root["next_wire_id"] = next_wire_id_;
   root["next_z_order"] = next_z_order_;
@@ -555,15 +703,69 @@ std::string Application::SerializeLayoutJson() const {
     json item;
     item["instance_id"] = comp.instanceId;
     item["type"] = ComponentTypeToString(comp.type);
-    item["x"] = comp.position.x;
-    item["y"] = comp.position.y;
+    item["x"] = comp.position.x - comp.warehouse_drive_offset.x;
+    item["y"] = comp.position.y - comp.warehouse_drive_offset.y;
     item["z_order"] = comp.z_order;
+    item["render_layer"] = {{"opacity", comp.render_opacity},
+                            {"hidden", comp.render_hidden},
+                            {"group", comp.render_group}};
+    if (comp.type == ComponentType::FRL) {
+      const auto pressure = comp.internalStates.find("air_pressure");
+      item["frl_pressure"] = pressure == comp.internalStates.end() ? 6.0f : pressure->second;
+    }
+    if (comp.type == ComponentType::kWarehouse) {
+      item["warehouse_drive"] = {{"cylinder_id", comp.warehouse_cylinder_id},
+                                 {"travel", comp.warehouse_travel}};
+    }
+    if (plc_emulator::IsServoSystem(comp.type)) {
+      const auto& axis = comp.axis_settings;
+      item["axis_settings"] = {{"pulses_per_turn", axis.pulses_per_turn},
+          {"lead_mm", axis.lead_mm}, {"stroke_mm", axis.stroke_mm},
+          {"max_speed", axis.max_speed}, {"acceleration", axis.acceleration}};
+    }
+    if (comp.type == ComponentType::kFiberAmplifier) {
+      const auto& fiber = comp.fiber_settings;
+      item["fiber_settings"] = {{"max_distance", fiber.max_distance},
+          {"alignment_tolerance", fiber.alignment_tolerance},
+          {"beam_width", fiber.beam_width}, {"dark_on", fiber.dark_on}};
+    }
+    if (comp.type == ComponentType::kTouchPanel) {
+      json widgets = json::array();
+      for (const auto& widget : comp.hmi_settings.widgets) {
+        const char* types[] = {"button", "lamp", "number", "text", "message"};
+        widgets.push_back({{"type", types[static_cast<int>(widget.type)]},
+            {"text", widget.text}, {"address", widget.address},
+            {"x", widget.position.x}, {"y", widget.position.y},
+            {"width", widget.size.width}, {"height", widget.size.height},
+            {"momentary", widget.momentary}, {"unit", widget.unit},
+            {"decimals", widget.decimals}, {"font_size", widget.font_size},
+            {"on_color", widget.on_color}, {"page", widget.page},
+            {"target_page", widget.target_page}, {"messages", widget.messages},
+            {"visibility_address", widget.visibility_address}});
+      }
+      item["hmi_settings"] = {{"screen_width", kHmiScreenWidth},
+                              {"screen_height", kHmiScreenHeight}, {"pages", comp.hmi_settings.pages}, {"widgets", widgets}};
+    }
+    if (IsWorkpiece(comp.type) && comp.carry_state.slot_id >= 1 &&
+        comp.carry_state.owner_id >= 0 &&
+        std::any_of(placed_components_.begin(), placed_components_.end(),
+                    [&](const auto& owner) {
+                      return owner.instanceId == comp.carry_state.owner_id &&
+                             plc::IsWarehouseType(owner.type);
+                    })) {
+      item["stored_slot"] = {{"warehouse_id", comp.carry_state.owner_id},
+                               {"slot_id", comp.carry_state.slot_id}};
+    }
+    item["z_config"] = {{"min_layer", comp.z_config.min_layer},
+        {"max_layer", comp.z_config.max_layer},
+        {"initial_height", comp.z_config.initial_height}};
     item["rotation_quadrants"] = comp.rotation_quadrants;
     item["flip_x"] = comp.flip_x;
     item["flip_y"] = comp.flip_y;
     if (!comp.customLabel.empty()) {
       item["custom_label"] = comp.customLabel;
     }
+    item["show_custom_label"] = comp.show_custom_label;
     if (comp.type == ComponentType::RTL_MODULE) {
       item["rtl"] = {
           {"module_id", comp.rtlModuleId},
@@ -597,7 +799,8 @@ std::string Application::SerializeLayoutJson() const {
     item["from_port_id"] = wire.fromPortId;
     item["to_component_id"] = wire.toComponentId;
     item["to_port_id"] = wire.toPortId;
-    item["is_electric"] = wire.isElectric;
+    item["wire_kind"] = wire.kind == WireKind::kElectric ? "electric"
+        : wire.kind == WireKind::kPneumatic ? "pneumatic" : "optical";
     item["thickness"] = wire.thickness;
     item["is_tagged"] = wire.isTagged;
     item["tag_text"] = wire.tagText;
@@ -629,6 +832,104 @@ bool Application::DeserializeLayoutJson(const std::string& layout_json) {
   if (root.is_discarded() || !root.is_object()) {
     return false;
   }
+
+  // Validate all axis settings before changing the existing scene.
+  if (root.contains("components") && root["components"].is_array()) {
+    for (const auto& item : root["components"]) {
+      if (!item.is_object() || !item.contains("axis_settings")) continue;
+      const auto& axis = item["axis_settings"];
+      if (!axis.is_object()) return false;
+      for (const char* key : {"pulses_per_turn", "lead_mm", "stroke_mm",
+                              "max_speed", "acceleration"}) {
+        if (!axis.contains(key) || !axis[key].is_number()) return false;
+      }
+      const AxisSettings settings{axis["pulses_per_turn"].get<double>(),
+          axis["lead_mm"].get<double>(), axis["stroke_mm"].get<double>(),
+          axis["max_speed"].get<double>(), axis["acceleration"].get<double>()};
+      if (!plc_emulator::IsValidAxisSettings(settings)) return false;
+    }
+  }
+  // Validate before changing the existing scene.
+  if (root.contains("components") && root["components"].is_array()) {
+    for (const auto& item : root["components"]) {
+      if (!item.is_object() || !item.contains("z_config")) continue;
+      const auto& z = item["z_config"];
+      if (!z.is_object()) return false;
+      for (const char* key : {"min_layer", "max_layer", "initial_height"}) {
+        if (!z.contains(key) || !z[key].is_number()) return false;
+      }
+      const ZLayerConfig config{z["min_layer"].get<float>(),
+          z["max_layer"].get<float>(), z["initial_height"].get<float>()};
+      if (!plc_emulator::IsValidZLayerConfig(config)) return false;
+    }
+  }
+
+  if (root.contains("components") && root["components"].is_array()) {
+    std::map<std::pair<int, int>, bool> occupied;
+    for (const auto& item : root["components"]) {
+      if (!item.is_object()) continue;
+      if (item.contains("frl_pressure")) {
+        if (item.value("type", "") != "FRL" || !item["frl_pressure"].is_number()) return false;
+        const float pressure = item["frl_pressure"].get<float>();
+        if (!std::isfinite(pressure) || pressure < 0 || pressure > 10) return false;
+      }
+      if (item.contains("warehouse_drive")) {
+        const auto& drive = item["warehouse_drive"];
+        if (item.value("type", "") != "WAREHOUSE" || !drive.is_object() ||
+            !drive.contains("cylinder_id") || !drive["cylinder_id"].is_number_integer() ||
+            !drive.contains("travel") || !drive["travel"].is_number()) return false;
+        const int cylinder_id = drive["cylinder_id"].get<int>();
+        const float travel = drive["travel"].get<float>();
+        if (!std::isfinite(travel) || travel <= 0 || travel > 10000 || cylinder_id < -1)
+          return false;
+        if (cylinder_id >= 0 && std::none_of(root["components"].begin(), root["components"].end(),
+            [&](const auto& candidate) {
+              const auto type = candidate.value("type", "");
+              return candidate.value("instance_id", -1) == cylinder_id &&
+                     (type == "CYLINDER" || type == "SENSOR_CYLINDER");
+            })) return false;
+      }
+      if (item.contains("fiber_settings")) {
+        const auto& settings = item["fiber_settings"];
+        if (!settings.is_object()) return false;
+        for (const char* key : {"max_distance", "alignment_tolerance", "beam_width"})
+          if (!settings.contains(key) || !settings[key].is_number()) return false;
+        if (!settings.contains("dark_on") || !settings["dark_on"].is_boolean() ||
+            !plc_emulator::IsValidFiberSettings(ReadFiberSettings(settings))) return false;
+      }
+      if (item.contains("hmi_settings")) {
+        const auto& settings = item["hmi_settings"];
+        try {
+          if (!settings.is_object() ||
+              !plc_emulator::IsValidHmiSettings(ReadHmiSettings(settings))) return false;
+        } catch (const std::exception&) {
+          return false;
+        }
+      }
+      if ((item.value("type", "") == "WAREHOUSE" || item.value("type", "") == "DRIVEN_WAREHOUSE") && item.contains("z_config") &&
+          item["z_config"]["min_layer"].get<float>() >=
+          item["z_config"]["max_layer"].get<float>()) return false;
+      if (!item.contains("stored_slot")) continue;
+      const auto& stored = item["stored_slot"];
+      if (!stored.is_object() || !stored.contains("warehouse_id") ||
+          !stored["warehouse_id"].is_number_integer() || !stored.contains("slot_id") ||
+          !stored["slot_id"].is_number_integer()) return false;
+      const int owner = stored["warehouse_id"].get<int>();
+      const int slot = stored["slot_id"].get<int>();
+      const std::string type = item.value("type", "");
+      if ((type != "WORKPIECE_METAL" && type != "WORKPIECE_NONMETAL") ||
+          slot < 1 || slot > 6 || occupied.contains({owner, slot})) return false;
+      const bool exists = std::any_of(root["components"].begin(),
+          root["components"].end(), [&](const json& candidate) {
+            return candidate.is_object() && (candidate.value("type", "") == "WAREHOUSE" || candidate.value("type", "") == "DRIVEN_WAREHOUSE") &&
+                   candidate.value("instance_id", -1) == owner;
+          });
+      if (!exists) return false;
+      occupied[{owner, slot}] = true;
+    }
+  }
+  // Release momentary writes before replacing the scene that owns them.
+  for (auto& part : placed_components_) ReleaseHmiButtons(&part);
 
   plc_input_mode_ = PlcInputMode::SOURCE;
   plc_output_mode_ = PlcOutputMode::SINK;
@@ -685,13 +986,36 @@ bool Application::DeserializeLayoutJson(const std::string& layout_json) {
       comp.z_order = item.value("z_order",
                                 static_cast<int>(placed_components_.size()));
       comp.rotation_quadrants = item.value("rotation_quadrants", 0);
+      if (item.contains("render_layer")) {
+        const auto& layer = item["render_layer"];
+        const float opacity = layer.value("opacity", 1.0f);
+        comp.render_opacity = std::isfinite(opacity)
+                                  ? std::clamp(opacity, 0.0f, 1.0f) : 1.0f;
+        comp.render_hidden = layer.value("hidden", false);
+        comp.render_group = layer.value("group", std::string());
+      }
       comp.flip_x = item.value("flip_x", false);
       comp.flip_y = item.value("flip_y", false);
       comp.customLabel = item.value("custom_label", std::string());
+      comp.show_custom_label = item.value("show_custom_label", true);
       if (def->InitDefaultState) {
         def->InitDefaultState(&comp);
       }
+      if (item.contains("z_config")) {
+        const auto& z = item["z_config"];
+        comp.z_config = {z["min_layer"].get<float>(),
+            z["max_layer"].get<float>(), z["initial_height"].get<float>()};
+      }
+      if (item.contains("axis_settings")) {
+        const auto& axis = item["axis_settings"];
+        comp.axis_settings = {axis["pulses_per_turn"].get<double>(),
+            axis["lead_mm"].get<double>(), axis["stroke_mm"].get<double>(),
+            axis["max_speed"].get<double>(), axis["acceleration"].get<double>()};
+      }
+      plc_emulator::InitializeZLayerState(&comp);
       ApplyElectricalDefaults(&comp);
+      if (comp.type == ComponentType::FRL && item.contains("frl_pressure"))
+        comp.internalStates["air_pressure"] = item["frl_pressure"].get<float>();
       if (comp.type == ComponentType::RTL_MODULE &&
           item.contains("rtl") && item["rtl"].is_object()) {
         const json& rtl = item["rtl"];
@@ -718,12 +1042,27 @@ bool Application::DeserializeLayoutJson(const std::string& layout_json) {
                                    &sensor_mode);
         SetSensorOutputMode(&comp, sensor_mode);
       }
+      if (comp.type == ComponentType::kFiberAmplifier && item.contains("fiber_settings"))
+        comp.fiber_settings = ReadFiberSettings(item["fiber_settings"]);
+      if (comp.type == ComponentType::kTouchPanel && item.contains("hmi_settings"))
+        comp.hmi_settings = ReadHmiSettings(item["hmi_settings"]);
+      if (plc::IsWarehouseType(comp.type) && item.contains("warehouse_drive")) {
+        comp.warehouse_cylinder_id = item["warehouse_drive"]["cylinder_id"].get<int>();
+        comp.warehouse_travel = item["warehouse_drive"]["travel"].get<float>();
+      }
+      if (item.contains("stored_slot")) {
+        comp.carry_state.owner_id = item["stored_slot"]["warehouse_id"].get<int>();
+        comp.carry_state.slot_id = item["stored_slot"]["slot_id"].get<int>();
+      }
       placed_components_.push_back(comp);
 
       max_instance_id = std::max(max_instance_id, comp.instanceId);
       max_z_order = std::max(max_z_order, comp.z_order);
     }
   }
+
+  plc_emulator::UpdateWarehouseWorkpieces(&placed_components_, false);
+  plc_emulator::UpdateRingFeedWorkpieces(&placed_components_);
 
   auto wires_it = root.find("wires");
   if (wires_it != root.end() && wires_it->is_array()) {
@@ -737,21 +1076,28 @@ bool Application::DeserializeLayoutJson(const std::string& layout_json) {
       wire.fromPortId = item.value("from_port_id", 0);
       wire.toComponentId = item.value("to_component_id", 0);
       wire.toPortId = item.value("to_port_id", 0);
-      wire.isElectric = item.value("is_electric", true);
-      wire.thickness = item.value("thickness", wire.isElectric ? 2.0f : 3.0f);
+      const std::string kind = item.value("wire_kind",
+          item.value("is_electric", true) ? std::string("electric")
+                                          : std::string("pneumatic"));
+      if (kind != "electric" && kind != "pneumatic" && kind != "optical") {
+        continue;
+      }
+      wire.kind = kind == "electric" ? WireKind::kElectric
+          : kind == "pneumatic" ? WireKind::kPneumatic : WireKind::kOptical;
+      wire.thickness = item.value("thickness", wire.kind == WireKind::kPneumatic ? 3.0f : 2.0f);
       wire.tagText = item.value("tag_text", std::string());
       wire.isTagged = item.value("is_tagged", !wire.tagText.empty());
       wire.tagColorIndex = item.value("tag_color_index", 0);
 
+      const Color default_color = GetDefaultWireColor(wire.kind);
       if (item.contains("color") && item["color"].is_object()) {
         const json& color = item["color"];
-        wire.color.r = color.value("r", wire.isElectric ? 1.0f : 0.13f);
-        wire.color.g = color.value("g", wire.isElectric ? 0.27f : 0.59f);
-        wire.color.b = color.value("b", wire.isElectric ? 0.0f : 0.95f);
+        wire.color.r = color.value("r", default_color.r);
+        wire.color.g = color.value("g", default_color.g);
+        wire.color.b = color.value("b", default_color.b);
         wire.color.a = color.value("a", 1.0f);
       } else {
-        wire.color = wire.isElectric ? Color{1.0f, 0.27f, 0.0f, 1.0f}
-                                     : Color{0.13f, 0.59f, 0.95f, 1.0f};
+        wire.color = default_color;
       }
 
       wire.wayPoints.clear();
@@ -767,6 +1113,44 @@ bool Application::DeserializeLayoutJson(const std::string& layout_json) {
         }
       }
 
+      Port from_port;
+      Port to_port;
+      bool valid_from = false;
+      bool valid_to = false;
+      for (const auto& component : placed_components_) {
+        if (component.instanceId != wire.fromComponentId &&
+            component.instanceId != wire.toComponentId) {
+          continue;
+        }
+        for (const Port& port : GetRuntimePortsForComponent(component)) {
+          if (component.instanceId == wire.fromComponentId &&
+              port.id == wire.fromPortId && GetWireKind(port.type) == wire.kind) {
+            valid_from = true;
+            from_port = port;
+          }
+          if (component.instanceId == wire.toComponentId &&
+              port.id == wire.toPortId && GetWireKind(port.type) == wire.kind) {
+            valid_to = true;
+            to_port = port;
+          }
+        }
+      }
+      if (!valid_from || !valid_to ||
+          !plc_emulator::CanConnectPorts(from_port, to_port)) {
+        continue;
+      }
+      bool occupied = false;
+      for (const auto& existing : wires_) {
+        const auto uses = [&](int id, int port) {
+          return (existing.fromComponentId == id && existing.fromPortId == port) ||
+                 (existing.toComponentId == id && existing.toPortId == port);
+        };
+        occupied |= plc_emulator::HasSingleConnection(from_port) &&
+                    uses(wire.fromComponentId, wire.fromPortId);
+        occupied |= plc_emulator::HasSingleConnection(to_port) &&
+                    uses(wire.toComponentId, wire.toPortId);
+      }
+      if (occupied) continue;
       wires_.push_back(wire);
       max_wire_id = std::max(max_wire_id, wire.id);
     }
@@ -1333,13 +1717,16 @@ bool Application::SaveProjectPackage(const std::string& filePath,
   try {
     LadderProgram currentProgram = BuildProgramForSave(programming_mode_.get());
     std::string layoutJson = SerializeLayoutJson();
-    std::string rtlLibraryJson =
-        rtl_project_manager_ ? rtl_project_manager_->SerializeProjectRtlJson() : "";
+    const auto rtl_module_ids = GetProjectRtlModuleIds(json::parse(layoutJson));
+    std::string rtlLibraryJson = rtl_project_manager_
+        ? rtl_project_manager_->SerializeProjectRtlJson(rtl_module_ids) : "";
 
     std::map<std::string, std::map<std::string, std::string>> rtlArtifacts;
     if (rtl_project_manager_) {
       for (const auto& entry : rtl_project_manager_->GetLibrary()) {
-        if (entry.buildSuccess) {
+        if (entry.buildSuccess &&
+            std::find(rtl_module_ids.begin(), rtl_module_ids.end(), entry.moduleId)
+                != rtl_module_ids.end()) {
           auto files = rtl_project_manager_->GetBuildArtifactBundle(entry.moduleId);
           if (!files.empty()) {
             rtlArtifacts[entry.moduleId] = std::move(files);
@@ -1548,14 +1935,32 @@ bool Application::LoadProjectPackage(const std::string& filePath) {
     }
     if (rtl_project_manager_) {
       if (!result.rtlLibraryJson.empty()) {
-        rtl_project_manager_->DeserializeLibraryJson(result.rtlLibraryJson, true);
+        const auto rtl_module_ids =
+            GetProjectRtlModuleIds(json::parse(result.layoutJson));
+        json project_library = json::parse(result.rtlLibraryJson);
+        auto entries = project_library.find("entries");
+        if (entries != project_library.end() && entries->is_array()) {
+          entries->erase(std::remove_if(entries->begin(), entries->end(),
+              [&](const json& entry) {
+                return !entry.is_object() ||
+                    std::find(rtl_module_ids.begin(), rtl_module_ids.end(),
+                              entry.value("module_id", "")) == rtl_module_ids.end();
+              }), entries->end());
+        }
+        rtl_project_manager_->DeserializeLibraryJson(project_library.dump(), true);
         
         // Restore artifacts first so HasBuildArtifact returns true
         for (const auto& [moduleId, files] : result.rtlArtifacts) {
-          rtl_project_manager_->RestoreBuildArtifactBundle(moduleId, files);
+          if (std::find(rtl_module_ids.begin(), rtl_module_ids.end(), moduleId)
+              == rtl_module_ids.end()) continue;
+          const auto* entry = rtl_project_manager_->FindEntryById(moduleId);
+          if (entry && !rtl_project_manager_->HasBuildArtifact(*entry))
+            rtl_project_manager_->RestoreBuildArtifactBundle(moduleId, files);
         }
 
         for (auto& entry : rtl_project_manager_->GetLibrary()) {
+          if (std::find(rtl_module_ids.begin(), rtl_module_ids.end(), entry.moduleId)
+              == rtl_module_ids.end()) continue;
           if (entry.buildSuccess &&
               !rtl_project_manager_->HasBuildArtifact(entry)) {
             entry.buildSuccess = false;

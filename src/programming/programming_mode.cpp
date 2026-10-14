@@ -323,7 +323,11 @@ void ProgrammingMode::UpdateWithPlcState(bool isPlcRunning) {
 
 
 
+  const bool was_external = monitor_external_plc_;
   monitor_external_plc_ = isPlcRunning;
+  if (was_external && !isPlcRunning) {
+    ResetMonitorOutputs();
+  }
 
   if (isPlcRunning) {
 
@@ -392,13 +396,9 @@ void ProgrammingMode::SyncFromExternalPlc() {
     }
     TimerState& timer = pair.second;
     timer.value = executor->GetTimerValue(idx);
+    timer.preset = executor->GetTimerPreset(idx);
     timer.enabled = executor->GetTimerEnabled(idx);
-    if (timer.preset > 0) {
-      int preset_ms = timer.preset * 100;
-      timer.done = (timer.value >= preset_ms);
-    } else {
-      timer.done = timer.enabled;
-    }
+    timer.done = executor->GetDeviceState(pair.first);
   }
 
   for (auto& pair : counter_states_) {
@@ -408,16 +408,12 @@ void ProgrammingMode::SyncFromExternalPlc() {
     }
     CounterState& counter = pair.second;
     counter.value = executor->GetCounterValue(idx);
+    counter.preset = executor->GetCounterPreset(idx);
     counter.lastPower = executor->GetCounterLastPower(idx);
-    if (counter.preset > 0) {
-      counter.done = (counter.value >= counter.preset);
-    } else {
-      counter.done = (counter.value > 0);
-    }
+    counter.done = executor->GetDeviceState(pair.first);
   }
 
-  SimulatorState snapshot = GetCurrentStateSnapshot();
-  UpdateUIFromSimulatorState(snapshot);
+  UpdateVisualActiveStates();
 }
 
 

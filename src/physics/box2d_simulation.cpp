@@ -1,8 +1,13 @@
+#include "plc_emulator/physics/ring_feed_simulation.h"
 // physics_box2d.cpp
 //
 // Box2D integration for mechanical collisions and sensor queries.
 
 #include "plc_emulator/physics/box2d_simulation.h"
+
+#include "plc_emulator/physics/pneumatic_workpiece.h"
+
+#include "plc_emulator/physics/z_layer.h"
 
 #include "box2d/box2d.h"
 #include "plc_emulator/application_physics/physics_helpers.h"
@@ -69,6 +74,7 @@ struct ShapeEntry {
 };
 
 struct Box2dContext {
+  const std::vector<PlacedComponent>* components = nullptr;
   const void* owner = nullptr;
   b2WorldId world = b2_nullWorldId;
   int frame = 0;
@@ -367,7 +373,21 @@ void SortUnique(std::vector<int>* values) {
   values->erase(std::unique(values->begin(), values->end()), values->end());
 }
 
+bool IsEntryAtHeight(const Box2dContext& context, const ShapeEntry& entry,
+                     float height) {
+  if (!context.components || entry.component_index < 0 ||
+      static_cast<size_t>(entry.component_index) >= context.components->size()) {
+    return false;
+  }
+  const auto& component = (*context.components)[entry.component_index];
+  const auto instance_id = static_cast<uint32_t>(component.instanceId);
+  return instance_id == static_cast<uint32_t>(entry.key >> 8) &&
+      plc_emulator::CanInteractAtHeight(height,
+          plc_emulator::ResolveContactHeight(component));
+}
+
 struct IndexQueryContext {
+  float height = 1.0f;
   Box2dContext* ctx = nullptr;
   uint64_t category_mask = 0;
   std::vector<int>* indices = nullptr;
@@ -383,6 +403,9 @@ bool CollectIndices(b2ShapeId shapeId, void* context) {
     return true;
   }
   const ShapeEntry& entry = query->ctx->entries[entry_index];
+  if (!IsEntryAtHeight(*query->ctx, entry, query->height)) {
+    return true;
+  }
   if ((entry.category & query->category_mask) == 0) {
     return true;
   }
@@ -393,7 +416,7 @@ bool CollectIndices(b2ShapeId shapeId, void* context) {
 void QueryOverlaps(Box2dContext& ctx,
                    const Aabb& box,
                    uint64_t category_mask,
-                   std::vector<int>* out) {
+                   std::vector<int>* out, float height) {
   if (!out) {
     return;
   }
@@ -408,6 +431,7 @@ void QueryOverlaps(Box2dContext& ctx,
 
   IndexQueryContext query;
   query.ctx = &ctx;
+  query.height = height;
   query.category_mask = category_mask;
   query.indices = out;
 
@@ -417,6 +441,7 @@ void QueryOverlaps(Box2dContext& ctx,
 }
 
 struct MaxIndexQueryContext {
+  float height = 1.0f;
   Box2dContext* ctx = nullptr;
   uint64_t category_mask = 0;
   int best_index = -1;
@@ -432,6 +457,9 @@ bool CollectMaxIndex(b2ShapeId shapeId, void* context) {
     return true;
   }
   const ShapeEntry& entry = query->ctx->entries[entry_index];
+  if (!IsEntryAtHeight(*query->ctx, entry, query->height)) {
+    return true;
+  }
   if ((entry.category & query->category_mask) == 0) {
     return true;
   }
@@ -441,7 +469,8 @@ bool CollectMaxIndex(b2ShapeId shapeId, void* context) {
   return true;
 }
 
-int QueryMaxIndex(Box2dContext& ctx, const Aabb& box, uint64_t category_mask) {
+int QueryMaxIndex(Box2dContext& ctx, const Aabb& box, uint64_t category_mask,
+                  float height) {
   if (category_mask == 0 || !b2World_IsValid(ctx.world)) {
     return -1;
   }
@@ -452,6 +481,7 @@ int QueryMaxIndex(Box2dContext& ctx, const Aabb& box, uint64_t category_mask) {
 
   MaxIndexQueryContext query;
   query.ctx = &ctx;
+  query.height = height;
   query.category_mask = category_mask;
   query.best_index = -1;
 
@@ -490,6 +520,7 @@ bool BuildBeamProxy(ImVec2 center,
 }
 
 struct BeamQueryContext {
+  float height = 1.0f;
   Box2dContext* ctx = nullptr;
   int target_workpiece_index = -1;
   bool hit_workpiece = false;
@@ -506,6 +537,9 @@ bool BeamQueryCallback(b2ShapeId shapeId, void* context) {
     return true;
   }
   const ShapeEntry& entry = query->ctx->entries[entry_index];
+  if (!IsEntryAtHeight(*query->ctx, entry, query->height)) {
+    return true;
+  }
 
   if (entry.category == kCategoryWorkpieceCenter) {
     if (query->target_workpiece_index < 0 ||
@@ -529,7 +563,7 @@ bool BeamOverlaps(Box2dContext& ctx,
                   float half_width,
                   int target_workpiece_index,
                   bool* out_workpiece,
-                  bool* out_rod_tip) {
+                  bool* out_rod_tip, float height) {
   if (out_workpiece) {
     *out_workpiece = false;
   }
@@ -551,6 +585,7 @@ bool BeamOverlaps(Box2dContext& ctx,
 
   BeamQueryContext query;
   query.ctx = &ctx;
+  query.height = height;
   query.target_workpiece_index = target_workpiece_index;
 
   b2World_OverlapShape(ctx.world, &proxy, filter, BeamQueryCallback, &query);
@@ -578,7 +613,12 @@ bool UpdateWorkpiecesBox2d(const void* owner,
   if (!EnsureWorld(ctx, owner)) {
     return false;
   }
+  ctx.components = components;
   ctx.frame++;
+  if (!warmup_only) {
+    plc_emulator::UpdateRingFeedWorkpieces(components);
+    plc_emulator::UpdateSuctionWorkpieces(components);
+  }
 
   const float kSnapDistance = 10.0f;
   const float kConveyorSpeed = 60.0f;
@@ -672,6 +712,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
         conveyor_caches.push_back(cache);
         break;
       }
+      case ComponentType::kSensorCylinder:
       case ComponentType::CYLINDER: {
         CylinderCache cache;
         cache.index = static_cast<int>(i);
@@ -713,7 +754,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
         constexpr float kProcEpsilon = 0.1f;
         ProcCylinderCache cache;
         cache.index = static_cast<int>(i);
-        Aabb cyl_box = GetAabb(comp);
+        const ImVec2 center = LocalToWorld(comp, {60.0f, 90.0f});
         float pos_val =
             comp.internalStates.count(state_keys::kPosition)
                 ? comp.internalStates.at(state_keys::kPosition)
@@ -722,8 +763,8 @@ bool UpdateWorkpiecesBox2d(const void* owner,
         cache.motor_on =
             comp.internalStates.count(state_keys::kMotorOn) &&
             comp.internalStates.at(state_keys::kMotorOn) > 0.5f;
-        cache.center_x = cyl_box.min_x + 60.0f;
-        cache.center_y = cyl_box.min_y + 90.0f;
+        cache.center_x = center.x;
+        cache.center_y = center.y;
         float head_radius = 30.0f;
         cache.head_box.min_x = cache.center_x - head_radius;
         cache.head_box.max_x = cache.center_x + head_radius;
@@ -870,7 +911,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
     bool manual_drag =
         workpiece.internalStates.count(state_keys::kIsManualDrag) &&
         workpiece.internalStates.at(state_keys::kIsManualDrag) > 0.5f;
-    if (manual_drag) {
+    if (manual_drag || workpiece.carry_state.owner_id >= 0) {
       continue;
     }
     bool stuck_box =
@@ -893,7 +934,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
       continue;
     }
     Aabb detection_box = GetWorkpieceDetectionAabb(workpiece);
-    QueryOverlaps(ctx, detection_box, kSleepCategories, &sleep_hits);
+    QueryOverlaps(ctx, detection_box, kSleepCategories, &sleep_hits, plc_emulator::ResolveContactHeight(workpiece));
     if (!sleep_hits.empty()) {
       continue;
     }
@@ -935,13 +976,13 @@ bool UpdateWorkpiecesBox2d(const void* owner,
     Aabb workpiece_body = GetAabb(workpiece);
     QueryOverlaps(ctx, workpiece_detection,
                   kCategoryRingSensor | kCategoryInductiveSensor,
-                  &sensor_detection_hits);
+                  &sensor_detection_hits, plc_emulator::ResolveContactHeight(workpiece));
     if (sensor_detection_hits.empty()) {
       return;
     }
     QueryOverlaps(ctx, workpiece_body,
                   kCategoryRingSensor | kCategoryInductiveSensor,
-                  &sensor_body_hits);
+                  &sensor_body_hits, plc_emulator::ResolveContactHeight(workpiece));
 
     for (int sensor_index : sensor_detection_hits) {
       int cache_idx = sensor_cache_index[sensor_index];
@@ -1010,7 +1051,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
         const float kBeamHalfWidth = 15.0f;
         bool hit_workpiece = false;
         BeamOverlaps(ctx, cache.center, cache.forward, kDetectionRange,
-                     kBeamHalfWidth, workpiece_index, &hit_workpiece, nullptr);
+                     kBeamHalfWidth, workpiece_index, &hit_workpiece, nullptr, plc_emulator::ResolveContactHeight(workpiece));
         if (!hit_workpiece) {
           continue;
         }
@@ -1039,7 +1080,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
       bool manual_drag =
           workpiece.internalStates.count(state_keys::kIsManualDrag) &&
           workpiece.internalStates.at(state_keys::kIsManualDrag) > 0.5f;
-      if (manual_drag) {
+      if (manual_drag || workpiece.carry_state.owner_id >= 0) {
         apply_sensor_detection(workpiece, workpiece_index, false);
         update_workpiece_shapes(workpiece, workpiece_index);
         continue;
@@ -1068,7 +1109,8 @@ bool UpdateWorkpiecesBox2d(const void* owner,
       bool pushed_by_cylinder = false;
 
       int conveyor_index =
-          QueryMaxIndex(ctx, workpiece_box, kCategoryConveyor);
+          QueryMaxIndex(ctx, workpiece_box, kCategoryConveyor,
+                        plc_emulator::ResolveContactHeight(workpiece));
       if (conveyor_index >= 0) {
         int cache_idx = conveyor_cache_index[conveyor_index];
         if (cache_idx >= 0) {
@@ -1085,8 +1127,8 @@ bool UpdateWorkpiecesBox2d(const void* owner,
       }
 
       QueryOverlaps(ctx, workpiece_box, kCategoryCylinderBody,
-                    &cylinder_body_hits);
-      QueryOverlaps(ctx, workpiece_box, kCategoryRodSweep, &rod_sweep_hits);
+                    &cylinder_body_hits, plc_emulator::ResolveContactHeight(workpiece));
+      QueryOverlaps(ctx, workpiece_box, kCategoryRodSweep, &rod_sweep_hits, plc_emulator::ResolveContactHeight(workpiece));
 
       for (const auto& cylinder : cylinder_caches) {
         float velocity = cylinder.velocity;
@@ -1181,7 +1223,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
 
         Aabb proc_workpiece_box = GetAabb(workpiece);
         QueryOverlaps(ctx, proc_workpiece_box, kCategoryProcessingHead,
-                      &processing_hits);
+                      &processing_hits, plc_emulator::ResolveContactHeight(workpiece));
         bool overlapping =
             std::binary_search(processing_hits.begin(), processing_hits.end(),
                                proc.index);
@@ -1199,6 +1241,7 @@ bool UpdateWorkpiecesBox2d(const void* owner,
           workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
           ready = true;
         } else if (!overlapping) {
+          workpiece.internalStates[snap_key] = 0.0f;
           ready = false;
         }
 
@@ -1214,32 +1257,33 @@ bool UpdateWorkpiecesBox2d(const void* owner,
         workpiece.internalStates[ready_key] = ready ? 1.0f : 0.0f;
       }
 
-      int last_box_index = QueryMaxIndex(ctx, workpiece_box, kCategoryBox);
+      int last_box_index = QueryMaxIndex(ctx, workpiece_box, kCategoryBox,
+                                          plc_emulator::ResolveContactHeight(workpiece));
       if (last_box_index >= 0) {
         int cache_idx = box_cache_index[last_box_index];
-        if (cache_idx >= 0) {
-          const auto& box_cache = box_caches[cache_idx];
-          workpiece.internalStates[state_keys::kIsStuckBox] = 1.0f;
-          workpiece.position.x =
-              GetCenterX(box_cache.box) - workpiece.size.width * 0.5f;
-          workpiece.position.y =
-              GetCenterY(box_cache.box) - workpiece.size.height * 0.5f;
+        if (cache_idx >= 0 && plc_emulator::StoreWorkpieceInBox(
+                components, placed_components_[last_box_index], &workpiece)) {
           vel_x = 0.0f;
           vel_y = 0.0f;
           workpiece_box = GetAabb(workpiece);
         }
       }
 
+      const Position previous_position = workpiece.position;
       workpiece.position.x += vel_x * step_dt;
       workpiece.position.y += vel_y * step_dt;
       workpiece.internalStates[state_keys::kVelX] = vel_x;
       workpiece.internalStates[state_keys::kVelY] = vel_y;
+      plc_emulator::ResolveStopperCollision(
+          placed_components_, previous_position, &workpiece);
 
       update_workpiece_shapes(workpiece, workpiece_index);
       apply_sensor_detection(workpiece, workpiece_index, true);
       update_workpiece_shapes(workpiece, workpiece_index);
     }
   }
+
+  plc_emulator::UpdateWarehouseWorkpieces(components);
 
   return true;
 }
@@ -1256,6 +1300,7 @@ bool UpdatePhysicalSensorsBox2d(const void* owner,
     return false;
   }
 
+  ctx.components = components;
   size_t shape_estimate = placed_components_.size() * 2u + 16u;
   ReserveEntries(ctx, shape_estimate);
 
@@ -1268,7 +1313,7 @@ bool UpdatePhysicalSensorsBox2d(const void* owner,
                       ShapeRole::kWorkpieceCenter,
                       kCategoryWorkpieceCenter, center,
                       kWorkpieceCenterRadius);
-    } else if (comp.type == ComponentType::CYLINDER) {
+    } else if (plc_emulator::IsLinearPneumaticCylinder(comp.type)) {
       ImVec2 rod_tip = GetCylinderRodTipWorld(comp);
       SyncCircleEntry(ctx, comp.instanceId, static_cast<int>(i), comp.type,
                       ShapeRole::kRodTip, kCategoryRodTip, rod_tip,
@@ -1295,7 +1340,7 @@ bool UpdatePhysicalSensorsBox2d(const void* owner,
     bool hit_workpiece = false;
     bool hit_rod_tip = false;
     BeamOverlaps(ctx, sensor_center, sensor_forward, detection_range,
-                 beam_half_width, -1, &hit_workpiece, &hit_rod_tip);
+                 beam_half_width, -1, &hit_workpiece, &hit_rod_tip, plc_emulator::ResolveContactHeight(sensor));
 
     if (sensor.type == ComponentType::LIMIT_SWITCH) {
       component_input::SetLimitSwitchPhysicalDetected(

@@ -114,6 +114,14 @@ class CompiledPLCExecutor {
     bool abnormal = false;
   };
   std::optional<AxisSnapshot> GetAxisState(int axis) const;
+  struct PhysicalPulseSnapshot {
+    uint64_t forward = 0;
+    uint64_t reverse = 0;
+    uint64_t epoch = 0;
+    int direction_output = -1;
+  };
+  std::optional<PhysicalPulseSnapshot> GetPhysicalPulseTotal(int axis) const;
+  std::optional<double> GetPhysicalPwmDutyRatio(int output) const;
   bool ConfigurePositioningTable(
       plc_emulator::programming::DeviceAddress head,
       const std::array<plc_emulator::programming::DeviceAddress, 4>&
@@ -157,6 +165,12 @@ class CompiledPLCExecutor {
 
   const PLCMemory& GetMemory() const { return memory_; }
 
+  int GetTimerPreset(int index) const {
+    return index >= 0 && index < 512 ? timer_presets_[index] : 0;
+  }
+  int GetCounterPreset(int index) const {
+    return index >= 0 && index < 256 ? counter_presets_[index] : 0;
+  }
   int GetTimerValue(int index) const;
   bool GetTimerEnabled(int index) const;
   int GetCounterValue(int index) const;
@@ -177,6 +191,9 @@ class CompiledPLCExecutor {
   size_t main_program_end_ = 0;
   bool ResolveOperand(plc_emulator::programming::Operand* operand,
                       bool wide) const;
+  // Built once per load; each entry references an instruction or observation.
+  std::map<std::pair<int, int>, std::vector<std::pair<size_t, size_t>>>
+      cell_monitor_sources_;
   std::vector<uint8_t> gate_values_;
   std::vector<std::vector<uint8_t>> edge_states_;
   std::vector<bool> pulse_states_;
@@ -308,6 +325,8 @@ class CompiledPLCExecutor {
     int clear_remaining_ms = 0;
   };
   std::array<AxisState, 4> axes_{};
+  std::array<PhysicalPulseSnapshot, 4> physical_pulse_totals_{};
+  uint64_t physical_pulse_epoch_ = 0;
   struct PositionEntry {
     plc_emulator::programming::Opcode opcode{};
     int32_t pulses = 0;

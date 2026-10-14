@@ -268,62 +268,27 @@ void ApplyComponentInteractionResult(PlacedComponent* comp,
 }
 
 const ComponentBehavior* GetComponentBehavior(ComponentType type) {
-  constexpr int kComponentTypeCount = 21;
-  static_assert(static_cast<int>(ComponentType::RTL_MODULE) ==
-                    kComponentTypeCount - 1,
-                "Update component behavior table for new component types.");
-
-  static const ComponentBehavior kBehaviors[kComponentTypeCount] = {
-      // PLC
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // FRL
-      {nullptr, nullptr, nullptr, HandleFrlMouseWheel, BuildFrlTooltip},
-      // MANIFOLD
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // LIMIT_SWITCH
-      {nullptr, nullptr, nullptr, nullptr, BuildLimitSwitchTooltip},
-      // SENSOR
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // CYLINDER
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // VALVE_SINGLE
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // VALVE_DOUBLE
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // BUTTON_UNIT
-      {HandleButtonUnitMouseDown, HandleButtonUnitMouseUp,
-       HandleButtonUnitDoubleClick, nullptr, BuildButtonUnitTooltip},
-      // POWER_SUPPLY
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // WORKPIECE_METAL
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // WORKPIECE_NONMETAL
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // RING_SENSOR
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // METER_VALVE
-      {nullptr, nullptr, nullptr, HandleMeterValveMouseWheel,
-       BuildMeterValveTooltip},
-      // INDUCTIVE_SENSOR
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // CONVEYOR
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // PROCESSING_CYLINDER
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // BOX
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // TOWER_LAMP
-      {nullptr, nullptr, nullptr, nullptr, nullptr},
-      // EMERGENCY_STOP
-      {nullptr, nullptr, HandleEmergencyStopDoubleClick, nullptr, nullptr},
-      // RTL_MODULE
-      {nullptr, nullptr, nullptr, nullptr, nullptr}};
-
-  int index = static_cast<int>(type);
-  if (index < 0 || index >= kComponentTypeCount) {
-    return nullptr;
+  static const ComponentBehavior kEmpty{};
+  static const ComponentBehavior kFrl{
+      nullptr, nullptr, nullptr, HandleFrlMouseWheel, BuildFrlTooltip};
+  static const ComponentBehavior kLimit{
+      nullptr, nullptr, nullptr, nullptr, BuildLimitSwitchTooltip};
+  static const ComponentBehavior kButton{
+      HandleButtonUnitMouseDown, HandleButtonUnitMouseUp,
+      HandleButtonUnitDoubleClick, nullptr, BuildButtonUnitTooltip};
+  static const ComponentBehavior kMeter{
+      nullptr, nullptr, nullptr, HandleMeterValveMouseWheel,
+      BuildMeterValveTooltip};
+  static const ComponentBehavior kEmergency{
+      nullptr, nullptr, HandleEmergencyStopDoubleClick, nullptr, nullptr};
+  switch (type) {
+    case ComponentType::FRL: return &kFrl;
+    case ComponentType::LIMIT_SWITCH: return &kLimit;
+    case ComponentType::BUTTON_UNIT: return &kButton;
+    case ComponentType::METER_VALVE: return &kMeter;
+    case ComponentType::EMERGENCY_STOP: return &kEmergency;
+    default: return &kEmpty;
   }
-  return &kBehaviors[index];
 }
 
 }  // namespace plc

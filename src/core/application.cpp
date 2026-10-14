@@ -248,7 +248,7 @@ namespace {
 
 void Application::RenderPLCDebugPanel() {
 
-  if (!programming_mode_)
+  if (!programming_mode_ || !show_plc_engine_status_)
 
     return;
 
@@ -266,7 +266,7 @@ void Application::RenderPLCDebugPanel() {
 
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse;
 
-  if (ImGui::Begin("PLC Engine Status", nullptr, flags)) {
+  if (ImGui::Begin("PLC Engine Status", &show_plc_engine_status_, flags)) {
     {
       ImVec2 window_min = ImGui::GetWindowPos();
       ImVec2 window_size = ImGui::GetWindowSize();

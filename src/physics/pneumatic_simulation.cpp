@@ -94,7 +94,7 @@ void SimulatePneumaticNetwork(
   PneumaticAdjacency pneumatic_adjacency;
 
   for (const auto& wire : wires) {
-    if (!wire.isElectric) {
+    if (wire.kind == WireKind::kPneumatic) {
       AddBidirectionalEdge(pneumatic_adjacency,
                            std::make_pair(wire.fromComponentId,
                                           wire.fromPortId),
@@ -218,6 +218,54 @@ void SimulatePneumaticNetwork(
       }
       if (should_push) {
         pressureQueue.push(edge.to);
+      }
+    }
+  }
+
+  // Ejector supply and vacuum outlet are separate circuits. Positive pressure
+  // or an open exhaust on a vacuum line prevents suction.
+  for (const auto& comp : components) {
+    if (comp.type != ComponentType::kVacuumGenerator) {
+      continue;
+    }
+    const auto supply = port_pressures_.find({comp.instanceId, 0});
+    if (supply == port_pressures_.end() || supply->second < 2.5f) {
+      continue;
+    }
+    std::map<PortRef, float> magnitude;
+    std::queue<PortRef> queue;
+    const PortRef outlet{comp.instanceId, 1};
+    magnitude[outlet] = std::min(0.8f, supply->second * 0.1f);
+    queue.push(outlet);
+    bool contaminated = false;
+    while (!queue.empty()) {
+      const PortRef current = queue.front();
+      queue.pop();
+      const auto positive = port_pressures_.find(current);
+      contaminated |= positive != port_pressures_.end() &&
+                      positive->second > kPressureEpsilon;
+      const auto adjacency = pneumatic_adjacency.find(current);
+      if (adjacency == pneumatic_adjacency.end()) {
+        continue;
+      }
+      for (const auto& edge : adjacency->second) {
+        if (edge.is_vent) {
+          contaminated = true;
+          continue;
+        }
+        const float next = magnitude[current] * edge.attenuation;
+        if (next > magnitude[edge.to] + kPressureEpsilon) {
+          magnitude[edge.to] = next;
+          queue.push(edge.to);
+        }
+      }
+    }
+    if (!contaminated) {
+      for (const auto& [port, value] : magnitude) {
+        const auto existing = port_pressures_.find(port);
+        const float prior = existing == port_pressures_.end()
+                                ? 0 : existing->second;
+        port_pressures_[port] = std::min(prior, -value);
       }
     }
   }

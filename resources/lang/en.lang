@@ -36,8 +36,6 @@ ui.header.btn_stop=STOP
 
 # Toolbar
 ui.toolbar.tool_select=Select
-ui.toolbar.tool_pneumatic=Pneumatic
-ui.toolbar.tool_electric=Electric
 ui.toolbar.tool_tag=Tag
 ui.toolbar.load_project=Load Project
 ui.toolbar.save_layout=Save
@@ -259,7 +257,7 @@ ui.programming.end_rung_fmt=End rung: %04d
 # Global shortcut help popup
 ui.help.shortcuts.title=Shortcut Guide
 ui.help.shortcuts.open_help=Open this help
-ui.help.shortcuts.open_1=Ctrl + ?
+ui.help.shortcuts.open_1=Ctrl + ,
 ui.help.shortcuts.open_2=Ctrl + /
 ui.help.shortcuts.common=Common
 ui.help.shortcuts.common_run_stop=RUN/STOP: Use the header button
@@ -271,7 +269,7 @@ ui.help.shortcuts.wiring_delete=Delete selected: Delete
 ui.help.shortcuts.wiring_select_toggle=Select tool: Ctrl+Click toggles components/wires
 ui.help.shortcuts.wiring_select_box=Select tool: Drag empty canvas to box-select
 ui.help.shortcuts.wiring_select_box_add=Select tool: Ctrl+Drag empty canvas adds/removes by box
-ui.help.shortcuts.wiring_tool_cycle=Q: cycle tools (Select -> Pneumatic -> Electric -> Tag)
+ui.help.shortcuts.wiring_tool_cycle=Q: cycle tools (Select -> Wire -> Tag)
 ui.help.shortcuts.wiring_zoom=Zoom: Mouse wheel / Trackpad pinch / Touch pinch
 ui.help.shortcuts.wiring_pan=Pan: Middle drag / Alt + Right drag / Shift + Wheel (horizontal)
 ui.help.shortcuts.wiring_trackpad_pan=Trackpad: Two-finger scroll pans / Touch: drag pans
@@ -279,7 +277,7 @@ ui.help.shortcuts.wiring_source_sink=PLC context menu: choose Sink/Source input 
 ui.help.shortcuts.programming_mode=Programming mode
 ui.help.shortcuts.prog_f2_f3=F2/F3: Monitor/Edit
 ui.help.shortcuts.prog_f5_f6_f7=F5/F6/F7: XIC/XIO/Coil
-ui.help.shortcuts.prog_f9=F9 / Shift+F9: Add/Remove vertical
+ui.help.shortcuts.prog_f9=F9: Horizontal line / Shift+F9: Vertical connection
 ui.help.shortcuts.prog_edit_keys=Delete / Insert / Enter
 ui.help.shortcuts.prog_undo_redo=Ctrl+Z / Ctrl+Y: Undo/Redo
 ui.help.shortcuts.prog_ctrl_arrow=Ctrl+Arrow: Toggle line path
@@ -287,11 +285,9 @@ ui.help.shortcuts.close=Close
 ui.help.shortcuts.common_save_load=Mode toolbars: Wiring JSON / Programming CSV
 ui.help.shortcuts.quick_start=Quick Start
 ui.help.shortcuts.quick_wiring_drag=Drag components from the list to the canvas
-ui.help.shortcuts.quick_wiring_connect=Connect ports by dragging from one port to another
-ui.help.shortcuts.quick_tools=Tool buttons: Select / Pneumatic / Electric / Tag
+ui.help.shortcuts.quick_wiring_connect=Wire tool: click the starting port, then the destination port
+ui.help.shortcuts.quick_tools=Tool buttons: Select / Wire / Tag
 ui.help.shortcuts.quick_tool_select=Select: select/move components and wires
-ui.help.shortcuts.quick_tool_pneumatic=Pneumatic: create pneumatic wires
-ui.help.shortcuts.quick_tool_electric=Electric: create electrical wires
 ui.help.shortcuts.quick_tool_tag=Tag: add/edit wire tags
 ui.help.shortcuts.wiring_tag=Tag tool: click wire to add/edit wire tag
 ui.help.shortcuts.prog_addr_example=Address example: Y0, T1 K10, C2 K5, SET M0, RST Y0
@@ -390,7 +386,7 @@ ui.rtl.no_sources_status=This component cannot be edited and does not require a 
 
 # RTL Toolchain
 ui.rtl.toolchain_title=RTL Toolchain Settings
-ui.rtl.wsl_status=Native Windows: %s
+ui.rtl.wsl_status=WSL2: %s
 ui.rtl.verilator_status=Verilator: %s
 ui.rtl.make_status=make: %s
 ui.rtl.compiler_status=Compiler (g++): %s
@@ -443,3 +439,203 @@ ui.rtl.loading_toolchain=Loading RTL toolchain status...
 ui.rtl.not_loaded=Toolchain status not loaded yet.
 ui.rtl.loading_wsl=Loading native RTL toolchain state. This can take a moment the first time.
 ui.help.shortcuts.wiring_z_order_items=Bring to Front / Send to Back / Bring Forward / Send Backward
+
+ui.toolbar.tool_wire=Wire
+ui.help.shortcuts.quick_tool_wire=Wire: connection type follows the starting port
+ui.wiring.incompatible_port=Incompatible port type or role
+
+ui.z_layers.title=Physical Z layers
+ui.z_layers.pause=Pause simulation to edit
+ui.z_layers.description=Physical height is independent of drawing order.
+ui.z_layers.minimum=Minimum height
+ui.z_layers.maximum=Maximum height
+ui.z_layers.initial=Initial height
+ui.z_layers.height=Installation height
+ui.z_layers.apply=Apply height
+ui.z_layers.invalid=Invalid height range
+
+component.sensor_cylinder.name=Sensor cylinder
+component.sensor_cylinder.desc=Integrated upper terminals; FWD/REV outputs
+component.suction_cylinder.name=Suction cylinder
+component.suction_cylinder.desc=Downward suction head; separate vacuum hose
+component.stopper_cylinder.name=Stopper cylinder
+component.stopper_cylinder.desc=Lowering plate stops workpieces; UP/DOWN sensors
+component.vacuum_generator.name=Vacuum ejector
+component.vacuum_generator.desc=Positive P supply generates vacuum at VAC
+ui.wiring.context.front_preview=Front view
+
+component.dc_motor.name=DC motor
+component.dc_motor.desc=DC motor
+component.servo_motor.name=Servo motor
+component.servo_motor.desc=AC servo motor with U/V/W, PE and encoder
+component.servo_amp.name=Servo amplifier
+component.servo_amp.desc=Generic pulse-command servo amplifier with three-phase AC supply
+component.servo_lift.name=Servo lift
+component.servo_lift.desc=Servo lift
+component.lift_suction.name=Lift with suction cylinder
+component.lift_suction.desc=Lift with suction cylinder
+component.ac_supply.name=Three-phase AC supply
+component.ac_supply.desc=Three-phase AC supply
+ui.axis.settings=Axis settings
+ui.axis.pulses=Pulses per revolution
+ui.axis.lead=Lead (mm/revolution)
+ui.axis.stroke=Stroke (mm)
+ui.axis.speed=Maximum speed (rev/s)
+ui.axis.acceleration=Acceleration (rev/s2)
+ui.axis.apply=Apply axis settings
+
+# Storage / optical / HMI components
+component.warehouse.name=Six-slot warehouse
+component.warehouse.desc=Two slots per height; passive storage
+component.fiber_amp.name=Fiber sensor amplifier
+component.fiber_amp.desc=Through-beam TX/RX, powered SIG output
+component.fiber_tx.name=Fiber transmitter head
+component.fiber_tx.desc=Optical transmitter; lens faces negative X
+component.fiber_rx.name=Fiber receiver head
+component.fiber_rx.desc=Optical receiver; lens faces negative X
+component.touch_panel.name=Touch panel
+component.touch_panel.desc=Generic PLC link, M buttons and D display
+ui.fiber.fault=Optical fault
+ui.fiber.distance=Maximum distance
+ui.fiber.alignment=Alignment tolerance
+ui.fiber.width=Beam width
+ui.fiber.dark_on=Dark-ON (blocked output)
+ui.fiber.apply=Apply SET / MODE
+ui.hmi.controls=PLC panel controls
+ui.hmi.forward=Forward
+ui.hmi.reverse=Reverse
+ui.hmi.home=Home
+ui.hmi.display=Display D
+ui.hmi.momentary=Momentary buttons
+ui.hmi.apply=Apply screen
+
+ui.fiber.ok=Optical link OK
+ui.fiber.power=Check 24V / 0V power
+ui.fiber.link=Check TX / RX links
+ui.fiber.align_error=Check head direction, distance and height
+
+ui.hmi.edit_screen=Edit screen
+ui.hmi.editor=HMI screen editor
+ui.hmi.editor_hint=Add, drag to place, resize from the corner; arrow keys move, Shift moves by 10.
+ui.hmi.button=Button
+ui.hmi.lamp=Lamp
+ui.hmi.number=Number
+ui.hmi.text=Text
+ui.hmi.label=Label
+ui.hmi.address=PLC address
+ui.hmi.position=Position
+ui.hmi.size=Size
+ui.hmi.font_size=Font size
+ui.hmi.unit=Unit
+ui.hmi.decimals=Decimal places
+ui.hmi.on_color=ON color
+ui.hmi.delete_widget=Delete widget
+ui.hmi.invalid=Check addresses, duplicate buttons and screen bounds.
+ui.hmi.cancel=Cancel
+
+ui.wiring.simulation_paused=Simulation paused
+ui.hmi.paused_hint=Simulation paused; closing this editor resumes it.
+
+ui.hmi.snap=Snap to 5 px grid
+ui.hmi.widgets=Widgets
+ui.hmi.duplicate=Duplicate
+ui.hmi.left=Left
+ui.hmi.center=Center
+ui.hmi.right=Right
+ui.hmi.top=Top
+ui.hmi.middle=Middle
+ui.hmi.bottom=Bottom
+
+ui.hmi.select_hint=Select a widget on the screen or in the list to edit it.
+
+ui.component_list.filter_exam=Automation equipment exam
+component.dc_driver.name=DC motor driver
+component.dc_driver.desc=24V DC driver controlled by PLC PWM duty and DIR signal
+
+ui.component_list.function_all=All functions
+ui.component_list.function_input=Input
+ui.component_list.function_output=Output
+ui.component_list.function_pneumatic=Pneumatic
+ui.component_list.function_power=Power
+ui.component_list.function_other=Other
+ui.component_list.function_control=Control
+
+ui.programming.shortcut_f8=F8: [] Application instruction
+ui.programming.shortcut_shift_f7=Shift+F7: Rising pulse contact (LDP)
+ui.programming.shortcut_shift_f8=Shift+F8: Falling pulse contact (LDF)
+
+ui.help.shortcuts.mode_tab=Tab: switch Programming / Wiring
+ui.help.shortcuts.engine_f12=F12: show PLC Engine Status
+
+ui.rtl.tool_doctor=RTL Tool Doctor (WSL2)
+ui.rtl.doctor_description=RTL analysis/build uses WSL2. Component workers run natively on Windows.
+ui.rtl.doctor_default=Default distribution
+ui.rtl.doctor_distribution=Distribution
+ui.rtl.doctor_cpu=Build CPU budget
+ui.rtl.doctor_save=Save and diagnose
+ui.rtl.doctor_diagnose=Diagnose saved profile
+ui.rtl.doctor_save_failed=Unable to save WSL profile.
+ui.rtl.doctor_busy=Working...
+ui.rtl.doctor_action_done=Action completed.
+ui.rtl.doctor_install_wsl=Install WSL2 / Ubuntu
+ui.rtl.doctor_install_tools=Install / repair RTL tools
+ui.rtl.doctor_start=Start selected distribution
+ui.rtl.doctor_stop=Stop selected distribution
+ui.rtl.doctor_convert=Convert selected distribution to WSL2
+ui.rtl.doctor_update=Update WSL
+ui.rtl.doctor_note=Tool installation uses apt in Ubuntu/Debian. WSL installation may require administrator access or a restart.
+
+
+ui.rtl.doctor_host=WSL host
+ui.rtl.doctor_wsl2=WSL2 distribution
+ui.rtl.doctor_kernel=Linux kernel
+ui.rtl.doctor_compiler=C++ compiler
+
+ui.rtl.doctor_mingw=MinGW Windows compiler
+ui.hmi.message=Status message
+ui.hmi.page=Screen
+ui.hmi.add_page=Add screen
+ui.hmi.page_name=Screen name
+ui.hmi.navigate=Screen switch button
+ui.hmi.target_page=Target screen
+ui.hmi.message_text=Message text
+ui.warehouse.cylinder=Warehouse drive cylinder
+ui.warehouse.travel=Warehouse travel
+ui.hmi.visibility=Visible while bit is ON (blank: always)
+
+component.magazine.name=Workpiece magazine
+component.magazine.desc=Passive stacked stock; releases when supply cylinder retracts
+
+component.driven_warehouse.name=Pneumatic six-slot warehouse
+component.driven_warehouse.desc=Integrated 70 mm double-acting cylinder and linear guide
+
+ui.hmi.operate=Operate HMI
+ui.wiring.context.edit_label=Edit part name
+ui.wiring.context.show_label=Show name
+ui.wiring.context.label_hint=Enter to apply; empty to hide
+
+ui.header.convert_before_run=Convert the ladder with F4 before RUN.
+
+ui.render_layers.title=Display layers
+ui.render_layers.up=Up
+ui.render_layers.down=Down
+ui.render_layers.front=Front
+ui.render_layers.back=Back
+ui.render_layers.opacity=Opacity
+ui.render_layers.hide=Hide
+ui.render_layers.show=Show
+ui.render_layers.hidden=Hidden 
+ui.render_layers.group_name=Group name
+ui.render_layers.group=Group / rename selection
+ui.render_layers.ungroup=Ungroup
+ui.render_layers.drag=Move selection
+ui.render_layers.help=Top rows appear in front. Ctrl: add selection; Shift: range.
+ui.render_layers.select_help=Drag the left selection column to select multiple rows.
+ui.render_layers.drag_help=Drag rows to reorder; drop onto a group title to join it.
+ui.render_layers.canvas_help=Canvas rectangle selections can also be edited here.
+
+ui.help.window=Help###ShortcutGuide
+ui.help.open_guide=Open user guide
+ui.help.guide_title=PLC Simulator - User Guide
+
+ui.help.guide_error=Cannot open the guide. Check the guide files and WebView2 Runtime.

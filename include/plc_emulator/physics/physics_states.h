@@ -16,21 +16,21 @@ namespace plc {
  * Physical values for PLC electrical/state signals.
  */
 typedef struct PLCPhysicsState {
-  float inputVoltages[16];
-  float inputCurrents[16];
+  float inputVoltages[24];
+  float inputCurrents[24];
   float outputVoltages[16];
   float outputCurrents[16];
 
-  bool inputStates[16];
+  bool inputStates[24];
   bool outputStates[16];
 
   float cpuLoad;
   float powerConsumption;
   float internalTemperature;
 
-  float inputResponseTime[16];
+  float inputResponseTime[24];
   float outputResponseTime[16];
-  float inputImpedance[16];
+  float inputImpedance[24];
   float outputImpedance[16];
 } PLCPhysicsState;
 

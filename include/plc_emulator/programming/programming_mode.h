@@ -51,7 +51,7 @@ class ProgrammingMode {
 
   void RenderProgrammingModeUI(bool isPlcRunning);
 
-  void SetMonitorMode(bool monitor) { is_monitor_mode_ = monitor; }
+  void SetMonitorMode(bool monitor);
 
   void SaveLadderProgramToLD(const std::string& filepath);
 
@@ -117,6 +117,15 @@ class ProgrammingMode {
     int minCell = 0;
     int maxCell = 0;
   };
+  struct InstructionSpan {
+    int first;
+    int last;
+    int anchor;
+  };
+  int InstructionColumns(const LadderInstruction& instruction) const;
+  InstructionSpan GetInstructionSpan(int rung, int anchor) const;
+  InstructionSpan GetCellSpan(int rung, int column) const;
+  float ladder_column_width_ = 90.0f;
   PendingAction pending_action_;
   void ExecutePendingAction();
 
@@ -144,11 +153,13 @@ class ProgrammingMode {
   float ColumnWidth(float area, int column) const;
   float ColumnOffset(float area, int column) const;
   void RenderColumnGrid(ImDrawList* draw_list, float x, float y,
-                        float area, float height) const;
+                        float area, float height, int rung = -1) const;
   void RenderRungMemoPopup();
   void RenderVerticalDialog();
 
   float GetLayoutScale() const;
+  float LadderRowHeight() const;
+  float LadderSymbolHeight() const;
 
   void HandleEditAction(LadderInstructionType type);
   void ConfirmInstruction();
@@ -189,6 +200,7 @@ class ProgrammingMode {
   bool CompileLadderToOpenPLC();
   void SyncPhysicsToOpenPLC();
   void SyncOpenPLCToDevices();
+  void ResetMonitorOutputs();
   void SyncOpenPLCToTimersCounters();
   void UpdateVisualActiveStates();
   bool NeedsRecompilation() const;

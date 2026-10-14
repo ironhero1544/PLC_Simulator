@@ -1,0 +1,6420 @@
+{
+  "version": 3,
+  "next_instance_id": 54,
+  "next_wire_id": 118,
+  "electrical_config": {
+    "plc_input_mode": "sink",
+    "plc_output_mode": "source"
+  },
+  "components": [
+    {
+      "instance_id": 0,
+      "type": "PLC",
+      "x": 190,
+      "y": 40,
+      "custom_label": "PLC",
+      "z_order": 40,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "01 제어 · 전원"
+      }
+    },
+    {
+      "instance_id": 1,
+      "type": "POWER_SUPPLY",
+      "x": 40,
+      "y": 60,
+      "custom_label": "24V DC",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "01 제어 · 전원"
+      }
+    },
+    {
+      "instance_id": 2,
+      "type": "TOUCH_PANEL",
+      "x": 1280,
+      "y": 40,
+      "custom_label": "HMI",
+      "z_order": 40,
+      "hmi_settings": {
+        "screen_width": 288,
+        "screen_height": 216,
+        "pages": [
+          "테스트 동작",
+          "장비 시운전"
+        ],
+        "widgets": [
+          {
+            "type": "text",
+            "text": "테스트 동작",
+            "address": "",
+            "x": 8,
+            "y": 4,
+            "width": 200,
+            "height": 20,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "창고 전진",
+            "address": "M100",
+            "x": 8,
+            "y": 28,
+            "width": 85,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "창고 후진",
+            "address": "M101",
+            "x": 98,
+            "y": 28,
+            "width": 85,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "가공모터 5초",
+            "address": "M103",
+            "x": 188,
+            "y": 28,
+            "width": 92,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "JOG 상승",
+            "address": "M104",
+            "x": 8,
+            "y": 64,
+            "width": 85,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "JOG 하강",
+            "address": "M105",
+            "x": 98,
+            "y": 64,
+            "width": 85,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "원점 복귀",
+            "address": "M102",
+            "x": 188,
+            "y": 64,
+            "width": 92,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "저속",
+            "address": "M106",
+            "x": 8,
+            "y": 100,
+            "width": 85,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "중속",
+            "address": "M107",
+            "x": 98,
+            "y": 100,
+            "width": 85,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "고속",
+            "address": "M108",
+            "x": 188,
+            "y": 100,
+            "width": 92,
+            "height": 28,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "number",
+            "text": "JOG 속도",
+            "address": "D100",
+            "x": 8,
+            "y": 138,
+            "width": 175,
+            "height": 42,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "mm/min",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "lamp",
+            "text": "원점",
+            "address": "M209",
+            "x": 188,
+            "y": 138,
+            "width": 92,
+            "height": 42,
+            "page": 0,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "장비 시운전 ->",
+            "address": "",
+            "x": 8,
+            "y": 185,
+            "width": 272,
+            "height": 24,
+            "page": 0,
+            "target_page": 1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "text",
+            "text": "장비 시운전",
+            "address": "",
+            "x": 8,
+            "y": 4,
+            "width": 200,
+            "height": 20,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "단속",
+            "address": "M110",
+            "x": 8,
+            "y": 28,
+            "width": 60,
+            "height": 30,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "연속",
+            "address": "M111",
+            "x": 78,
+            "y": 28,
+            "width": 60,
+            "height": 30,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "종료",
+            "address": "M112",
+            "x": 148,
+            "y": 28,
+            "width": 60,
+            "height": 30,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "일시정지",
+            "address": "M113",
+            "x": 218,
+            "y": 28,
+            "width": 62,
+            "height": 30,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "message",
+            "text": "동작 상태",
+            "address": "D103",
+            "x": 8,
+            "y": 70,
+            "width": 272,
+            "height": 35,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240,
+            "messages": [
+              "정지",
+              "연속운전",
+              "일시정지"
+            ]
+          },
+          {
+            "type": "number",
+            "text": "금속 적재",
+            "address": "D101",
+            "x": 8,
+            "y": 115,
+            "width": 125,
+            "height": 44,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "개",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240,
+            "visibility_address": "M210"
+          },
+          {
+            "type": "lamp",
+            "text": "연속",
+            "address": "M200",
+            "x": 148,
+            "y": 115,
+            "width": 132,
+            "height": 24,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "lamp",
+            "text": "서보 동작",
+            "address": "M211",
+            "x": 148,
+            "y": 144,
+            "width": 132,
+            "height": 24,
+            "page": 1,
+            "target_page": -1,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          },
+          {
+            "type": "button",
+            "text": "<- 테스트 동작",
+            "address": "",
+            "x": 8,
+            "y": 185,
+            "width": 272,
+            "height": 24,
+            "page": 1,
+            "target_page": 0,
+            "momentary": true,
+            "unit": "",
+            "decimals": 0,
+            "font_size": 12,
+            "on_color": 4283484240
+          }
+        ]
+      },
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "01 제어 · 전원"
+      }
+    },
+    {
+      "instance_id": 3,
+      "type": "SERVO_AMPLIFIER",
+      "x": 550,
+      "y": 40,
+      "custom_label": "서보앰프",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "01 제어 · 전원"
+      }
+    },
+    {
+      "instance_id": 4,
+      "type": "AC_SUPPLY",
+      "x": 40,
+      "y": 200,
+      "custom_label": "AC 전원",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "01 제어 · 전원"
+      }
+    },
+    {
+      "instance_id": 5,
+      "type": "FRL",
+      "x": 40,
+      "y": 380,
+      "custom_label": "0.5MPa",
+      "z_order": 40,
+      "frl_pressure": 5,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "02 공압 공급"
+      }
+    },
+    {
+      "instance_id": 6,
+      "type": "VALVE_SINGLE",
+      "x": 150,
+      "y": 380,
+      "custom_label": "공압 공급",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "02 공압 공급"
+      }
+    },
+    {
+      "instance_id": 7,
+      "type": "MANIFOLD",
+      "x": 260,
+      "y": 400,
+      "custom_label": "분배",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "02 공압 공급"
+      }
+    },
+    {
+      "instance_id": 10,
+      "type": "SENSOR_CYLINDER",
+      "x": 353.0,
+      "y": 1040.0,
+      "custom_label": "공급",
+      "z_order": 25,
+      "flip_x": true,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "03 공작물 공급"
+      }
+    },
+    {
+      "instance_id": 11,
+      "type": "SENSOR_CYLINDER",
+      "x": 211.0,
+      "y": 994.0,
+      "custom_label": "송출",
+      "z_order": 26,
+      "rotation_quadrants": 2,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 12,
+      "type": "PROCESSING_CYLINDER",
+      "x": 336.0,
+      "y": 945.0,
+      "custom_label": "가공",
+      "z_order": 15,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 2
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 13,
+      "type": "STOPPER_CYLINDER",
+      "x": 950.0,
+      "y": 980,
+      "custom_label": "스토퍼",
+      "z_order": 20,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 2
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 14,
+      "type": "LIFT_SUCTION",
+      "x": 811.5,
+      "y": 814.0,
+      "custom_label": "리프트 · 흡착",
+      "z_order": 30,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 3,
+        "initial_height": 3
+      },
+      "axis_settings": {
+        "pulses_per_turn": 60,
+        "lead_mm": 1,
+        "stroke_mm": 100,
+        "max_speed": 100,
+        "acceleration": 200
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "06 리프트 · 흡착"
+      }
+    },
+    {
+      "instance_id": 16,
+      "type": "DRIVEN_WAREHOUSE",
+      "x": 667.5,
+      "y": 825,
+      "custom_label": "6칸 창고",
+      "z_order": 40,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 3,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "07 창고 · 저장박스"
+      }
+    },
+    {
+      "instance_id": 17,
+      "type": "CONVEYOR",
+      "x": 775.0,
+      "y": 980.0,
+      "custom_label": "컨베이어",
+      "z_order": 0,
+      "rotation_quadrants": 0,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 20,
+      "type": "BOX",
+      "x": 1150.0,
+      "y": 980.0,
+      "custom_label": "저장박스",
+      "z_order": 1,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "07 창고 · 저장박스"
+      }
+    },
+    {
+      "instance_id": 23,
+      "type": "RING_SENSOR",
+      "x": 368.0,
+      "y": 1160.0,
+      "custom_label": "공작물 감지",
+      "z_order": 2,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "03 공작물 공급"
+      }
+    },
+    {
+      "instance_id": 24,
+      "type": "SENSOR",
+      "x": 820.0,
+      "y": 1095.0,
+      "custom_label": "용량형",
+      "z_order": -10,
+      "rotation_quadrants": 0,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 25,
+      "type": "SENSOR",
+      "x": 1075.0,
+      "y": 1080.0,
+      "custom_label": "통과 감지",
+      "z_order": -10,
+      "rotation_quadrants": 0,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 21,
+      "type": "VACUUM_GENERATOR",
+      "x": 1500,
+      "y": 390,
+      "custom_label": "진공 발생기",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "06 리프트 · 흡착"
+      }
+    },
+    {
+      "instance_id": 22,
+      "type": "INDUCTIVE_SENSOR",
+      "x": 820.0,
+      "y": 880.0,
+      "custom_label": "유도형",
+      "z_order": -10,
+      "rotation_quadrants": 2,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 30,
+      "type": "VALVE_SINGLE",
+      "x": 420,
+      "y": 380,
+      "custom_label": "공급",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "03 공작물 공급"
+      }
+    },
+    {
+      "instance_id": 31,
+      "type": "VALVE_SINGLE",
+      "x": 560,
+      "y": 380,
+      "custom_label": "송출",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 32,
+      "type": "VALVE_DOUBLE",
+      "x": 700,
+      "y": 380,
+      "custom_label": "가공",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 33,
+      "type": "VALVE_DOUBLE",
+      "x": 860,
+      "y": 380,
+      "custom_label": "스토퍼",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 34,
+      "type": "VALVE_DOUBLE",
+      "x": 1020,
+      "y": 380,
+      "custom_label": "흡착",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "06 리프트 · 흡착"
+      }
+    },
+    {
+      "instance_id": 35,
+      "type": "VALVE_DOUBLE",
+      "x": 1180,
+      "y": 380,
+      "custom_label": "창고",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "07 창고 · 저장박스"
+      }
+    },
+    {
+      "instance_id": 36,
+      "type": "VALVE_SINGLE",
+      "x": 1360,
+      "y": 380,
+      "custom_label": "진공",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "06 리프트 · 흡착"
+      }
+    },
+    {
+      "instance_id": 43,
+      "type": "FIBER_AMPLIFIER",
+      "x": 860,
+      "y": 60,
+      "custom_label": "송출 감지",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 44,
+      "type": "FIBER_TRANSMITTER",
+      "x": 197.0,
+      "y": 1020.0,
+      "custom_label": "송출 공작물 TX",
+      "z_order": -10,
+      "rotation_quadrants": 2,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 45,
+      "type": "FIBER_RECEIVER",
+      "x": 560.0,
+      "y": 1020.0,
+      "custom_label": "송출 공작물 RX",
+      "z_order": -10,
+      "rotation_quadrants": 0,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "04 송출 · 가공"
+      }
+    },
+    {
+      "instance_id": 46,
+      "type": "FIBER_AMPLIFIER",
+      "x": 1060,
+      "y": 60,
+      "custom_label": "스토퍼 감지",
+      "z_order": 40,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 47,
+      "type": "FIBER_TRANSMITTER",
+      "x": 965.0,
+      "y": 1152.0,
+      "custom_label": "스토퍼 TX",
+      "z_order": -10,
+      "flip_x": true,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 48,
+      "type": "FIBER_RECEIVER",
+      "x": 965.0,
+      "y": 872.0,
+      "custom_label": "스토퍼 RX",
+      "z_order": -10,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": false,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 50,
+      "type": "WORKPIECE_NONMETAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "custom_label": "1 / 비금속",
+      "z_order": 100,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 1
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "08 공작물"
+      }
+    },
+    {
+      "instance_id": 18,
+      "type": "CONVEYOR",
+      "x": 375,
+      "y": 980,
+      "custom_label": "이송 컨베이어",
+      "z_order": 0,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 1,
+        "initial_height": 1
+      },
+      "show_custom_label": true,
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "05 컨베이어 · 분류 · 스토퍼"
+      }
+    },
+    {
+      "instance_id": 51,
+      "type": "WORKPIECE_METAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "rotation_quadrants": 3,
+      "custom_label": "2 / 금속",
+      "z_order": 151,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 1
+      },
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "08 공작물"
+      }
+    },
+    {
+      "instance_id": 52,
+      "type": "WORKPIECE_NONMETAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "rotation_quadrants": 3,
+      "custom_label": "3 / 비금속",
+      "z_order": 152,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 1
+      },
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "08 공작물"
+      }
+    },
+    {
+      "instance_id": 53,
+      "type": "WORKPIECE_METAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "rotation_quadrants": 3,
+      "custom_label": "4 / 금속",
+      "z_order": 153,
+      "z_config": {
+        "min_layer": 1,
+        "max_layer": 2,
+        "initial_height": 1
+      },
+      "render_layer": {
+        "opacity": 1.0,
+        "hidden": false,
+        "group": "08 공작물"
+      }
+    }
+  ],
+  "wires": [
+    {
+      "id": 0,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 23,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1240
+        },
+        {
+          "x": 428.0,
+          "y": 1240
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 1,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 23,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 990
+        },
+        {
+          "x": 190,
+          "y": 990
+        },
+        {
+          "x": 190,
+          "y": 1140
+        },
+        {
+          "x": 428.0,
+          "y": 1140
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 2,
+      "from_component_id": 23,
+      "from_port_id": 1,
+      "to_component_id": 0,
+      "to_port_id": 7,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 460,
+          "y": 1190.0
+        },
+        {
+          "x": 460,
+          "y": 1150
+        },
+        {
+          "x": 180,
+          "y": 1150
+        },
+        {
+          "x": 180,
+          "y": 490
+        },
+        {
+          "x": 520,
+          "y": 490
+        },
+        {
+          "x": 520,
+          "y": 20
+        },
+        {
+          "x": 395.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X7",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 3,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 43,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 160,
+          "y": 80.0
+        },
+        {
+          "x": 160,
+          "y": 30
+        },
+        {
+          "x": 1050,
+          "y": 30
+        },
+        {
+          "x": 1050,
+          "y": 77.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 4,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 43,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 150,
+          "y": 100
+        },
+        {
+          "x": 150,
+          "y": 10
+        },
+        {
+          "x": 1040,
+          "y": 10
+        },
+        {
+          "x": 1040,
+          "y": 110
+        },
+        {
+          "x": 1050,
+          "y": 110
+        },
+        {
+          "x": 1050,
+          "y": 107.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 5,
+      "from_component_id": 43,
+      "from_port_id": 2,
+      "to_component_id": 0,
+      "to_port_id": 36,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1050,
+          "y": 92.0
+        },
+        {
+          "x": 1050,
+          "y": 50
+        },
+        {
+          "x": 1060,
+          "y": 50
+        },
+        {
+          "x": 1060,
+          "y": 0
+        },
+        {
+          "x": 300,
+          "y": 0
+        },
+        {
+          "x": 300,
+          "y": 20
+        },
+        {
+          "x": 295.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X23",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 6,
+      "from_component_id": 43,
+      "from_port_id": 3,
+      "to_component_id": 44,
+      "to_port_id": 0,
+      "wire_kind": "optical",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 840,
+          "y": 82.0
+        },
+        {
+          "x": 840,
+          "y": 610
+        },
+        {
+          "x": 170,
+          "y": 610
+        },
+        {
+          "x": 170,
+          "y": 1040
+        },
+        {
+          "x": 180,
+          "y": 1040
+        },
+        {
+          "x": 180,
+          "y": 1035.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.6,
+        "g": 0.3,
+        "b": 0.8,
+        "a": 1
+      }
+    },
+    {
+      "id": 7,
+      "from_component_id": 43,
+      "from_port_id": 4,
+      "to_component_id": 45,
+      "to_port_id": 0,
+      "wire_kind": "optical",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 840,
+          "y": 102.0
+        },
+        {
+          "x": 840,
+          "y": 100
+        },
+        {
+          "x": 850,
+          "y": 100
+        },
+        {
+          "x": 850,
+          "y": 810
+        },
+        {
+          "x": 660,
+          "y": 810
+        },
+        {
+          "x": 660,
+          "y": 1010
+        },
+        {
+          "x": 680,
+          "y": 1010
+        },
+        {
+          "x": 680,
+          "y": 1035.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.6,
+        "g": 0.3,
+        "b": 0.8,
+        "a": 1
+      }
+    },
+    {
+      "id": 8,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 46,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 160,
+          "y": 80.0
+        },
+        {
+          "x": 160,
+          "y": 30
+        },
+        {
+          "x": 1250,
+          "y": 30
+        },
+        {
+          "x": 1250,
+          "y": 77.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 9,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 46,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 150,
+          "y": 100
+        },
+        {
+          "x": 150,
+          "y": 10
+        },
+        {
+          "x": 1040,
+          "y": 10
+        },
+        {
+          "x": 1040,
+          "y": 130
+        },
+        {
+          "x": 1250,
+          "y": 130
+        },
+        {
+          "x": 1250,
+          "y": 107.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 10,
+      "from_component_id": 46,
+      "from_port_id": 2,
+      "to_component_id": 0,
+      "to_port_id": 14,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1250,
+          "y": 92.0
+        },
+        {
+          "x": 1250,
+          "y": 90
+        },
+        {
+          "x": 1260,
+          "y": 90
+        },
+        {
+          "x": 1260,
+          "y": -10
+        },
+        {
+          "x": 370,
+          "y": -10
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X16",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 11,
+      "from_component_id": 46,
+      "from_port_id": 3,
+      "to_component_id": 47,
+      "to_port_id": 0,
+      "wire_kind": "optical",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1040,
+          "y": 82.0
+        },
+        {
+          "x": 1040,
+          "y": 80
+        },
+        {
+          "x": 1050,
+          "y": 80
+        },
+        {
+          "x": 1050,
+          "y": 370
+        },
+        {
+          "x": 1170,
+          "y": 370
+        },
+        {
+          "x": 1170,
+          "y": 970
+        },
+        {
+          "x": 1260,
+          "y": 970
+        },
+        {
+          "x": 1260,
+          "y": 1270
+        },
+        {
+          "x": 980,
+          "y": 1270
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.6,
+        "g": 0.3,
+        "b": 0.8,
+        "a": 1
+      }
+    },
+    {
+      "id": 12,
+      "from_component_id": 46,
+      "from_port_id": 4,
+      "to_component_id": 48,
+      "to_port_id": 0,
+      "wire_kind": "optical",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1040,
+          "y": 102.0
+        },
+        {
+          "x": 1040,
+          "y": 370
+        },
+        {
+          "x": 980,
+          "y": 370
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.6,
+        "g": 0.3,
+        "b": 0.8,
+        "a": 1
+      }
+    },
+    {
+      "id": 13,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 2,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 160,
+          "y": 80.0
+        },
+        {
+          "x": 160,
+          "y": 30
+        },
+        {
+          "x": 1240,
+          "y": 30
+        },
+        {
+          "x": 1240,
+          "y": 100
+        },
+        {
+          "x": 1270,
+          "y": 100
+        },
+        {
+          "x": 1270,
+          "y": 330
+        },
+        {
+          "x": 1332.0,
+          "y": 330
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 14,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 2,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1360,
+          "y": 340
+        },
+        {
+          "x": 1360,
+          "y": 330
+        },
+        {
+          "x": 1357.0,
+          "y": 330
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 15,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 3,
+      "to_port_id": 4,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 160,
+          "y": 80.0
+        },
+        {
+          "x": 160,
+          "y": 30
+        },
+        {
+          "x": 530,
+          "y": 30
+        },
+        {
+          "x": 530,
+          "y": 127.458
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 16,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 3,
+      "to_port_id": 5,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 230
+        },
+        {
+          "x": 530,
+          "y": 230
+        },
+        {
+          "x": 530,
+          "y": 135.593
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 17,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 3,
+      "to_port_id": 7,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 150,
+          "y": 100
+        },
+        {
+          "x": 150,
+          "y": 10
+        },
+        {
+          "x": 650,
+          "y": 10
+        },
+        {
+          "x": 650,
+          "y": 94.915
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 18,
+      "from_component_id": 0,
+      "from_port_id": 31,
+      "to_component_id": 3,
+      "to_port_id": 9,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 395.0,
+          "y": 240
+        },
+        {
+          "x": 650,
+          "y": 240
+        },
+        {
+          "x": 650,
+          "y": 111.186
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y17",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 19,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 3,
+      "to_port_id": 10,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 160,
+          "y": 80.0
+        },
+        {
+          "x": 160,
+          "y": 30
+        },
+        {
+          "x": 640,
+          "y": 30
+        },
+        {
+          "x": 640,
+          "y": 120
+        },
+        {
+          "x": 650,
+          "y": 120
+        },
+        {
+          "x": 650,
+          "y": 119.322
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 20,
+      "from_component_id": 0,
+      "from_port_id": 16,
+      "to_component_id": 3,
+      "to_port_id": 6,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 220,
+          "y": 250
+        },
+        {
+          "x": 660,
+          "y": 250
+        },
+        {
+          "x": 660,
+          "y": 90
+        },
+        {
+          "x": 650,
+          "y": 90
+        },
+        {
+          "x": 650,
+          "y": 86.78
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y0",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 21,
+      "from_component_id": 0,
+      "from_port_id": 20,
+      "to_component_id": 3,
+      "to_port_id": 8,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 320,
+          "y": 260
+        },
+        {
+          "x": 670,
+          "y": 260
+        },
+        {
+          "x": 670,
+          "y": 100
+        },
+        {
+          "x": 650,
+          "y": 100
+        },
+        {
+          "x": 650,
+          "y": 103.051
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y4",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 22,
+      "from_component_id": 3,
+      "from_port_id": 12,
+      "to_component_id": 0,
+      "to_port_id": 15,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 650,
+          "y": 138.644
+        },
+        {
+          "x": 650,
+          "y": 140
+        },
+        {
+          "x": 680,
+          "y": 140
+        },
+        {
+          "x": 680,
+          "y": -20
+        },
+        {
+          "x": 400,
+          "y": -20
+        },
+        {
+          "x": 400,
+          "y": 20
+        },
+        {
+          "x": 395.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X17",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 23,
+      "from_component_id": 4,
+      "from_port_id": 0,
+      "to_component_id": 3,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 65.0,
+          "y": 300
+        },
+        {
+          "x": 540,
+          "y": 300
+        },
+        {
+          "x": 540,
+          "y": 90
+        },
+        {
+          "x": 530,
+          "y": 90
+        },
+        {
+          "x": 530,
+          "y": 86.271
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 24,
+      "from_component_id": 4,
+      "from_port_id": 1,
+      "to_component_id": 3,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 90,
+          "y": 290
+        },
+        {
+          "x": 30,
+          "y": 290
+        },
+        {
+          "x": 30,
+          "y": -30
+        },
+        {
+          "x": 540,
+          "y": -30
+        },
+        {
+          "x": 540,
+          "y": 90
+        },
+        {
+          "x": 530,
+          "y": 90
+        },
+        {
+          "x": 530,
+          "y": 94.407
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 25,
+      "from_component_id": 4,
+      "from_port_id": 2,
+      "to_component_id": 3,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 115.0,
+          "y": 300
+        },
+        {
+          "x": 120,
+          "y": 300
+        },
+        {
+          "x": 120,
+          "y": 290
+        },
+        {
+          "x": 530,
+          "y": 290
+        },
+        {
+          "x": 530,
+          "y": 102.542
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 26,
+      "from_component_id": 4,
+      "from_port_id": 3,
+      "to_component_id": 3,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 140,
+          "y": 310
+        },
+        {
+          "x": 550,
+          "y": 310
+        },
+        {
+          "x": 550,
+          "y": 230
+        },
+        {
+          "x": 530,
+          "y": 230
+        },
+        {
+          "x": 530,
+          "y": 110.678
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 27,
+      "from_component_id": 3,
+      "from_port_id": 14,
+      "to_component_id": 14,
+      "to_port_id": 10,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 530,
+          "y": 163.051
+        },
+        {
+          "x": 530,
+          "y": 230
+        },
+        {
+          "x": 690,
+          "y": 230
+        },
+        {
+          "x": 690,
+          "y": 800
+        },
+        {
+          "x": 1270,
+          "y": 800
+        },
+        {
+          "x": 1270,
+          "y": 1260
+        },
+        {
+          "x": 790,
+          "y": 1260
+        },
+        {
+          "x": 790,
+          "y": 1105.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 28,
+      "from_component_id": 3,
+      "from_port_id": 15,
+      "to_component_id": 14,
+      "to_port_id": 11,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 530,
+          "y": 171.186
+        },
+        {
+          "x": 530,
+          "y": 550
+        },
+        {
+          "x": 160,
+          "y": 550
+        },
+        {
+          "x": 160,
+          "y": 1390
+        },
+        {
+          "x": 780,
+          "y": 1390
+        },
+        {
+          "x": 780,
+          "y": 1090
+        },
+        {
+          "x": 790,
+          "y": 1090
+        },
+        {
+          "x": 790,
+          "y": 1089.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 29,
+      "from_component_id": 3,
+      "from_port_id": 16,
+      "to_component_id": 14,
+      "to_port_id": 12,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 530,
+          "y": 179.322
+        },
+        {
+          "x": 530,
+          "y": 270
+        },
+        {
+          "x": 190,
+          "y": 270
+        },
+        {
+          "x": 190,
+          "y": 330
+        },
+        {
+          "x": 130,
+          "y": 330
+        },
+        {
+          "x": 130,
+          "y": 1400
+        },
+        {
+          "x": 770,
+          "y": 1400
+        },
+        {
+          "x": 770,
+          "y": 1070
+        },
+        {
+          "x": 790,
+          "y": 1070
+        },
+        {
+          "x": 790,
+          "y": 1073.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 30,
+      "from_component_id": 3,
+      "from_port_id": 3,
+      "to_component_id": 14,
+      "to_port_id": 13,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 530,
+          "y": 110.678
+        },
+        {
+          "x": 530,
+          "y": 230
+        },
+        {
+          "x": 550,
+          "y": 230
+        },
+        {
+          "x": 550,
+          "y": 970
+        },
+        {
+          "x": 790,
+          "y": 970
+        },
+        {
+          "x": 790,
+          "y": 1057.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 31,
+      "from_component_id": 3,
+      "from_port_id": 17,
+      "to_component_id": 14,
+      "to_port_id": 14,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 650,
+          "y": 168.136
+        },
+        {
+          "x": 650,
+          "y": 170
+        },
+        {
+          "x": 640,
+          "y": 170
+        },
+        {
+          "x": 640,
+          "y": 370
+        },
+        {
+          "x": 650,
+          "y": 370
+        },
+        {
+          "x": 650,
+          "y": 960
+        },
+        {
+          "x": 800,
+          "y": 960
+        },
+        {
+          "x": 800,
+          "y": 1040
+        },
+        {
+          "x": 790,
+          "y": 1040
+        },
+        {
+          "x": 790,
+          "y": 1039.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 32,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 10,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1240
+        },
+        {
+          "x": 330,
+          "y": 1240
+        },
+        {
+          "x": 330,
+          "y": 1282.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 33,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 10,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 1300
+        },
+        {
+          "x": 330,
+          "y": 1300
+        },
+        {
+          "x": 330,
+          "y": 1301.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 34,
+      "from_component_id": 10,
+      "from_port_id": 4,
+      "to_component_id": 0,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 20,
+          "y": 1320
+        },
+        {
+          "x": 20,
+          "y": 20
+        },
+        {
+          "x": 220,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X0",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 35,
+      "from_component_id": 10,
+      "from_port_id": 5,
+      "to_component_id": 0,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 330,
+          "y": 1339.0
+        },
+        {
+          "x": 330,
+          "y": 1340
+        },
+        {
+          "x": 10,
+          "y": 1340
+        },
+        {
+          "x": 10,
+          "y": 0
+        },
+        {
+          "x": 240,
+          "y": 0
+        },
+        {
+          "x": 240,
+          "y": 20
+        },
+        {
+          "x": 245.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X1",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 36,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 11,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1100
+        },
+        {
+          "x": 309.0,
+          "y": 1100
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 37,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 11,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 1090
+        },
+        {
+          "x": 290,
+          "y": 1090
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 38,
+      "from_component_id": 11,
+      "from_port_id": 4,
+      "to_component_id": 0,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 271.0,
+          "y": 1100
+        },
+        {
+          "x": 270,
+          "y": 1100
+        },
+        {
+          "x": 270,
+          "y": 1110
+        },
+        {
+          "x": 0,
+          "y": 1110
+        },
+        {
+          "x": 0,
+          "y": -10
+        },
+        {
+          "x": 270,
+          "y": -10
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X2",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 39,
+      "from_component_id": 11,
+      "from_port_id": 5,
+      "to_component_id": 0,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 252.0,
+          "y": 1100
+        },
+        {
+          "x": 250,
+          "y": 1100
+        },
+        {
+          "x": 250,
+          "y": 1120
+        },
+        {
+          "x": -10,
+          "y": 1120
+        },
+        {
+          "x": -10,
+          "y": -20
+        },
+        {
+          "x": 290,
+          "y": -20
+        },
+        {
+          "x": 290,
+          "y": 20
+        },
+        {
+          "x": 295.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X3",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 40,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 14,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1240
+        },
+        {
+          "x": 340,
+          "y": 1240
+        },
+        {
+          "x": 340,
+          "y": 1410
+        },
+        {
+          "x": 950,
+          "y": 1410
+        },
+        {
+          "x": 950,
+          "y": 1170
+        },
+        {
+          "x": 948.5,
+          "y": 1170
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 41,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 14,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 1070
+        },
+        {
+          "x": 1030,
+          "y": 1070
+        },
+        {
+          "x": 1030,
+          "y": 1077.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 42,
+      "from_component_id": 14,
+      "from_port_id": 4,
+      "to_component_id": 0,
+      "to_port_id": 8,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1110,
+          "y": 1060
+        },
+        {
+          "x": 1110,
+          "y": 490
+        },
+        {
+          "x": 810,
+          "y": 490
+        },
+        {
+          "x": 810,
+          "y": -40
+        },
+        {
+          "x": 220,
+          "y": -40
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X10",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 43,
+      "from_component_id": 14,
+      "from_port_id": 5,
+      "to_component_id": 0,
+      "to_port_id": 9,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1030,
+          "y": 1043.0
+        },
+        {
+          "x": 1030,
+          "y": 1040
+        },
+        {
+          "x": 1120,
+          "y": 1040
+        },
+        {
+          "x": 1120,
+          "y": 500
+        },
+        {
+          "x": 820,
+          "y": 500
+        },
+        {
+          "x": 820,
+          "y": 20
+        },
+        {
+          "x": 245.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X11",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 44,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 16,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 360
+        },
+        {
+          "x": 680,
+          "y": 360
+        },
+        {
+          "x": 680,
+          "y": 810
+        },
+        {
+          "x": 687.5,
+          "y": 810
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 45,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 16,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 670,
+          "y": 340
+        },
+        {
+          "x": 670,
+          "y": 820
+        },
+        {
+          "x": 710,
+          "y": 820
+        },
+        {
+          "x": 710,
+          "y": 810
+        },
+        {
+          "x": 707.5,
+          "y": 810
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 46,
+      "from_component_id": 16,
+      "from_port_id": 4,
+      "to_component_id": 0,
+      "to_port_id": 10,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 727.5,
+          "y": 810
+        },
+        {
+          "x": 730,
+          "y": 810
+        },
+        {
+          "x": 730,
+          "y": 490
+        },
+        {
+          "x": 660,
+          "y": 490
+        },
+        {
+          "x": 660,
+          "y": 270
+        },
+        {
+          "x": 680,
+          "y": 270
+        },
+        {
+          "x": 680,
+          "y": 150
+        },
+        {
+          "x": 690,
+          "y": 150
+        },
+        {
+          "x": 690,
+          "y": -30
+        },
+        {
+          "x": 390,
+          "y": -30
+        },
+        {
+          "x": 390,
+          "y": -20
+        },
+        {
+          "x": 300,
+          "y": -20
+        },
+        {
+          "x": 300,
+          "y": -10
+        },
+        {
+          "x": 280,
+          "y": -10
+        },
+        {
+          "x": 280,
+          "y": 20
+        },
+        {
+          "x": 270,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X12",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 47,
+      "from_component_id": 16,
+      "from_port_id": 5,
+      "to_component_id": 0,
+      "to_port_id": 11,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 747.5,
+          "y": 810
+        },
+        {
+          "x": 750,
+          "y": 810
+        },
+        {
+          "x": 750,
+          "y": 500
+        },
+        {
+          "x": 510,
+          "y": 500
+        },
+        {
+          "x": 510,
+          "y": 280
+        },
+        {
+          "x": 200,
+          "y": 280
+        },
+        {
+          "x": 200,
+          "y": 240
+        },
+        {
+          "x": 170,
+          "y": 240
+        },
+        {
+          "x": 170,
+          "y": 190
+        },
+        {
+          "x": 160,
+          "y": 190
+        },
+        {
+          "x": 160,
+          "y": 90
+        },
+        {
+          "x": 180,
+          "y": 90
+        },
+        {
+          "x": 180,
+          "y": 20
+        },
+        {
+          "x": 295.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X13",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 48,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 13,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 360
+        },
+        {
+          "x": 540,
+          "y": 360
+        },
+        {
+          "x": 540,
+          "y": 950
+        },
+        {
+          "x": 810,
+          "y": 950
+        },
+        {
+          "x": 810,
+          "y": 1070
+        },
+        {
+          "x": 1040,
+          "y": 1070
+        },
+        {
+          "x": 1040,
+          "y": 1020
+        },
+        {
+          "x": 1050,
+          "y": 1020
+        },
+        {
+          "x": 1050,
+          "y": 1017.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 49,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 13,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 1010
+        },
+        {
+          "x": 1050,
+          "y": 1010
+        },
+        {
+          "x": 1050,
+          "y": 1010.667
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 50,
+      "from_component_id": 13,
+      "from_port_id": 4,
+      "to_component_id": 0,
+      "to_port_id": 6,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1050,
+          "y": 1004.333
+        },
+        {
+          "x": 1050,
+          "y": 1000
+        },
+        {
+          "x": 1140,
+          "y": 1000
+        },
+        {
+          "x": 1140,
+          "y": 140
+        },
+        {
+          "x": 700,
+          "y": 140
+        },
+        {
+          "x": 700,
+          "y": 40
+        },
+        {
+          "x": 640,
+          "y": 40
+        },
+        {
+          "x": 640,
+          "y": 20
+        },
+        {
+          "x": 370,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X6",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 51,
+      "from_component_id": 13,
+      "from_port_id": 5,
+      "to_component_id": 0,
+      "to_port_id": 34,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1050,
+          "y": 998.0
+        },
+        {
+          "x": 1050,
+          "y": 1090
+        },
+        {
+          "x": 800,
+          "y": 1090
+        },
+        {
+          "x": 800,
+          "y": 1050
+        },
+        {
+          "x": 780,
+          "y": 1050
+        },
+        {
+          "x": 780,
+          "y": 940
+        },
+        {
+          "x": 430,
+          "y": 940
+        },
+        {
+          "x": 430,
+          "y": 500
+        },
+        {
+          "x": -20,
+          "y": 500
+        },
+        {
+          "x": -20,
+          "y": -40
+        },
+        {
+          "x": 240,
+          "y": -40
+        },
+        {
+          "x": 240,
+          "y": 20
+        },
+        {
+          "x": 245.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X21",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 52,
+      "from_component_id": 14,
+      "from_port_id": 7,
+      "to_component_id": 0,
+      "to_port_id": 33,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1030,
+          "y": 1026.0
+        },
+        {
+          "x": 1030,
+          "y": 930
+        },
+        {
+          "x": 1150,
+          "y": 930
+        },
+        {
+          "x": 1150,
+          "y": 320
+        },
+        {
+          "x": 190,
+          "y": 320
+        },
+        {
+          "x": 190,
+          "y": 230
+        },
+        {
+          "x": 170,
+          "y": 230
+        },
+        {
+          "x": 170,
+          "y": 190
+        },
+        {
+          "x": 150,
+          "y": 190
+        },
+        {
+          "x": 150,
+          "y": 70
+        },
+        {
+          "x": 170,
+          "y": 70
+        },
+        {
+          "x": 170,
+          "y": 20
+        },
+        {
+          "x": 220,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X20",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 53,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 24,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1240
+        },
+        {
+          "x": 340,
+          "y": 1240
+        },
+        {
+          "x": 340,
+          "y": 1410
+        },
+        {
+          "x": 850,
+          "y": 1410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 54,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 24,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 1420
+        },
+        {
+          "x": 870,
+          "y": 1420
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 55,
+      "from_component_id": 24,
+      "from_port_id": 2,
+      "to_component_id": 0,
+      "to_port_id": 12,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 890,
+          "y": 1430
+        },
+        {
+          "x": -30,
+          "y": 1430
+        },
+        {
+          "x": -30,
+          "y": 10
+        },
+        {
+          "x": 320,
+          "y": 10
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X14",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 56,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 25,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1240
+        },
+        {
+          "x": 340,
+          "y": 1240
+        },
+        {
+          "x": 340,
+          "y": 1410
+        },
+        {
+          "x": 1100,
+          "y": 1410
+        },
+        {
+          "x": 1100,
+          "y": 1220
+        },
+        {
+          "x": 1105.0,
+          "y": 1220
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 57,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 25,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 1070
+        },
+        {
+          "x": 1180,
+          "y": 1070
+        },
+        {
+          "x": 1180,
+          "y": 1220
+        },
+        {
+          "x": 1125.0,
+          "y": 1220
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 58,
+      "from_component_id": 25,
+      "from_port_id": 2,
+      "to_component_id": 0,
+      "to_port_id": 35,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1145.0,
+          "y": 1220
+        },
+        {
+          "x": 1140,
+          "y": 1220
+        },
+        {
+          "x": 1140,
+          "y": 1440
+        },
+        {
+          "x": -40,
+          "y": 1440
+        },
+        {
+          "x": -40,
+          "y": 30
+        },
+        {
+          "x": 270,
+          "y": 30
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X22",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 59,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 12,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 370
+        },
+        {
+          "x": 140,
+          "y": 1100
+        },
+        {
+          "x": 330,
+          "y": 1100
+        },
+        {
+          "x": 330,
+          "y": 1130
+        },
+        {
+          "x": 360,
+          "y": 1130
+        },
+        {
+          "x": 360,
+          "y": 1140
+        },
+        {
+          "x": 356.0,
+          "y": 1140
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 60,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 12,
+      "to_port_id": 4,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 1140
+        },
+        {
+          "x": 436.0,
+          "y": 1140
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 61,
+      "from_component_id": 12,
+      "from_port_id": 1,
+      "to_component_id": 0,
+      "to_port_id": 4,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 376.0,
+          "y": 1140
+        },
+        {
+          "x": 360,
+          "y": 1140
+        },
+        {
+          "x": 360,
+          "y": 1160
+        },
+        {
+          "x": 30,
+          "y": 1160
+        },
+        {
+          "x": 30,
+          "y": 190
+        },
+        {
+          "x": 140,
+          "y": 190
+        },
+        {
+          "x": 140,
+          "y": 150
+        },
+        {
+          "x": 180,
+          "y": 150
+        },
+        {
+          "x": 180,
+          "y": 20
+        },
+        {
+          "x": 320,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X4",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 62,
+      "from_component_id": 12,
+      "from_port_id": 2,
+      "to_component_id": 0,
+      "to_port_id": 5,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 396.0,
+          "y": 1140
+        },
+        {
+          "x": 400,
+          "y": 1140
+        },
+        {
+          "x": 400,
+          "y": 1130
+        },
+        {
+          "x": 150,
+          "y": 1130
+        },
+        {
+          "x": 150,
+          "y": 510
+        },
+        {
+          "x": 250,
+          "y": 510
+        },
+        {
+          "x": 250,
+          "y": 260
+        },
+        {
+          "x": 210,
+          "y": 260
+        },
+        {
+          "x": 210,
+          "y": 230
+        },
+        {
+          "x": 180,
+          "y": 230
+        },
+        {
+          "x": 180,
+          "y": 20
+        },
+        {
+          "x": 345.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X5",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 63,
+      "from_component_id": 0,
+      "from_port_id": 19,
+      "to_component_id": 12,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 295.0,
+          "y": 240
+        },
+        {
+          "x": 300,
+          "y": 240
+        },
+        {
+          "x": 300,
+          "y": 390
+        },
+        {
+          "x": 390,
+          "y": 390
+        },
+        {
+          "x": 390,
+          "y": 540
+        },
+        {
+          "x": 120,
+          "y": 540
+        },
+        {
+          "x": 120,
+          "y": 1230
+        },
+        {
+          "x": 450,
+          "y": 1230
+        },
+        {
+          "x": 450,
+          "y": 1130
+        },
+        {
+          "x": 420,
+          "y": 1130
+        },
+        {
+          "x": 420,
+          "y": 1140
+        },
+        {
+          "x": 416.0,
+          "y": 1140
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y3",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 64,
+      "from_component_id": 1,
+      "from_port_id": 0,
+      "to_component_id": 22,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 170,
+          "y": 80
+        },
+        {
+          "x": 170,
+          "y": 360
+        },
+        {
+          "x": 680,
+          "y": 360
+        },
+        {
+          "x": 680,
+          "y": 860
+        },
+        {
+          "x": 890,
+          "y": 860
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.12,
+        "b": 0.12,
+        "a": 1
+      }
+    },
+    {
+      "id": 65,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 22,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 670,
+          "y": 340
+        },
+        {
+          "x": 670,
+          "y": 820
+        },
+        {
+          "x": 870,
+          "y": 820
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 66,
+      "from_component_id": 22,
+      "from_port_id": 2,
+      "to_component_id": 0,
+      "to_port_id": 13,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 850,
+          "y": 830
+        },
+        {
+          "x": 830,
+          "y": 830
+        },
+        {
+          "x": 830,
+          "y": 50
+        },
+        {
+          "x": 640,
+          "y": 50
+        },
+        {
+          "x": 640,
+          "y": 20
+        },
+        {
+          "x": 345.0,
+          "y": 20
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "X15",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.1,
+        "g": 0.6,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 67,
+      "from_component_id": 0,
+      "from_port_id": 23,
+      "to_component_id": 17,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 395.0,
+          "y": 240
+        },
+        {
+          "x": 400,
+          "y": 240
+        },
+        {
+          "x": 400,
+          "y": 330
+        },
+        {
+          "x": 1160,
+          "y": 330
+        },
+        {
+          "x": 1160,
+          "y": 960
+        },
+        {
+          "x": 1190,
+          "y": 960
+        },
+        {
+          "x": 1190,
+          "y": 1050
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y7",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 68,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 17,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 970
+        },
+        {
+          "x": 1180,
+          "y": 970
+        },
+        {
+          "x": 1180,
+          "y": 1050
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 69,
+      "from_component_id": 5,
+      "from_port_id": 0,
+      "to_component_id": 6,
+      "to_port_id": 2,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 80,
+          "y": 490
+        },
+        {
+          "x": 190,
+          "y": 490
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 70,
+      "from_component_id": 0,
+      "from_port_id": 31,
+      "to_component_id": 6,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 395.0,
+          "y": 240
+        },
+        {
+          "x": 230,
+          "y": 240
+        },
+        {
+          "x": 230,
+          "y": 350
+        },
+        {
+          "x": 140,
+          "y": 350
+        },
+        {
+          "x": 140,
+          "y": 400
+        },
+        {
+          "x": 130,
+          "y": 400
+        },
+        {
+          "x": 130,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y17",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 71,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 6,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 320
+        },
+        {
+          "x": 120,
+          "y": 320
+        },
+        {
+          "x": 120,
+          "y": 370
+        },
+        {
+          "x": 130,
+          "y": 370
+        },
+        {
+          "x": 130,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 72,
+      "from_component_id": 6,
+      "from_port_id": 4,
+      "to_component_id": 7,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 250,
+          "y": 435.0
+        },
+        {
+          "x": 250,
+          "y": 430
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 73,
+      "from_component_id": 7,
+      "from_port_id": 1,
+      "to_component_id": 30,
+      "to_port_id": 2,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 290,
+          "y": 510
+        },
+        {
+          "x": 460,
+          "y": 510
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 74,
+      "from_component_id": 0,
+      "from_port_id": 17,
+      "to_component_id": 30,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 245.0,
+          "y": 240
+        },
+        {
+          "x": 240,
+          "y": 240
+        },
+        {
+          "x": 240,
+          "y": 350
+        },
+        {
+          "x": 400,
+          "y": 350
+        },
+        {
+          "x": 400,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y1",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 75,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 30,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 410,
+          "y": 340
+        },
+        {
+          "x": 410,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 76,
+      "from_component_id": 30,
+      "from_port_id": 3,
+      "to_component_id": 10,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 400,
+          "y": 435.0
+        },
+        {
+          "x": 400,
+          "y": 470
+        },
+        {
+          "x": 260,
+          "y": 470
+        },
+        {
+          "x": 260,
+          "y": 520
+        },
+        {
+          "x": 110,
+          "y": 520
+        },
+        {
+          "x": 110,
+          "y": 1450
+        },
+        {
+          "x": 460,
+          "y": 1450
+        },
+        {
+          "x": 460,
+          "y": 1215.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 77,
+      "from_component_id": 30,
+      "from_port_id": 4,
+      "to_component_id": 10,
+      "to_port_id": 1,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 520,
+          "y": 435.0
+        },
+        {
+          "x": 520,
+          "y": 530
+        },
+        {
+          "x": 100,
+          "y": 530
+        },
+        {
+          "x": 100,
+          "y": 1460
+        },
+        {
+          "x": 470,
+          "y": 1460
+        },
+        {
+          "x": 470,
+          "y": 1340
+        },
+        {
+          "x": 460,
+          "y": 1340
+        },
+        {
+          "x": 460,
+          "y": 1345.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 78,
+      "from_component_id": 7,
+      "from_port_id": 1,
+      "to_component_id": 31,
+      "to_port_id": 2,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 290,
+          "y": 510
+        },
+        {
+          "x": 600,
+          "y": 510
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 79,
+      "from_component_id": 0,
+      "from_port_id": 18,
+      "to_component_id": 31,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 270,
+          "y": 370
+        },
+        {
+          "x": 540,
+          "y": 370
+        },
+        {
+          "x": 540,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y2",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 80,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 31,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 540,
+          "y": 340
+        },
+        {
+          "x": 540,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 81,
+      "from_component_id": 31,
+      "from_port_id": 3,
+      "to_component_id": 11,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 540,
+          "y": 435.0
+        },
+        {
+          "x": 540,
+          "y": 490
+        },
+        {
+          "x": 560,
+          "y": 490
+        },
+        {
+          "x": 560,
+          "y": 960
+        },
+        {
+          "x": 380,
+          "y": 960
+        },
+        {
+          "x": 380,
+          "y": 970
+        },
+        {
+          "x": 376.0,
+          "y": 970
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 82,
+      "from_component_id": 31,
+      "from_port_id": 4,
+      "to_component_id": 11,
+      "to_port_id": 1,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 660,
+          "y": 435.0
+        },
+        {
+          "x": 660,
+          "y": 800
+        },
+        {
+          "x": 250,
+          "y": 800
+        },
+        {
+          "x": 250,
+          "y": 970
+        },
+        {
+          "x": 246.0,
+          "y": 970
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 83,
+      "from_component_id": 7,
+      "from_port_id": 2,
+      "to_component_id": 32,
+      "to_port_id": 4,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 310,
+          "y": 520
+        },
+        {
+          "x": 740,
+          "y": 520
+        },
+        {
+          "x": 740,
+          "y": 500
+        },
+        {
+          "x": 750,
+          "y": 500
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 84,
+      "from_component_id": 0,
+      "from_port_id": 21,
+      "to_component_id": 32,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 345.0,
+          "y": 240
+        },
+        {
+          "x": 340,
+          "y": 240
+        },
+        {
+          "x": 340,
+          "y": 330
+        },
+        {
+          "x": 420,
+          "y": 330
+        },
+        {
+          "x": 420,
+          "y": 350
+        },
+        {
+          "x": 680,
+          "y": 350
+        },
+        {
+          "x": 680,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y5",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 85,
+      "from_component_id": 0,
+      "from_port_id": 22,
+      "to_component_id": 32,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 370.0,
+          "y": 240
+        },
+        {
+          "x": 560,
+          "y": 240
+        },
+        {
+          "x": 560,
+          "y": 310
+        },
+        {
+          "x": 800,
+          "y": 310
+        },
+        {
+          "x": 800,
+          "y": 370
+        },
+        {
+          "x": 820,
+          "y": 370
+        },
+        {
+          "x": 820,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y6",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 86,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 32,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 670,
+          "y": 340
+        },
+        {
+          "x": 670,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 87,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 32,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 820,
+          "y": 340
+        },
+        {
+          "x": 820,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 88,
+      "from_component_id": 32,
+      "from_port_id": 5,
+      "to_component_id": 12,
+      "to_port_id": 6,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 680,
+          "y": 435.0
+        },
+        {
+          "x": 680,
+          "y": 490
+        },
+        {
+          "x": 610,
+          "y": 490
+        },
+        {
+          "x": 610,
+          "y": 930
+        },
+        {
+          "x": 446.0,
+          "y": 930
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 89,
+      "from_component_id": 32,
+      "from_port_id": 6,
+      "to_component_id": 12,
+      "to_port_id": 5,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 820,
+          "y": 435.0
+        },
+        {
+          "x": 820,
+          "y": 780
+        },
+        {
+          "x": 440,
+          "y": 780
+        },
+        {
+          "x": 440,
+          "y": 930
+        },
+        {
+          "x": 428.0,
+          "y": 930
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 90,
+      "from_component_id": 7,
+      "from_port_id": 2,
+      "to_component_id": 33,
+      "to_port_id": 4,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 310,
+          "y": 520
+        },
+        {
+          "x": 910,
+          "y": 520
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 91,
+      "from_component_id": 0,
+      "from_port_id": 24,
+      "to_component_id": 33,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 220.0,
+          "y": 240
+        },
+        {
+          "x": 260,
+          "y": 240
+        },
+        {
+          "x": 260,
+          "y": 380
+        },
+        {
+          "x": 410,
+          "y": 380
+        },
+        {
+          "x": 410,
+          "y": 370
+        },
+        {
+          "x": 840,
+          "y": 370
+        },
+        {
+          "x": 840,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y10",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 92,
+      "from_component_id": 0,
+      "from_port_id": 25,
+      "to_component_id": 33,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 245.0,
+          "y": 240
+        },
+        {
+          "x": 240,
+          "y": 240
+        },
+        {
+          "x": 240,
+          "y": 260
+        },
+        {
+          "x": 570,
+          "y": 260
+        },
+        {
+          "x": 570,
+          "y": 300
+        },
+        {
+          "x": 970,
+          "y": 300
+        },
+        {
+          "x": 970,
+          "y": 400
+        },
+        {
+          "x": 980,
+          "y": 400
+        },
+        {
+          "x": 980,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y11",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 93,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 33,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 820,
+          "y": 340
+        },
+        {
+          "x": 820,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 94,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 33,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 990,
+          "y": 340
+        },
+        {
+          "x": 990,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 95,
+      "from_component_id": 33,
+      "from_port_id": 5,
+      "to_component_id": 13,
+      "to_port_id": 1,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 840,
+          "y": 435.0
+        },
+        {
+          "x": 840,
+          "y": 510
+        },
+        {
+          "x": 1100,
+          "y": 510
+        },
+        {
+          "x": 1100,
+          "y": 820
+        },
+        {
+          "x": 1110,
+          "y": 820
+        },
+        {
+          "x": 1110,
+          "y": 940
+        },
+        {
+          "x": 1050,
+          "y": 940
+        },
+        {
+          "x": 1050,
+          "y": 993.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 96,
+      "from_component_id": 33,
+      "from_port_id": 6,
+      "to_component_id": 13,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 980,
+          "y": 435.0
+        },
+        {
+          "x": 980,
+          "y": 440
+        },
+        {
+          "x": 1010,
+          "y": 440
+        },
+        {
+          "x": 1010,
+          "y": 820
+        },
+        {
+          "x": 1110,
+          "y": 820
+        },
+        {
+          "x": 1110,
+          "y": 950
+        },
+        {
+          "x": 1060,
+          "y": 950
+        },
+        {
+          "x": 1060,
+          "y": 990
+        },
+        {
+          "x": 1050,
+          "y": 990
+        },
+        {
+          "x": 1050,
+          "y": 993.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 97,
+      "from_component_id": 7,
+      "from_port_id": 2,
+      "to_component_id": 34,
+      "to_port_id": 4,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 310,
+          "y": 520
+        },
+        {
+          "x": 1070,
+          "y": 520
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 98,
+      "from_component_id": 0,
+      "from_port_id": 26,
+      "to_component_id": 34,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 270.0,
+          "y": 240
+        },
+        {
+          "x": 580,
+          "y": 240
+        },
+        {
+          "x": 580,
+          "y": 290
+        },
+        {
+          "x": 1000,
+          "y": 290
+        },
+        {
+          "x": 1000,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y12",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 99,
+      "from_component_id": 0,
+      "from_port_id": 27,
+      "to_component_id": 34,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 295.0,
+          "y": 240
+        },
+        {
+          "x": 590,
+          "y": 240
+        },
+        {
+          "x": 590,
+          "y": 280
+        },
+        {
+          "x": 1120,
+          "y": 280
+        },
+        {
+          "x": 1120,
+          "y": 370
+        },
+        {
+          "x": 1140,
+          "y": 370
+        },
+        {
+          "x": 1140,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y13",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 100,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 34,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 990,
+          "y": 340
+        },
+        {
+          "x": 990,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 101,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 34,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 102,
+      "from_component_id": 34,
+      "from_port_id": 5,
+      "to_component_id": 14,
+      "to_port_id": 1,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1000,
+          "y": 435.0
+        },
+        {
+          "x": 1000,
+          "y": 810
+        },
+        {
+          "x": 1110,
+          "y": 810
+        },
+        {
+          "x": 1110,
+          "y": 960
+        },
+        {
+          "x": 1020,
+          "y": 960
+        },
+        {
+          "x": 1020,
+          "y": 1050
+        },
+        {
+          "x": 1030,
+          "y": 1050
+        },
+        {
+          "x": 1030,
+          "y": 1051.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 103,
+      "from_component_id": 34,
+      "from_port_id": 6,
+      "to_component_id": 14,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1140,
+          "y": 435.0
+        },
+        {
+          "x": 1140,
+          "y": 490
+        },
+        {
+          "x": 1280,
+          "y": 490
+        },
+        {
+          "x": 1280,
+          "y": 1210
+        },
+        {
+          "x": 1030,
+          "y": 1210
+        },
+        {
+          "x": 1030,
+          "y": 1111.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 104,
+      "from_component_id": 7,
+      "from_port_id": 2,
+      "to_component_id": 35,
+      "to_port_id": 4,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 310,
+          "y": 520
+        },
+        {
+          "x": 1230,
+          "y": 520
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 105,
+      "from_component_id": 0,
+      "from_port_id": 29,
+      "to_component_id": 35,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 345.0,
+          "y": 240
+        },
+        {
+          "x": 340,
+          "y": 240
+        },
+        {
+          "x": 340,
+          "y": 270
+        },
+        {
+          "x": 1170,
+          "y": 270
+        },
+        {
+          "x": 1170,
+          "y": 400
+        },
+        {
+          "x": 1160,
+          "y": 400
+        },
+        {
+          "x": 1160,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y15",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 106,
+      "from_component_id": 0,
+      "from_port_id": 30,
+      "to_component_id": 35,
+      "to_port_id": 2,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 370.0,
+          "y": 240
+        },
+        {
+          "x": 1260,
+          "y": 240
+        },
+        {
+          "x": 1260,
+          "y": 370
+        },
+        {
+          "x": 1300,
+          "y": 370
+        },
+        {
+          "x": 1300,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y16",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 107,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 35,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 340
+        },
+        {
+          "x": 1130,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 108,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 35,
+      "to_port_id": 3,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 109,
+      "from_component_id": 35,
+      "from_port_id": 5,
+      "to_component_id": 16,
+      "to_port_id": 1,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1160,
+          "y": 435.0
+        },
+        {
+          "x": 1160,
+          "y": 490
+        },
+        {
+          "x": 1090,
+          "y": 490
+        },
+        {
+          "x": 1090,
+          "y": 790
+        },
+        {
+          "x": 640,
+          "y": 790
+        },
+        {
+          "x": 640,
+          "y": 930
+        },
+        {
+          "x": 690,
+          "y": 930
+        },
+        {
+          "x": 690,
+          "y": 940
+        },
+        {
+          "x": 692.5,
+          "y": 940
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 110,
+      "from_component_id": 35,
+      "from_port_id": 6,
+      "to_component_id": 16,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1300,
+          "y": 435.0
+        },
+        {
+          "x": 1300,
+          "y": 770
+        },
+        {
+          "x": 630,
+          "y": 770
+        },
+        {
+          "x": 630,
+          "y": 930
+        },
+        {
+          "x": 770,
+          "y": 930
+        },
+        {
+          "x": 770,
+          "y": 940
+        },
+        {
+          "x": 772.5,
+          "y": 940
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 111,
+      "from_component_id": 5,
+      "from_port_id": 0,
+      "to_component_id": 36,
+      "to_port_id": 2,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 80,
+          "y": 490
+        },
+        {
+          "x": 190,
+          "y": 490
+        },
+        {
+          "x": 190,
+          "y": 560
+        },
+        {
+          "x": 1400,
+          "y": 560
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 112,
+      "from_component_id": 0,
+      "from_port_id": 28,
+      "to_component_id": 36,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 320,
+          "y": 250
+        },
+        {
+          "x": 1250,
+          "y": 250
+        },
+        {
+          "x": 1250,
+          "y": 360
+        },
+        {
+          "x": 1340,
+          "y": 360
+        },
+        {
+          "x": 1340,
+          "y": 395.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y14",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 113,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 36,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 340
+        },
+        {
+          "x": 1290,
+          "y": 410
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    },
+    {
+      "id": 114,
+      "from_component_id": 36,
+      "from_port_id": 4,
+      "to_component_id": 21,
+      "to_port_id": 0,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1460,
+          "y": 435.0
+        },
+        {
+          "x": 1460,
+          "y": 430
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 115,
+      "from_component_id": 21,
+      "from_port_id": 1,
+      "to_component_id": 14,
+      "to_port_id": 6,
+      "wire_kind": "pneumatic",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 1640,
+          "y": 430.0
+        },
+        {
+          "x": 1640,
+          "y": 950
+        },
+        {
+          "x": 1150,
+          "y": 950
+        },
+        {
+          "x": 1150,
+          "y": 970
+        },
+        {
+          "x": 1140,
+          "y": 970
+        },
+        {
+          "x": 1140,
+          "y": 1050
+        },
+        {
+          "x": 1030,
+          "y": 1050
+        },
+        {
+          "x": 1030,
+          "y": 1035.0
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.15,
+        "g": 0.55,
+        "b": 0.9,
+        "a": 1
+      }
+    },
+    {
+      "id": 116,
+      "from_component_id": 0,
+      "from_port_id": 23,
+      "to_component_id": 18,
+      "to_port_id": 0,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 395.0,
+          "y": 240
+        },
+        {
+          "x": 400,
+          "y": 240
+        },
+        {
+          "x": 400,
+          "y": 330
+        },
+        {
+          "x": 1160,
+          "y": 330
+        },
+        {
+          "x": 1160,
+          "y": 960
+        },
+        {
+          "x": 1300,
+          "y": 960
+        },
+        {
+          "x": 1300,
+          "y": 1280
+        },
+        {
+          "x": 960,
+          "y": 1280
+        },
+        {
+          "x": 960,
+          "y": 1220
+        },
+        {
+          "x": 750,
+          "y": 1220
+        },
+        {
+          "x": 750,
+          "y": 1080
+        },
+        {
+          "x": 747.0,
+          "y": 1080
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "Y7",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.85,
+        "g": 0.5,
+        "b": 0.05,
+        "a": 1
+      }
+    },
+    {
+      "id": 117,
+      "from_component_id": 1,
+      "from_port_id": 1,
+      "to_component_id": 18,
+      "to_port_id": 1,
+      "wire_kind": "electric",
+      "thickness": 2,
+      "waypoints": [
+        {
+          "x": 180,
+          "y": 100
+        },
+        {
+          "x": 180,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 370
+        },
+        {
+          "x": 240,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 630
+        },
+        {
+          "x": 190,
+          "y": 1420
+        },
+        {
+          "x": 740,
+          "y": 1420
+        },
+        {
+          "x": 740,
+          "y": 1070
+        },
+        {
+          "x": 760,
+          "y": 1070
+        },
+        {
+          "x": 760,
+          "y": 1080
+        },
+        {
+          "x": 757.0,
+          "y": 1080
+        }
+      ],
+      "is_tagged": false,
+      "tag_text": "",
+      "tag_color_index": 0,
+      "color": {
+        "r": 0.18,
+        "g": 0.23,
+        "b": 0.3,
+        "a": 1
+      }
+    }
+  ]
+}

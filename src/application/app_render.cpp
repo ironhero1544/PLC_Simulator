@@ -4,6 +4,7 @@
 // Application rendering and UI.
 
 #include "plc_emulator/core/application.h"
+#include "plc_emulator/core/guide_viewer.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -304,7 +305,7 @@ void Application::RenderUI() {
   }
   ImGui::End();
   ImGui::PopStyleVar(3);
-  if (current_mode_ == Mode::PROGRAMMING && programming_mode_) {
+  if (show_plc_engine_status_ && programming_mode_) {
     RenderPLCDebugPanel();
   }
   RenderRtlLibraryPanel();
@@ -636,7 +637,7 @@ void Application::RenderHeader() {
 
     if (ImGui::Button(TR("ui.header.mode_wiring", "Wiring"),
                       ImVec2(100 * layout_scale, 30 * layout_scale))) {
-      current_mode_ = Mode::WIRING;
+      SetApplicationMode(Mode::WIRING);
     }
 
     ImGui::PopStyleColor(2);
@@ -653,7 +654,7 @@ void Application::RenderHeader() {
 
     if (ImGui::Button(TR("ui.header.mode_programming", "Programming"),
                       ImVec2(120 * layout_scale, 30 * layout_scale))) {
-      current_mode_ = Mode::PROGRAMMING;
+      SetApplicationMode(Mode::PROGRAMMING);
     }
 
     ImGui::PopStyleColor(2);
@@ -743,7 +744,8 @@ void Application::RenderHeader() {
     }
     ImGui::EndDisabled();
     if (conversion_required && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      ImGui::SetTooltip("Convert the ladder with F4 before RUN");
+      ImGui::SetTooltip("%s", TR("ui.header.convert_before_run",
+                                  "Convert the ladder with F4 before RUN"));
     }
 
     ImGui::Columns(1);
@@ -775,15 +777,13 @@ void Application::RenderToolbar() {
 
     const char* toolNames[] = {
         TR("ui.toolbar.tool_select", "Select"),
-        TR("ui.toolbar.tool_pneumatic", "Pneumatic"),
-        TR("ui.toolbar.tool_electric", "Electric"),
+        TR("ui.toolbar.tool_wire", "Wire"),
         TR("ui.toolbar.tool_tag", "Tag"),
     };
 
-    const ToolType toolTypes[] = {ToolType::SELECT, ToolType::PNEUMATIC,
-                                  ToolType::ELECTRIC, ToolType::TAG};
+    const ToolType toolTypes[] = {ToolType::SELECT, ToolType::kWire, ToolType::TAG};
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
       if (i > 0) {
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 10);
@@ -802,10 +802,14 @@ void Application::RenderToolbar() {
       ImVec2 button_size(180 * layout_scale, 30 * layout_scale);
       if (toolTypes[i] == ToolType::TAG) {
         if (ImGui::Button(toolNames[i], button_size)) {
+          is_connecting_ = false;
+          current_way_points_.clear();
           current_tool_ = toolTypes[i];
         }
       } else {
         if (ImGui::Button(toolNames[i], button_size)) {
+          is_connecting_ = false;
+          current_way_points_.clear();
           current_tool_ = toolTypes[i];
         }
       }
@@ -972,11 +976,8 @@ void Application::RenderMainArea() {
       case ToolType::TAG:
         tool_name = "Tag";
         break;
-      case ToolType::PNEUMATIC:
-        tool_name = "Pneumatic";
-        break;
-      case ToolType::ELECTRIC:
-        tool_name = "Electric";
+      case ToolType::kWire:
+        tool_name = TR("ui.toolbar.tool_wire", "Wire");
         break;
     }
 
@@ -992,131 +993,172 @@ void Application::RenderMainArea() {
 }
 
 void Application::RenderShortcutHelpDialog() {
-  const char* popup_id = "Shortcut Guide";
   static std::string secret_buffer;
   constexpr const char* kSecret = "ironhero";
-  if (show_shortcut_help_popup_) {
-    ImGui::OpenPopup(popup_id);
-    show_shortcut_help_popup_ = false;
-    secret_buffer.clear();
+  if (!show_shortcut_help_popup_) {
+    return;
   }
-
-  bool popup_open = true;
-  if (ImGui::BeginPopupModal(popup_id, &popup_open,
-                             ImGuiWindowFlags_AlwaysAutoResize)) {
+  ImGui::SetNextWindowSize(ImVec2(680.0f, 620.0f), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSizeConstraints(ImVec2(420.0f, 300.0f),
+                                      ImVec2(FLT_MAX, FLT_MAX));
+  if (ImGui::Begin(TR("ui.help.window", "Help###ShortcutGuide"),
+                   &show_shortcut_help_popup_)) {
     {
       ImVec2 window_min = ImGui::GetWindowPos();
       ImVec2 window_size = ImGui::GetWindowSize();
-      ImVec2 window_max(window_min.x + window_size.x, window_min.y + window_size.y);
-      RegisterOverlayInputCaptureRect(window_min, window_max, true);
+      ImVec2 window_max(window_min.x + window_size.x,
+                        window_min.y + window_size.y);
+      RegisterOverlayInputCaptureRect(window_min, window_max, false);
     }
-    ImGui::TextUnformatted(
-        TR("ui.help.shortcuts.title", "Shortcut Guide"));
+    ImGui::TextUnformatted(TR("ui.help.shortcuts.title", "Shortcut Guide"));
+    if (ImGui::Button(TR("ui.help.open_guide", "Open user guide"))) {
+      plc_emulator::OpenGuideViewer(
+          TR("ui.help.guide_title", "PLC Simulator - User Guide"),
+          glfwGetWin32Window(window_));
+    }
+    const std::string guide_error = plc_emulator::GetGuideViewerError();
+    if (!guide_error.empty()) {
+      ImGui::TextWrapped("%s\n%s",
+                         TR("ui.help.guide_error",
+                            "Cannot open the guide. Check the guide files and "
+                            "WebView2 Runtime."),
+                         guide_error.c_str());
+    }
     ImGui::Separator();
-    ImGui::TextUnformatted(
-        TR("ui.help.shortcuts.open_help", "Open this help"));
-    ImGui::BulletText("%s",
-                      TR("ui.help.shortcuts.open_1", "Ctrl + ?"));
-    ImGui::BulletText("%s",
-                      TR("ui.help.shortcuts.open_2", "Ctrl + /"));
+    ImGui::BeginChild("HelpSections", ImVec2(0, -45.0f));
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(TR("ui.help.shortcuts.open_help", "Open this help"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.open_1", "Ctrl + ,"));
+    ImGui::BulletText("%s", TR("ui.help.shortcuts.open_2", "Ctrl + /"));
 
     ImGui::Spacing();
-    ImGui::TextUnformatted(TR("ui.help.shortcuts.common", "Common"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_run_stop",
-                               "RUN/STOP: Use the header button"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_switch_mode",
-                               "Switch mode: Wiring / Programming buttons"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_save_load",
-                               "Mode toolbars: Wiring JSON / Programming CSV"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.common_save_project",
-                               "Ctrl+S: Save project package (.plcproj)"));
-
+    if (ImGui::CollapsingHeader(TR("ui.help.shortcuts.common", "Common"),
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.common_run_stop",
+                                 "RUN/STOP: Use the header button"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.common_switch_mode",
+                                 "Switch mode: Wiring / Programming buttons"));
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.common_save_load",
+                           "Mode toolbars: Wiring JSON / Programming CSV"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.common_save_project",
+                                 "Ctrl+S: Save project package (.plcproj)"));
+    }
     ImGui::Spacing();
-    ImGui::TextUnformatted(
-        TR("ui.help.shortcuts.quick_start", "Quick Start"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_wiring_drag",
-                               "Drag components from the list to the canvas"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_wiring_connect",
-                               "Connect ports by dragging from one port to another"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tools",
-                               "Tool buttons: Select / Pneumatic / Electric / Tag"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_select",
-                               "Select: select/move components and wires"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_pneumatic",
-                               "Pneumatic: create pneumatic wires"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_electric",
-                               "Electric: create electrical wires"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_tag",
-                               "Tag: add/edit wire tags"));
-
+    if (ImGui::CollapsingHeader(
+            TR("ui.help.shortcuts.quick_start", "Quick Start"),
+            ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.quick_wiring_drag",
+                           "Drag components from the list to the canvas"));
+      ImGui::BulletText(
+          "%s",
+          TR("ui.help.shortcuts.quick_wiring_connect",
+             "Wire tool: click the starting port, then the destination port"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tools",
+                                 "Tool buttons: Select / Wire / Tag"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_select",
+                                 "Select: select/move components and wires"));
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.quick_tool_wire",
+                           "Wire: connection type follows the starting port"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.quick_tool_tag",
+                                 "Tag: add/edit wire tags"));
+    }
     ImGui::Spacing();
-    ImGui::TextUnformatted(
-        TR("ui.help.shortcuts.wiring_mode", "Wiring mode"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_rotate",
-                               "Rotate component: R (Shift+R: reverse)"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_delete",
-                               "Delete selected: Delete"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_select_toggle",
-                               "Select tool: Ctrl+Click toggles components/wires"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_select_box",
-                               "Select tool: Drag empty canvas to box-select"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_select_box_add",
-                               "Select tool: Ctrl+Drag empty canvas adds/removes by box"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tool_cycle",
-                               "Q: cycle tools (Select -> Pneumatic -> Electric -> Tag)"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tag",
-                               "Tag tool: click wire to add/edit wire tag"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_zoom",
-                               "Zoom: Mouse wheel / Trackpad pinch / Touch pinch"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_pan",
-                               "Pan: Middle drag / Alt + Right drag / Shift + Wheel (horizontal)"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_trackpad_pan",
-                               "Trackpad: Two-finger scroll pans / Touch: drag pans"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_source_sink",
-                               "PLC context menu: choose Sink/Source input and output modes"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order",
-                               "Z-order: use component context menu"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order_items",
-                               "Bring to Front / Send to Back / Bring Forward / Send Backward"));
-
+    if (ImGui::CollapsingHeader(
+            TR("ui.help.shortcuts.wiring_mode", "Wiring mode"))) {
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_rotate",
+                                 "Rotate component: R (Shift+R: reverse)"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_delete",
+                                 "Delete selected: Delete"));
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.wiring_select_toggle",
+                           "Select tool: Ctrl+Click toggles components/wires"));
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.wiring_select_box",
+                           "Select tool: Drag empty canvas to box-select"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.wiring_select_box_add",
+                   "Select tool: Ctrl+Drag empty canvas adds/removes by box"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tool_cycle",
+                                 "Q: cycle tools (Select -> Wire -> Tag)"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_tag",
+                                 "Tag tool: click wire to add/edit wire tag"));
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.wiring_zoom",
+                           "Zoom: Mouse wheel / Trackpad pinch / Touch pinch"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_pan",
+                                 "Pan: Middle drag / Alt + Right drag / Shift "
+                                 "+ Wheel (horizontal)"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.wiring_trackpad_pan",
+                   "Trackpad: Two-finger scroll pans / Touch: drag pans"));
+      ImGui::BulletText(
+          "%s",
+          TR("ui.help.shortcuts.wiring_source_sink",
+             "PLC context menu: choose Sink/Source input and output modes"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.wiring_z_order",
+                                 "Z-order: use component context menu"));
+      ImGui::BulletText(
+          "%s",
+          TR("ui.help.shortcuts.wiring_z_order_items",
+             "Bring to Front / Send to Back / Bring Forward / Send Backward"));
+    }
     ImGui::Spacing();
-    ImGui::TextUnformatted(
-        TR("ui.help.shortcuts.programming_mode", "Programming mode"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f2_f3",
-                               "F2/F3: Monitor/Edit"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f5_f6_f7",
-                               "F5/F6/F7: XIC/XIO/Coil"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f9",
-                               "F9 / Shift+F9: Add/Remove vertical"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_edit_keys",
-                               "Delete / Insert / Enter"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_undo_redo",
-                               "Ctrl+Z / Ctrl+Y: Undo/Redo"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_ctrl_arrow",
-                               "Ctrl+Arrow: Toggle line path"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_addr_example",
-                               "Address example: Y0, T1 K10, C2 K5, SET M0, RST Y0"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_compile",
-                               "Use Save / Load / Compile buttons on the top bar"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_save_project",
-                               "Ctrl+S: Save project package (.plcproj)"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_monitor",
-                               "Monitor mode: inspect X/Y/M/T/C states in real time"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_rst_bkrst",
-                               "RST resets one device, BKRST resets a device range"));
-
+    if (ImGui::CollapsingHeader(
+            TR("ui.help.shortcuts.programming_mode", "Programming mode"))) {
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.mode_tab",
+                                 "Tab: switch Programming / Wiring"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.engine_f12",
+                                 "F12: show PLC Engine Status"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.prog_f2_f3", "F2/F3: Monitor/Edit"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_f5_f6_f7",
+                                 "F5/F6/F7: XIC/XIO/Coil"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.prog_f9",
+                   "F9: Horizontal line / Shift+F9: Vertical connection"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_edit_keys",
+                                 "Delete / Insert / Enter"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_undo_redo",
+                                 "Ctrl+Z / Ctrl+Y: Undo/Redo"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_ctrl_arrow",
+                                 "Ctrl+Arrow: Toggle line path"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.prog_addr_example",
+                   "Address example: Y0, T1 K10, C2 K5, SET M0, RST Y0"));
+      ImGui::BulletText("%s",
+                        TR("ui.help.shortcuts.prog_compile",
+                           "Use Save / Load / Compile buttons on the top bar"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.prog_save_project",
+                                 "Ctrl+S: Save project package (.plcproj)"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.prog_monitor",
+                   "Monitor mode: inspect X/Y/M/T/C states in real time"));
+      ImGui::BulletText(
+          "%s", TR("ui.help.shortcuts.prog_rst_bkrst",
+                   "RST resets one device, BKRST resets a device range"));
+    }
     ImGui::Spacing();
-    ImGui::TextUnformatted(TR("ui.help.shortcuts.rtl_mode", "RTL"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_open",
-                               "RTL menu: open RTL Library and Toolchain"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_runtime",
-                               "RTL Runtime menu: configure logic family, power, clock, and reset pins"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_import_export",
-                               "RTL Library: import/export reusable .plccomp component packages"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_runtime_package",
-                               "Source-less RTL packages run from the bundled runtime and cannot be edited"));
-    ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_logs",
-                               "Analyze, build, and testbench results are shown in the RTL Library log panel"));
+    if (ImGui::CollapsingHeader(TR("ui.help.shortcuts.rtl_mode", "RTL"))) {
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_open",
+                                 "RTL menu: open RTL Library and Toolchain"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_runtime",
+                                 "RTL Runtime menu: configure logic family, "
+                                 "power, clock, and reset pins"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_import_export",
+                                 "RTL Library: import/export reusable .plccomp "
+                                 "component packages"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_runtime_package",
+                                 "Source-less RTL packages run from the "
+                                 "bundled runtime and cannot be edited"));
+      ImGui::BulletText("%s", TR("ui.help.shortcuts.rtl_logs",
+                                 "Analyze, build, and testbench results are "
+                                 "shown in the RTL Library log panel"));
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndChild();
 
     // Hidden easter egg: type "ironhero" while this popup is open.
     ImGuiIO& io = ImGui::GetIO();
@@ -1126,8 +1168,7 @@ void Application::RenderShortcutHelpDialog() {
     }
     for (int i = 0; i < io.InputQueueCharacters.Size; ++i) {
       ImWchar wc = io.InputQueueCharacters[i];
-      if (wc <= 127 &&
-          std::isalpha(static_cast<unsigned char>(wc))) {
+      if (wc <= 127 && std::isalpha(static_cast<unsigned char>(wc))) {
         secret_buffer.push_back(
             static_cast<char>(std::tolower(static_cast<unsigned char>(wc))));
       }
@@ -1141,17 +1182,18 @@ void Application::RenderShortcutHelpDialog() {
       if (EqualsIgnoreCase(tail.c_str(), kSecret)) {
         OpenExternalUrl("https://github.com/ironhero1544");
         secret_buffer.clear();
-        ImGui::CloseCurrentPopup();
+        show_shortcut_help_popup_ = false;
       }
     }
 
     ImGui::Spacing();
     if (ImGui::Button(TR("ui.help.shortcuts.close", "Close"),
                       ImVec2(120.0f, 0.0f))) {
-      ImGui::CloseCurrentPopup();
+      show_shortcut_help_popup_ = false;
+      secret_buffer.clear();
     }
-    ImGui::EndPopup();
   }
+  ImGui::End();
 }
 
 }  // namespace plc

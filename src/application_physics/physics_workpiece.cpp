@@ -1,8 +1,13 @@
+#include "plc_emulator/physics/ring_feed_simulation.h"
 // physics_workpiece.cpp
 //
 // Workpiece interactions and collision handling.
 
 #include "plc_emulator/core/application.h"
+
+#include "plc_emulator/physics/pneumatic_workpiece.h"
+
+#include "plc_emulator/physics/z_layer.h"
 #include "plc_emulator/components/state_keys.h"
 
 #include "plc_emulator/application_physics/physics_helpers.h"
@@ -248,6 +253,8 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
     return;
   }
 
+  plc_emulator::UpdateRingFeedWorkpieces(&placed_components_);
+  plc_emulator::UpdateSuctionWorkpieces(&placed_components_);
   const float kSnapDistance = 10.0f;
   const float kConveyorSpeed = 60.0f;
   const int kWorkpieceSubsteps = 4;
@@ -280,6 +287,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
       case ComponentType::CONVEYOR:
         conveyor_indices.push_back(static_cast<int>(i));
         break;
+      case ComponentType::kSensorCylinder:
       case ComponentType::CYLINDER:
         cylinder_indices.push_back(static_cast<int>(i));
         break;
@@ -345,6 +353,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
   };
 
   struct BoxCache {
+    int index = -1;
     Aabb box{};
   };
 
@@ -432,7 +441,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
     constexpr float kProcEpsilon = 0.1f;
     ProcCylinderCache cache;
     cache.index = idx;
-    Aabb cyl_box = GetAabb(comp);
+    const ImVec2 center = LocalToWorld(comp, {60.0f, 90.0f});
     float pos_val =
         comp.internalStates.count(state_keys::kPosition)
             ? comp.internalStates.at(state_keys::kPosition)
@@ -441,8 +450,8 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
     cache.motor_on =
         comp.internalStates.count(state_keys::kMotorOn) &&
         comp.internalStates.at(state_keys::kMotorOn) > 0.5f;
-    cache.center_x = cyl_box.min_x + 60.0f;
-    cache.center_y = cyl_box.min_y + 90.0f;
+    cache.center_x = center.x;
+    cache.center_y = center.y;
     float head_radius = 30.0f;
     cache.head_box.min_x = cache.center_x - head_radius;
     cache.head_box.max_x = cache.center_x + head_radius;
@@ -460,6 +469,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
   for (int idx : box_indices) {
     const auto& comp = placed_components_[idx];
     BoxCache cache;
+    cache.index = idx;
     cache.box = GetAabb(comp);
     box_caches.push_back(cache);
   }
@@ -544,6 +554,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
       }
       const auto& cache = sensor_caches[cache_index];
       auto& sensor = placed_components_[cache.index];
+      if (!plc_emulator::CanInteractAtHeight(workpiece, sensor)) continue;
       const bool is_ring = cache.type == ComponentType::RING_SENSOR;
       const bool is_inductive = cache.type == ComponentType::INDUCTIVE_SENSOR;
       Aabb sensor_box = cache.box;
@@ -644,7 +655,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
       bool manual_drag =
           workpiece.internalStates.count(state_keys::kIsManualDrag) &&
           workpiece.internalStates.at(state_keys::kIsManualDrag) > 0.5f;
-      if (manual_drag) {
+      if (manual_drag || workpiece.carry_state.owner_id >= 0) {
         apply_sensor_detection(workpiece, false, candidate_sensors);
         continue;
       }
@@ -691,6 +702,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
           continue;
         }
         const auto& conveyor = conveyor_caches[cache_index];
+        if (!plc_emulator::CanInteractAtHeight(workpiece, placed_components_[conveyor.index])) continue;
         if (AabbOverlaps(workpiece_box, conveyor.box)) {
           conveyor_hit = std::max(conveyor_hit, cache_index);
         }
@@ -713,6 +725,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
           continue;
         }
         const auto& cylinder = cylinder_caches[cache_index];
+        if (!plc_emulator::CanInteractAtHeight(workpiece, placed_components_[cylinder.index])) continue;
         float velocity = cylinder.velocity;
         const std::string& snap_key = cylinder.snap_key;
         const float kSnapReleaseVelocity = 0.5f;
@@ -793,6 +806,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
           continue;
         }
         const auto& proc = proc_cylinder_caches[cache_index];
+        if (!plc_emulator::CanInteractAtHeight(workpiece, placed_components_[proc.index])) continue;
         bool is_down = proc.is_down;
         bool motor_on = proc.motor_on;
         const std::string& ready_key = proc.ready_key;
@@ -817,6 +831,7 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
           workpiece.internalStates[state_keys::kIsContacted] = 1.0f;
           ready = true;
         } else if (!overlapping) {
+          workpiece.internalStates[proc.snap_key] = 0.0f;
           ready = false;
         }
 
@@ -839,31 +854,33 @@ void Application::UpdateWorkpieceInteractionsImpl(float delta_time) {
           continue;
         }
         const auto& box_cache = box_caches[cache_index];
+        if (!plc_emulator::CanInteractAtHeight(workpiece, placed_components_[box_cache.index])) continue;
         if (AabbOverlaps(workpiece_box, box_cache.box)) {
           box_hit = std::max(box_hit, cache_index);
         }
       }
-      if (box_hit >= 0) {
-        const auto& box_cache = box_caches[box_hit];
-        workpiece.internalStates[state_keys::kIsStuckBox] = 1.0f;
-        workpiece.position.x =
-            GetCenterX(box_cache.box) - workpiece.size.width * 0.5f;
-        workpiece.position.y =
-            GetCenterY(box_cache.box) - workpiece.size.height * 0.5f;
+      if (box_hit >= 0 && plc_emulator::StoreWorkpieceInBox(
+              &placed_components_,
+              placed_components_[box_caches[box_hit].index], &workpiece)) {
         vel_x = 0.0f;
         vel_y = 0.0f;
         workpiece_box = GetAabb(workpiece);
       }
 
+      const Position previous_position = workpiece.position;
       workpiece.position.x += vel_x * step_dt;
       workpiece.position.y += vel_y * step_dt;
       workpiece.internalStates[state_keys::kVelX] = vel_x;
       workpiece.internalStates[state_keys::kVelY] = vel_y;
+      plc_emulator::ResolveStopperCollision(
+          placed_components_, previous_position, &workpiece);
 
       workpiece_box = GetAabb(workpiece);
       apply_sensor_detection(workpiece, true, candidate_sensors);
     }
   }
+  plc_emulator::UpdateWarehouseWorkpieces(&placed_components_);
+
 }
 
 }  // namespace plc

@@ -7,15 +7,14 @@
 #include "plc_emulator/core/application.h"
 
 #include "plc_emulator/components/component_registry.h"
+#include "plc_emulator/components/wiring_port_rules.h"
 #include "plc_emulator/core/component_transform.h"
 
 namespace plc {
 
 bool Application::IsValidWireConnection(const Port& fromPort,
                                         const Port& toPort) {
-  if (fromPort.type != toPort.type)
-    return false;
-  return true;
+  return plc_emulator::CanConnectPorts(fromPort, toPort);
 }
 
 Port* Application::FindPortAtPosition(ImVec2 worldPos, int& outComponentId) {
@@ -25,6 +24,7 @@ Port* Application::FindPortAtPosition(ImVec2 worldPos, int& outComponentId) {
   float best_dist_sq = kPortRadiusSq;
 
   for (const auto& component : placed_components_) {
+    if (component.render_hidden || component.render_opacity <= 0.0f) continue;
     const Size display = GetComponentDisplaySize(component);
     if (worldPos.x < component.position.x - kPortRadius ||
         worldPos.x >

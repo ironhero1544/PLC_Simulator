@@ -1,4 +1,4 @@
-﻿# Menu
+# Menu
 menu.settings=設定
 menu.language=言語
 menu.ui_settings=UI
@@ -36,8 +36,6 @@ ui.header.btn_stop=停止
 
 # Toolbar
 ui.toolbar.tool_select=選択ツール
-ui.toolbar.tool_pneumatic=空圧配線
-ui.toolbar.tool_electric=電気配線
 ui.toolbar.tool_tag=タグ
 ui.toolbar.load_project=プロジェクトを読込
 ui.toolbar.save_layout=保存
@@ -258,7 +256,7 @@ ui.programming.end_rung_fmt=終了ラング: %04d
 # Global shortcut help popup
 ui.help.shortcuts.title=ショートカットガイド
 ui.help.shortcuts.open_help=このヘルプを開く
-ui.help.shortcuts.open_1=Ctrl + ?
+ui.help.shortcuts.open_1=Ctrl + ,
 ui.help.shortcuts.open_2=Ctrl + /
 ui.help.shortcuts.common=共通
 ui.help.shortcuts.common_run_stop=RUN/STOP: ヘッダーボタンを使用
@@ -267,11 +265,9 @@ ui.help.shortcuts.common_save_load=モード別ツールバー: 配線 JSON / �
 ui.help.shortcuts.common_save_project=Ctrl+S: プロジェクトパッケージ (.plcproj) を保存
 ui.help.shortcuts.quick_start=クイックスタート
 ui.help.shortcuts.quick_wiring_drag=部品リストからキャンバスへドラッグして配置
-ui.help.shortcuts.quick_wiring_connect=ポートから別のポートへドラッグして配線接続
-ui.help.shortcuts.quick_tools=ツールボタン: 選択 / 空圧配線 / 電気配線 / 配線タグ
+ui.help.shortcuts.quick_wiring_connect=配線ツールで始点ポートと終点ポートを順にクリック
+ui.help.shortcuts.quick_tools=ツール: 選択 / 配線 / タグ
 ui.help.shortcuts.quick_tool_select=選択: 部品/配線を選択して移動
-ui.help.shortcuts.quick_tool_pneumatic=空圧配線: 空圧ラインを作成
-ui.help.shortcuts.quick_tool_electric=電気配線: 電気ラインを作成
 ui.help.shortcuts.quick_tool_tag=配線タグ: 配線タグを追加/編集
 ui.help.shortcuts.wiring_mode=配線モード
 ui.help.shortcuts.wiring_rotate=部品回転: R (Shift+R: 逆方向)
@@ -279,7 +275,7 @@ ui.help.shortcuts.wiring_delete=選択削除: Delete
 ui.help.shortcuts.wiring_select_toggle=選択: Ctrl+クリックで部品/配線を追加選択または解除
 ui.help.shortcuts.wiring_select_box=選択: 空きキャンバスをドラッグして範囲選択
 ui.help.shortcuts.wiring_select_box_add=選択: Ctrl+ドラッグで範囲追加または解除
-ui.help.shortcuts.wiring_tool_cycle=Q: ツール循環切替 (選択 -> 空圧配線 -> 電気配線 -> 配線タグ)
+ui.help.shortcuts.wiring_tool_cycle=Q: ツール切替 (選択 → 配線 → タグ)
 ui.help.shortcuts.wiring_tag=Tagツール: 配線をクリックしてタグ追加/編集
 ui.help.shortcuts.wiring_zoom=ズーム: マウスホイール / トラックパッドピンチ / タッチピンチ
 ui.help.shortcuts.wiring_pan=移動: 中ボタンドラッグ / Alt + 右ドラッグ / Shift + ホイール(横)
@@ -314,7 +310,7 @@ ui.help.shortcuts.wiring_z_order_items=最前面へ / 最背面へ / 一段前�
 ui.help.shortcuts.programming_mode=プログラミングモード
 ui.help.shortcuts.prog_f2_f3=F2/F3: モニター/編集
 ui.help.shortcuts.prog_f5_f6_f7=F5/F6/F7: XIC/XIO/Coil
-ui.help.shortcuts.prog_f9=F9 / Shift+F9: 垂直追加/削除
+ui.help.shortcuts.prog_f9=F9: 水平線 / Shift+F9: 垂直接続
 ui.help.shortcuts.prog_edit_keys=Delete / Insert / Enter
 ui.help.shortcuts.prog_undo_redo=Ctrl+Z / Ctrl+Y: 元に戻す/やり直し
 ui.help.shortcuts.prog_ctrl_arrow=Ctrl+Arrow: ライン経路切替
@@ -390,7 +386,7 @@ ui.rtl.no_sources_status=このコンポーネントは編集できず、ビル�
 
 # RTL Toolchain
 ui.rtl.toolchain_title=RTLツールチェーン設定
-ui.rtl.wsl_status=ネイティブ Windows: %s
+ui.rtl.wsl_status=WSL2: %s
 ui.rtl.verilator_status=Verilator: %s
 ui.rtl.make_status=make: %s
 ui.rtl.compiler_status=コンパイラ (g++): %s
@@ -439,3 +435,203 @@ ui.rtl.analyzed=解析済み
 ui.rtl.not_analyzed=未解析
 ui.rtl.built=ビルド済み
 ui.rtl.not_built=未ビルド
+
+ui.toolbar.tool_wire=配線
+ui.help.shortcuts.quick_tool_wire=配線: 開始ポートから接続種類を自動選択
+ui.wiring.incompatible_port=ポートの種類または役割が一致しません
+
+ui.z_layers.title=物理Zレイヤー
+ui.z_layers.pause=シミュレーションを停止して編集
+ui.z_layers.description=物理高さは描画順序とは独立しています。
+ui.z_layers.minimum=最小高さ
+ui.z_layers.maximum=最大高さ
+ui.z_layers.initial=初期高さ
+ui.z_layers.height=設置高さ
+ui.z_layers.apply=高さを適用
+ui.z_layers.invalid=高さ範囲が無効です
+
+component.sensor_cylinder.name=センサ内蔵シリンダ
+component.sensor_cylinder.desc=上部端子台・前進/後退センサ
+component.suction_cylinder.name=吸着シリンダ
+component.suction_cylinder.desc=下向き吸着ヘッド・真空配管
+component.stopper_cylinder.name=ストッパシリンダ
+component.stopper_cylinder.desc=下降板でワークを停止・UP/DOWNセンサ
+component.vacuum_generator.name=真空エジェクタ
+component.vacuum_generator.desc=Pの圧縮空気からVACの真空を生成
+ui.wiring.context.front_preview=正面表示
+
+component.dc_motor.name=DCモータ
+component.dc_motor.desc=DCモータ
+component.servo_motor.name=サーボモータ
+component.servo_motor.desc=U/V/W・PE・エンコーダ接続型ACサーボモータ
+component.servo_amp.name=サーボアンプ
+component.servo_amp.desc=汎用パルス指令・三相AC電源サーボアンプ
+component.servo_lift.name=サーボリフト
+component.servo_lift.desc=サーボリフト
+component.lift_suction.name=リフト・吸着シリンダ一体型
+component.lift_suction.desc=リフト・吸着シリンダ一体型
+component.ac_supply.name=三相AC電源
+component.ac_supply.desc=三相AC電源
+ui.axis.settings=軸設定
+ui.axis.pulses=一回転のパルス数
+ui.axis.lead=リード (mm/回転)
+ui.axis.stroke=ストローク (mm)
+ui.axis.speed=最大速度 (回転/秒)
+ui.axis.acceleration=加速度 (回転/秒²)
+ui.axis.apply=軸設定を適用
+
+# Storage / optical / HMI components
+component.warehouse.name=6スロット倉庫
+component.warehouse.desc=高さごとに2スロット・受動収納
+component.fiber_amp.name=光ファイバセンサアンプ
+component.fiber_amp.desc=TX/RX透過型・電源とSIG出力
+component.fiber_tx.name=光ファイバ送信ヘッド
+component.fiber_tx.desc=光送信部・レンズは負のX方向
+component.fiber_rx.name=光ファイバ受信ヘッド
+component.fiber_rx.desc=光受信部・レンズは負のX方向
+component.touch_panel.name=タッチパネル
+component.touch_panel.desc=汎用PLC通信・MボタンとD表示
+ui.fiber.fault=光リンクエラー
+ui.fiber.distance=最大距離
+ui.fiber.alignment=軸ずれ許容幅
+ui.fiber.width=光線幅
+ui.fiber.dark_on=Dark-ON（遮光時出力）
+ui.fiber.apply=SET / MODE 適用
+ui.hmi.controls=PLC操作
+ui.hmi.forward=前進
+ui.hmi.reverse=後退
+ui.hmi.home=原点
+ui.hmi.display=表示 D
+ui.hmi.momentary=モーメンタリボタン
+ui.hmi.apply=画面を適用
+
+ui.fiber.ok=光接続正常
+ui.fiber.power=24V / 0V電源を確認
+ui.fiber.link=TX / RX接続を確認
+ui.fiber.align_error=ヘッドの向き・距離・高さを確認
+
+ui.hmi.edit_screen=画面編集
+ui.hmi.editor=HMI画面編集
+ui.hmi.editor_hint=追加・ドラッグで配置、右下でサイズ変更、矢印キーで微調整。
+ui.hmi.button=ボタン
+ui.hmi.lamp=表示灯
+ui.hmi.number=数値表示
+ui.hmi.text=文字
+ui.hmi.label=表示名
+ui.hmi.address=PLCアドレス
+ui.hmi.position=位置
+ui.hmi.size=サイズ
+ui.hmi.font_size=文字サイズ
+ui.hmi.unit=単位
+ui.hmi.decimals=小数桁
+ui.hmi.on_color=ON色
+ui.hmi.delete_widget=ウィジェット削除
+ui.hmi.invalid=アドレス・ボタンの重複・画面範囲を確認してください。
+ui.hmi.cancel=キャンセル
+
+ui.wiring.simulation_paused=シミュレーション一時停止中
+ui.hmi.paused_hint=編集中は一時停止しています。閉じると再開します。
+
+ui.hmi.snap=5pxグリッド
+ui.hmi.widgets=ウィジェット一覧
+ui.hmi.duplicate=複製
+ui.hmi.left=左
+ui.hmi.center=横中央
+ui.hmi.right=右
+ui.hmi.top=上
+ui.hmi.middle=縦中央
+ui.hmi.bottom=下
+
+ui.hmi.select_hint=画面か一覧でウィジェットを選択すると編集できます。
+
+ui.component_list.filter_exam=自動化設備産業技師
+component.dc_driver.name=DCモータードライバー
+component.dc_driver.desc=PLC PWMデューティで速度、DIR信号で方向を制御する24V DCドライバー
+
+ui.component_list.function_all=すべての機能
+ui.component_list.function_input=入力
+ui.component_list.function_output=出力
+ui.component_list.function_pneumatic=空圧
+ui.component_list.function_power=電源
+ui.component_list.function_other=その他
+ui.component_list.function_control=制御
+
+ui.programming.shortcut_f8=F8: [] 応用命令
+ui.programming.shortcut_shift_f7=Shift+F7: 立ち上がりパルス接点 (LDP)
+ui.programming.shortcut_shift_f8=Shift+F8: 立ち下がりパルス接点 (LDF)
+
+ui.help.shortcuts.mode_tab=Tab: プログラミング / 配線モード切替
+ui.help.shortcuts.engine_f12=F12: PLCエンジン状態を表示
+
+ui.rtl.tool_doctor=RTL ツール診断 (WSL2)
+ui.rtl.doctor_description=RTL解析・ビルドはWSL2を使用し、部品ワーカーはWindowsで直接実行します。
+ui.rtl.doctor_default=既定のディストリビューション
+ui.rtl.doctor_distribution=ディストリビューション
+ui.rtl.doctor_cpu=ビルド CPU 数
+ui.rtl.doctor_save=保存して診断
+ui.rtl.doctor_diagnose=保存済み設定を診断
+ui.rtl.doctor_save_failed=WSL 設定を保存できませんでした。
+ui.rtl.doctor_busy=処理中...
+ui.rtl.doctor_action_done=処理が完了しました。
+ui.rtl.doctor_install_wsl=WSL2 / Ubuntu をインストール
+ui.rtl.doctor_install_tools=RTL ツールのインストール / 修復
+ui.rtl.doctor_start=選択したディストリビューションを起動
+ui.rtl.doctor_stop=選択したディストリビューションを停止
+ui.rtl.doctor_convert=選択したディストリビューションを WSL2 に変換
+ui.rtl.doctor_update=WSL を更新
+ui.rtl.doctor_note=ツールは Ubuntu/Debian の apt でインストールします。WSL のインストールには管理者権限や再起動が必要な場合があります。
+
+
+ui.rtl.doctor_host=WSLホスト
+ui.rtl.doctor_wsl2=WSL2ディストリビューション
+ui.rtl.doctor_kernel=Linuxカーネル
+ui.rtl.doctor_compiler=C++コンパイラ
+
+ui.rtl.doctor_mingw=MinGW Windowsコンパイラ
+ui.hmi.message=状態メッセージ
+ui.hmi.page=画面
+ui.hmi.add_page=画面追加
+ui.hmi.page_name=画面名
+ui.hmi.navigate=画面切替ボタン
+ui.hmi.target_page=切替先画面
+ui.hmi.message_text=表示メッセージ
+ui.warehouse.cylinder=倉庫駆動シリンダー
+ui.warehouse.travel=倉庫移動距離
+ui.hmi.visibility=ON時に表示するビット (空欄: 常に表示)
+
+component.magazine.name=ワークマガジン
+component.magazine.desc=供給シリンダ後退時に最下段を自動供給
+
+component.driven_warehouse.name=空圧駆動6スロット倉庫
+component.driven_warehouse.desc=70mm複動シリンダと直線ガイド一体型
+
+ui.hmi.operate=HMI操作
+ui.wiring.context.edit_label=部品名を編集
+ui.wiring.context.show_label=名前を表示
+ui.wiring.context.label_hint=Enterで適用・空欄で非表示
+
+ui.header.convert_before_run=実行前にF4でラダーを変換してください。
+
+ui.render_layers.title=表示レイヤー
+ui.render_layers.up=上へ
+ui.render_layers.down=下へ
+ui.render_layers.front=最前面
+ui.render_layers.back=最背面
+ui.render_layers.opacity=不透明度
+ui.render_layers.hide=非表示
+ui.render_layers.show=表示
+ui.render_layers.hidden=非表示 
+ui.render_layers.group_name=グループ名
+ui.render_layers.group=選択をグループ化 / 名前変更
+ui.render_layers.ungroup=グループ解除
+ui.render_layers.drag=選択項目を移動
+ui.render_layers.help=上の項目ほど手前に表示。Ctrl: 追加選択、Shift: 範囲選択。
+ui.render_layers.select_help=左の選択欄をドラッグすると複数選択できます。
+ui.render_layers.drag_help=項目をドラッグして順序変更。グループ名にドロップしてまとめます。
+ui.render_layers.canvas_help=キャンバスの矩形選択もここで編集できます。
+
+ui.help.window=ヘルプ###ShortcutGuide
+ui.help.open_guide=操作ガイドを開く
+ui.help.guide_title=PLC Simulator 操作ガイド
+
+ui.help.guide_error=ガイドを開けません。ガイドファイルと WebView2 Runtime を確認してください。

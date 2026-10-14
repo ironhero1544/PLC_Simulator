@@ -1,3 +1,4 @@
+#include "plc_emulator/components/plc_ports.h"
 #include "plc_emulator/programming/execution_program.h"
 // physics_sync.cpp
 //
@@ -81,13 +82,13 @@ void Application::SyncPLCOutputsToPhysicsEngine() {
     }
 
     // PLC X input port voltage reading from physics engine with bounds checking
-    for (int x = 0; x < 16; x++) {
+    for (int x = 0; x < plc_emulator::kPlcInputCount; x++) {
       int nodeId = -1;
       if (comp.instanceId >= 0 &&
           comp.instanceId < physics_engine_->maxComponents && x >= 0 &&
-          x < 32 && physics_engine_->componentPortToElectricalNode != nullptr) {
+          plc_emulator::PlcInputPort(x) < plc_emulator::kPlcPortCapacity && physics_engine_->componentPortToElectricalNode != nullptr) {
         nodeId =
-            physics_engine_->componentPortToElectricalNode[comp.instanceId][x];
+            physics_engine_->componentPortToElectricalNode[comp.instanceId][plc_emulator::PlcInputPort(x)];
       }
 
       if (nodeId >= 0 && nodeId < elecNet->nodeCount) {
@@ -405,9 +406,9 @@ void Application::SyncPhysicsEngineToApplication() {
     if (comp.type == ComponentType::PLC) {
       std::map<std::string, bool>
           xInputs;  // Buffer X inputs for ProgrammingMode
-      for (int x = 0; x < 16; x++) {
+      for (int x = 0; x < plc_emulator::kPlcInputCount; x++) {
         std::string xAddress = plc_emulator::programming::FormatIOAddress('X', x);
-        auto portKey = std::make_pair(comp.instanceId, x);
+        auto portKey = std::make_pair(comp.instanceId, plc_emulator::PlcInputPort(x));
 
         bool x_active = false;
         if (port_voltages_.count(portKey)) {

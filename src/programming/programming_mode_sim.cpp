@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <cstdlib>
 #include <limits>
 
@@ -58,9 +59,17 @@ void ProgrammingMode::SimulateLadderProgram() {
   }
 
   scan_accumulator_ += delta_seconds;
+  bool scanned = false;
   while (scan_accumulator_ >= kDefaultScanStepSeconds) {
     ExecuteWithOpenPLCEngine();
     scan_accumulator_ -= kDefaultScanStepSeconds;
+    scanned = true;
+  }
+  if (scanned) {
+    // Multiple PLC scans may run in one frame; publish the final state once.
+    SyncOpenPLCToDevices();
+    SyncOpenPLCToTimersCounters();
+    UpdateVisualActiveStates();
   }
 }
 
@@ -80,11 +89,6 @@ void ProgrammingMode::ExecuteWithOpenPLCEngine() {
 
   last_scan_error_.clear();
 
-  SyncOpenPLCToDevices();
-  SyncOpenPLCToTimersCounters();
-
-  SimulatorState currentState = GetCurrentStateSnapshot();
-  UpdateUIFromSimulatorState(currentState);
 }
 
 
@@ -211,6 +215,7 @@ bool ProgrammingMode::CompileLadderToOpenPLC() {
   compile_error_rung_hashes_.clear();
   last_failed_hash_ = 0;
   use_compiled_engine_ = true;
+  ResetMonitorOutputs();
   InitializeTimersAndCountersFromProgram();
 
   std::cout << "[COMPILE] OpenPLC engine loaded successfully ("
@@ -228,6 +233,43 @@ void ProgrammingMode::SyncPhysicsToOpenPLC() {
         plc_executor_->SetDeviceState(address, state);
       }
     }
+  }
+}
+
+void ProgrammingMode::ResetMonitorOutputs() {
+  if (monitor_external_plc_) {
+    return;
+  }
+  if (plc_executor_) {
+    for (size_t index = 0; index < std::size(plc_executor_->GetMemory().Y);
+         ++index) {
+      plc_executor_->SetDeviceState(
+          plc_emulator::programming::FormatIOAddress(
+              'Y', static_cast<int>(index)), false);
+    }
+  }
+  for (auto& [address, state] : device_states_) {
+    if (!address.empty() && address.front() == 'Y') {
+      state = false;
+    }
+  }
+  for (auto& rung : ladder_program_.rungs) {
+    for (auto& cell : rung.cells) {
+      cell.isActive = false;
+    }
+  }
+}
+
+void ProgrammingMode::SetMonitorMode(bool monitor) {
+  if (is_monitor_mode_ == monitor) {
+    return;
+  }
+  ResetMonitorOutputs();
+  is_monitor_mode_ = monitor;
+  scan_time_initialized_ = false;
+  scan_accumulator_ = 0.0;
+  if (monitor) {
+    InitializeTimersAndCountersFromProgram();
   }
 }
 
@@ -267,12 +309,9 @@ void ProgrammingMode::SyncOpenPLCToTimersCounters() {
     const int idx = static_cast<int>(device->index);
     TimerState& timer = pair.second;
     timer.value = plc_executor_->GetTimerValue(idx);
+    timer.preset = plc_executor_->GetTimerPreset(idx);
     timer.enabled = plc_executor_->GetTimerEnabled(idx);
-    if (timer.preset > 0) {
-      timer.done = plc_executor_->GetDeviceState(address);
-    } else {
-      timer.done = timer.enabled;
-    }
+    timer.done = plc_executor_->GetDeviceState(pair.first);
   }
 
   for (auto& pair : counter_states_) {
@@ -284,12 +323,9 @@ void ProgrammingMode::SyncOpenPLCToTimersCounters() {
     const int idx = static_cast<int>(device->index);
     CounterState& counter = pair.second;
     counter.value = plc_executor_->GetCounterValue(idx);
+    counter.preset = plc_executor_->GetCounterPreset(idx);
     counter.lastPower = plc_executor_->GetCounterLastPower(idx);
-    if (counter.preset > 0) {
-      counter.done = (counter.value >= counter.preset);
-    } else {
-      counter.done = (counter.value > 0);
-    }
+    counter.done = plc_executor_->GetDeviceState(pair.first);
   }
 }
 

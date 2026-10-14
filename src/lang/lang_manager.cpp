@@ -22,7 +22,7 @@ struct LangEntry {
   char value[256];
 };
 
-const int kMaxEntries = 512;
+const int kMaxEntries = 2048;
 LangEntry g_entries[kMaxEntries];
 int g_entry_count = 0;
 

@@ -1,0 +1,924 @@
+{
+  "components": [
+    {
+      "custom_label": "PLC",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 0,
+      "render_layer": {
+        "group": "01 제어 · 전원",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "PLC",
+      "x": 190.0,
+      "y": 40.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "24V DC",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 1,
+      "render_layer": {
+        "group": "01 제어 · 전원",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "POWER_SUPPLY",
+      "x": 40.0,
+      "y": 60.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "HMI",
+      "flip_x": false,
+      "flip_y": false,
+      "hmi_settings": {
+        "screen_width": 288,
+        "screen_height": 216,
+        "pages": [
+          "테스트 동작"
+        ],
+        "widgets": []
+      },
+      "instance_id": 2,
+      "render_layer": {
+        "group": "01 제어 · 전원",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "TOUCH_PANEL",
+      "x": 1280.0,
+      "y": 40.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "axis_settings": {
+        "acceleration": 20.0,
+        "lead_mm": 5.0,
+        "max_speed": 10.0,
+        "pulses_per_turn": 1000.0,
+        "stroke_mm": 100.0
+      },
+      "custom_label": "서보앰프",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 3,
+      "render_layer": {
+        "group": "01 제어 · 전원",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "SERVO_AMPLIFIER",
+      "x": 550.0,
+      "y": 40.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "axis_settings": {
+        "acceleration": 20.0,
+        "lead_mm": 5.0,
+        "max_speed": 10.0,
+        "pulses_per_turn": 1000.0,
+        "stroke_mm": 100.0
+      },
+      "custom_label": "AC 전원",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 4,
+      "render_layer": {
+        "group": "01 제어 · 전원",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "AC_SUPPLY",
+      "x": 40.0,
+      "y": 200.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "0.5MPa",
+      "flip_x": false,
+      "flip_y": false,
+      "frl_pressure": 5.0,
+      "instance_id": 5,
+      "render_layer": {
+        "group": "02 공압 공급",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "FRL",
+      "x": 40.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "공압 공급",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 6,
+      "render_layer": {
+        "group": "02 공압 공급",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_SINGLE",
+      "x": 150.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "분배",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 7,
+      "render_layer": {
+        "group": "02 공압 공급",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "MANIFOLD",
+      "x": 260.0,
+      "y": 400.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "공급",
+      "flip_x": true,
+      "flip_y": false,
+      "instance_id": 10,
+      "render_layer": {
+        "group": "03 공작물 공급",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": false,
+      "type": "SENSOR_CYLINDER",
+      "x": 353.0,
+      "y": 1040.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 25
+    },
+    {
+      "custom_label": "송출",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 11,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 2,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": false,
+      "type": "SENSOR_CYLINDER",
+      "x": 211.0,
+      "y": 994.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 26
+    },
+    {
+      "custom_label": "가공",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 12,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": false,
+      "type": "PROCESSING_CYLINDER",
+      "x": 336.0,
+      "y": 945.0,
+      "z_config": {
+        "initial_height": 2.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 15
+    },
+    {
+      "custom_label": "스토퍼",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 13,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": false,
+      "type": "STOPPER_CYLINDER",
+      "x": 950.0,
+      "y": 980.0,
+      "z_config": {
+        "initial_height": 2.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 20
+    },
+    {
+      "axis_settings": {
+        "acceleration": 200.0,
+        "lead_mm": 1.0,
+        "max_speed": 100.0,
+        "pulses_per_turn": 60.0,
+        "stroke_mm": 100.0
+      },
+      "custom_label": "리프트 · 흡착",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 14,
+      "render_layer": {
+        "group": "06 리프트 · 흡착",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": true,
+      "type": "LIFT_SUCTION",
+      "x": 811.5,
+      "y": 814.0,
+      "z_config": {
+        "initial_height": 3.0,
+        "max_layer": 3.0,
+        "min_layer": 1.0
+      },
+      "z_order": 30
+    },
+    {
+      "custom_label": "6칸 창고",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 16,
+      "render_layer": {
+        "group": "07 창고 · 저장박스",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": true,
+      "type": "DRIVEN_WAREHOUSE",
+      "x": 667.5,
+      "y": 825.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 3.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "컨베이어",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 17,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "CONVEYOR",
+      "x": 775.0,
+      "y": 980.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 0
+    },
+    {
+      "custom_label": "저장박스",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 20,
+      "render_layer": {
+        "group": "07 창고 · 저장박스",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "type": "BOX",
+      "x": 1150.0,
+      "y": 980.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 1
+    },
+    {
+      "custom_label": "공작물 감지",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 23,
+      "render_layer": {
+        "group": "03 공작물 공급",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": true,
+      "type": "RING_SENSOR",
+      "x": 368.0,
+      "y": 1160.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 2
+    },
+    {
+      "custom_label": "용량형",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 24,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": false,
+      "type": "SENSOR",
+      "x": 820.0,
+      "y": 1095.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "통과 감지",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 25,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": false,
+      "type": "SENSOR",
+      "x": 1075.0,
+      "y": 1080.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "진공 발생기",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 21,
+      "render_layer": {
+        "group": "06 리프트 · 흡착",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VACUUM_GENERATOR",
+      "x": 1500.0,
+      "y": 390.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "유도형",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 22,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 2,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": false,
+      "type": "INDUCTIVE_SENSOR",
+      "x": 820.0,
+      "y": 880.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "공급",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 30,
+      "render_layer": {
+        "group": "03 공작물 공급",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_SINGLE",
+      "x": 420.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "송출",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 31,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_SINGLE",
+      "x": 560.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "가공",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 32,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_DOUBLE",
+      "x": 700.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "스토퍼",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 33,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_DOUBLE",
+      "x": 860.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "흡착",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 34,
+      "render_layer": {
+        "group": "06 리프트 · 흡착",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_DOUBLE",
+      "x": 1020.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "창고",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 35,
+      "render_layer": {
+        "group": "07 창고 · 저장박스",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_DOUBLE",
+      "x": 1180.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "진공",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 36,
+      "render_layer": {
+        "group": "06 리프트 · 흡착",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "VALVE_SINGLE",
+      "x": 1360.0,
+      "y": 380.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "송출 감지",
+      "fiber_settings": {
+        "alignment_tolerance": 3.0,
+        "beam_width": 2.0,
+        "dark_on": true,
+        "max_distance": 1000.0
+      },
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 43,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": true,
+      "type": "FIBER_AMPLIFIER",
+      "x": 860.0,
+      "y": 60.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "송출 공작물 TX",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 44,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 2,
+      "show_custom_label": false,
+      "type": "FIBER_TRANSMITTER",
+      "x": 197.0,
+      "y": 1020.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "송출 공작물 RX",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 45,
+      "render_layer": {
+        "group": "04 송출 · 가공",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": false,
+      "type": "FIBER_RECEIVER",
+      "x": 560.0,
+      "y": 1020.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "스토퍼 감지",
+      "fiber_settings": {
+        "alignment_tolerance": 3.0,
+        "beam_width": 2.0,
+        "dark_on": true,
+        "max_distance": 1000.0
+      },
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 46,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "sensor_output_mode": "pnp",
+      "show_custom_label": true,
+      "type": "FIBER_AMPLIFIER",
+      "x": 1060.0,
+      "y": 60.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 40
+    },
+    {
+      "custom_label": "스토퍼 TX",
+      "flip_x": true,
+      "flip_y": false,
+      "instance_id": 47,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": false,
+      "type": "FIBER_TRANSMITTER",
+      "x": 965.0,
+      "y": 1152.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "스토퍼 RX",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 48,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": false,
+      "type": "FIBER_RECEIVER",
+      "x": 965.0,
+      "y": 872.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": -10
+    },
+    {
+      "custom_label": "1 / 비금속",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 50,
+      "render_layer": {
+        "group": "08 공작물",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "type": "WORKPIECE_NONMETAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 100
+    },
+    {
+      "custom_label": "이송 컨베이어",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 18,
+      "render_layer": {
+        "group": "05 컨베이어 · 분류 · 스토퍼",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 0,
+      "show_custom_label": true,
+      "type": "CONVEYOR",
+      "x": 375.0,
+      "y": 980.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 1.0,
+        "min_layer": 1.0
+      },
+      "z_order": 0
+    },
+    {
+      "custom_label": "2 / 금속",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 51,
+      "render_layer": {
+        "group": "08 공작물",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "type": "WORKPIECE_METAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 151
+    },
+    {
+      "custom_label": "3 / 비금속",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 52,
+      "render_layer": {
+        "group": "08 공작물",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "type": "WORKPIECE_NONMETAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 152
+    },
+    {
+      "custom_label": "4 / 금속",
+      "flip_x": false,
+      "flip_y": false,
+      "instance_id": 53,
+      "render_layer": {
+        "group": "08 공작물",
+        "hidden": false,
+        "opacity": 1.0
+      },
+      "rotation_quadrants": 3,
+      "show_custom_label": true,
+      "type": "WORKPIECE_METAL",
+      "x": 381.0,
+      "y": 1175.0,
+      "z_config": {
+        "initial_height": 1.0,
+        "max_layer": 2.0,
+        "min_layer": 1.0
+      },
+      "z_order": 153
+    }
+  ],
+  "electrical_config": {
+    "plc_input_mode": "sink",
+    "plc_output_mode": "source"
+  },
+  "next_instance_id": 54,
+  "next_wire_id": 0,
+  "next_z_order": 154,
+  "version": 3,
+  "wires": []
+}

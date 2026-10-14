@@ -1,3 +1,5 @@
+#include "plc_emulator/components/plc_ports.h"
+#include "plc_emulator/components/storage_sensor_def.h"
 // application_wiring.cpp
 //
 // Wire drawing and editing.
@@ -5,9 +7,18 @@
 // src/Application_Wiring.cpp
 
 #include "imgui.h"
+
+#include "plc_emulator/components/wiring_port_rules.h"
+
+#include "plc_emulator/components/servo_component.h"
+#include "plc_emulator/physics/storage_sensor_simulation.h"
+
+#include "plc_emulator/components/pneumatic_component.h"
 #include "plc_emulator/components/component_behavior.h"
 #include "plc_emulator/components/state_keys.h"
 #include "plc_emulator/core/application.h"
+
+#include "plc_emulator/core/render_layer.h"
 #ifdef _WIN32
 #include "plc_emulator/core/win32_haptics.h"
 #endif
@@ -69,6 +80,24 @@ const char* DebugComponentTypeLabel(ComponentType type) {
       return "RING_SENSOR";
     case ComponentType::CYLINDER:
       return "CYLINDER";
+    case ComponentType::kSensorCylinder: return "SENSOR_CYLINDER";
+    case ComponentType::kSuctionCylinder: return "SUCTION_CYLINDER";
+    case ComponentType::kStopperCylinder: return "STOPPER_CYLINDER";
+    case ComponentType::kVacuumGenerator: return "VACUUM_GENERATOR";
+    case ComponentType::kDcMotor: return "DC_MOTOR";
+    case ComponentType::kDcMotorDriver: return "DC_MOTOR_DRIVER";
+    case ComponentType::kServoMotor: return "SERVO_MOTOR";
+    case ComponentType::kServoAmplifier: return "SERVO_AMPLIFIER";
+    case ComponentType::kServoLift: return "SERVO_LIFT";
+    case ComponentType::kLiftSuction: return "LIFT_SUCTION";
+    case ComponentType::kAcSupply: return "AC_SUPPLY";
+    case ComponentType::kWarehouse: return "WAREHOUSE";
+    case ComponentType::kDrivenWarehouse: return "DRIVEN_WAREHOUSE";
+    case ComponentType::kFiberAmplifier: return "FIBER_AMPLIFIER";
+    case ComponentType::kFiberTransmitter: return "FIBER_TRANSMITTER";
+    case ComponentType::kFiberReceiver: return "FIBER_RECEIVER";
+    case ComponentType::kTouchPanel: return "TOUCH_PANEL";
+
     case ComponentType::VALVE_SINGLE:
       return "VALVE_SINGLE";
     case ComponentType::VALVE_DOUBLE:
@@ -98,13 +127,17 @@ const char* DebugComponentTypeLabel(ComponentType type) {
 
 int FindTopmostComponentIndexAtPosition(
     const std::vector<PlacedComponent>& components,
-    ImVec2 world_pos) {
+    ImVec2 world_pos, float camera_zoom) {
+  const int stored_index = plc_emulator::FindWarehouseOverlayWorkpiece(
+      components, world_pos, camera_zoom);
+  if (stored_index >= 0) return stored_index;
   int best_index = -1;
   int best_z = std::numeric_limits<int>::min();
   int best_instance = -1;
   for (size_t i = 0; i < components.size(); ++i) {
     const auto& comp = components[i];
-    if (!IsPointInsideComponent(comp, world_pos)) {
+    if (!plc_emulator::IsRenderVisible(comp) ||
+        !IsPointInsideComponent(comp, world_pos)) {
       continue;
     }
     if (comp.z_order > best_z ||
@@ -813,7 +846,7 @@ struct TagLayoutEntry {
   int port_id = -1;
   int lane_bucket = 0;
   ComponentType component_type = ComponentType::PLC;
-  bool is_electric = false;
+  WireKind kind = WireKind::kElectric;
   int color_index = 0;
   std::string tag_text;
   ImVec2 port_pos = {};
@@ -851,7 +884,7 @@ TagVisualGroup ResolveTagVisualGroup(ComponentType component_type, int port_id) 
   if (component_type != ComponentType::PLC) {
     return TagVisualGroup::Default;
   }
-  if (port_id >= 0 && port_id < 16) {
+  if (plc_emulator::PlcInputIndex(port_id) >= 0) {
     return TagVisualGroup::PlcX;
   }
   if (port_id >= 16 && port_id < 32) {
@@ -1020,7 +1053,7 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
       entry.wire = &wire;
       entry.component_id = component_id;
       entry.port_id = port_id;
-      entry.is_electric = wire.isElectric;
+      entry.kind = wire.kind;
       entry.color_index = wire.tagColorIndex;
       entry.tag_text = wire.tagText;
       entry.port_pos = port_pos;
@@ -1059,7 +1092,7 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
     return entries;
   }
 
-  using TagMergeKey = std::tuple<int, std::string, int, int, bool, int>;
+  using TagMergeKey = std::tuple<int, std::string, int, int, WireKind, int>;
   struct TagMergeAccumulator {
     TagLayoutEntry entry;
     ImVec2 port_sum = {};
@@ -1073,7 +1106,7 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
         ResolveTagVisualGroup(entry.component_type, entry.port_id);
     const TagMergeKey key(entry.component_id, entry.tag_text,
                           static_cast<int>(visual_group), entry.lane_bucket,
-                          entry.is_electric, entry.color_index);
+                          entry.kind, entry.color_index);
     TagMergeAccumulator& accum = merged_by_key[key];
     if (accum.count == 0) {
       accum.entry = entry;
@@ -1418,66 +1451,98 @@ std::vector<TagLayoutEntry> BuildTagLayouts(
 
 void Application::StartWireConnection(int componentId, int portId,
                                       ImVec2 portWorldPos) {
-  if (!is_connecting_) {
-    is_connecting_ = true;
-    wire_start_component_id_ = componentId;
-    wire_start_port_id_ = portId;
-    wire_start_pos_ = portWorldPos;
-    wire_current_pos_ = portWorldPos;
-    current_way_points_.clear();
-    last_pointer_world_pos_ = portWorldPos;
-    last_pointer_move_time_ = ImGui::GetTime();
-    last_auto_waypoint_time_ = last_pointer_move_time_;
+  if (is_connecting_) return;
+  for (const auto& component : placed_components_) {
+    if (component.instanceId != componentId) continue;
+    for (const Port& port : GetRuntimePortsForComponent(component)) {
+      if (port.id != portId) continue;
+      pending_wire_kind_ = GetWireKind(port.type);
+      is_connecting_ = true;
+      wire_start_component_id_ = componentId;
+      wire_start_port_id_ = portId;
+      wire_start_pos_ = portWorldPos;
+      wire_current_pos_ = portWorldPos;
+      current_way_points_.clear();
+      last_pointer_world_pos_ = portWorldPos;
+      last_pointer_move_time_ = ImGui::GetTime();
+      last_auto_waypoint_time_ = last_pointer_move_time_;
+      return;
+    }
   }
 }
 
 void Application::UpdateWireDrawing(ImVec2 mousePos) {
-  if (is_connecting_) {
-    wire_current_pos_ = mousePos;
-  }
+  if (is_connecting_) wire_current_pos_ = mousePos;
 }
 
 void Application::CompleteWireConnection(int componentId, int portId,
                                          ImVec2 portWorldPos) {
-  if (is_connecting_ &&
-      !(componentId == wire_start_component_id_ &&
-        portId == wire_start_port_id_)) {
-    int targetComponentId = -1;
-    Port* targetPort = FindPortAtPosition(portWorldPos, targetComponentId);
-    if (targetPort && targetComponentId == componentId) {
-      int startComponentId = -1;
-      Port* startPort = FindPortAtPosition(wire_start_pos_, startComponentId);
-      if (startPort && startComponentId == wire_start_component_id_) {
-        if (IsValidWireConnection(*startPort, *targetPort)) {
-          PushWiringUndoState();
-          Wire newWire;
-          newWire.id = next_wire_id_++;
-          newWire.fromComponentId = wire_start_component_id_;
-          newWire.fromPortId = wire_start_port_id_;
-          newWire.toComponentId = componentId;
-          newWire.toPortId = portId;
-          newWire.wayPoints = current_way_points_;
-          if (newWire.wayPoints.empty()) {
-            newWire.wayPoints = BuildAutoOrthogonalWaypoints(
-                wire_start_pos_, portWorldPos, wire_start_component_id_,
-                componentId, placed_components_);
-          }
-          newWire.isElectric = (current_tool_ == ToolType::ELECTRIC);
-
-          if (newWire.isElectric) {
-            newWire.color = {1.0f, 0.27f, 0.0f, 1.0f};
-            newWire.thickness = 2.0f;
-          } else {
-            newWire.color = {0.13f, 0.59f, 0.95f, 1.0f};
-            newWire.thickness = 3.0f;
-          }
-          wires_.push_back(newWire);
-        }
+  if (!is_connecting_ || (componentId == wire_start_component_id_ &&
+                         portId == wire_start_port_id_)) return;
+  Port start_port;
+  Port target_port;
+  bool found_start = false;
+  bool found_target = false;
+  for (const auto& component : placed_components_) {
+    if (component.instanceId != wire_start_component_id_ &&
+        component.instanceId != componentId) continue;
+    for (const Port& port : GetRuntimePortsForComponent(component)) {
+      if (component.instanceId == wire_start_component_id_ &&
+          port.id == wire_start_port_id_) {
+        start_port = port;
+        found_start = true;
+      }
+      if (component.instanceId == componentId && port.id == portId) {
+        target_port = port;
+        found_target = true;
       }
     }
+  }
+  if (!found_start) {
     is_connecting_ = false;
     current_way_points_.clear();
+    return;
   }
+  if (!found_target || GetWireKind(start_port.type) != pending_wire_kind_ ||
+      !IsValidWireConnection(start_port, target_port)) return;
+  for (const Wire& wire : wires_) {
+    const bool forward = wire.fromComponentId == wire_start_component_id_ &&
+        wire.fromPortId == wire_start_port_id_ &&
+        wire.toComponentId == componentId && wire.toPortId == portId;
+    const bool reverse = wire.toComponentId == wire_start_component_id_ &&
+        wire.toPortId == wire_start_port_id_ &&
+        wire.fromComponentId == componentId && wire.fromPortId == portId;
+    if (forward || reverse) return;
+    const bool uses_start =
+        (wire.fromComponentId == wire_start_component_id_ &&
+         wire.fromPortId == wire_start_port_id_) ||
+        (wire.toComponentId == wire_start_component_id_ &&
+         wire.toPortId == wire_start_port_id_);
+    const bool uses_target = (wire.fromComponentId == componentId &&
+         wire.fromPortId == portId) || (wire.toComponentId == componentId &&
+         wire.toPortId == portId);
+    if ((uses_start && plc_emulator::HasSingleConnection(start_port)) ||
+        (uses_target && plc_emulator::HasSingleConnection(target_port))) return;
+  }
+  PushWiringUndoState();
+  Wire wire;
+  wire.id = next_wire_id_++;
+  wire.fromComponentId = wire_start_component_id_;
+  wire.fromPortId = wire_start_port_id_;
+  wire.toComponentId = componentId;
+  wire.toPortId = portId;
+  wire.wayPoints = current_way_points_;
+  if (wire.wayPoints.empty()) {
+    wire.wayPoints = BuildAutoOrthogonalWaypoints(
+        wire_start_pos_, portWorldPos, wire_start_component_id_,
+        componentId, placed_components_);
+  }
+  wire.kind = pending_wire_kind_;
+  wire.color = GetDefaultWireColor(wire.kind);
+  wire.thickness = wire.kind == WireKind::kPneumatic ? 3.0f : 2.0f;
+  wires_.push_back(wire);
+  is_connecting_ = false;
+  current_way_points_.clear();
 }
 
 void Application::RenderWires(ImDrawList* draw_list) {
@@ -1496,7 +1561,7 @@ void Application::RenderWires(ImDrawList* draw_list) {
 
   auto draw_tag_label = [&](const TagLabelLayout& layout,
                             const std::vector<std::pair<int, ImVec2>>& grouped_ports,
-                            bool is_electric,
+                            WireKind kind,
                             int color_index,
                             float arrow_alpha,
                             const std::string& text) {
@@ -1504,7 +1569,9 @@ void Application::RenderWires(ImDrawList* draw_list) {
       return;
     }
     ImU32 border = GetTagColor(color_index);
-    ImU32 fill = is_electric ? kElectricTagBackground : kPneumaticTagBackground;
+    ImU32 fill = kind == WireKind::kElectric ? kElectricTagBackground
+        : kind == WireKind::kPneumatic ? kPneumaticTagBackground
+                                      : IM_COL32(235, 220, 250, 255);
     const ImU32 arrow_fill = ScaleColorAlpha(fill, arrow_alpha);
     const ImU32 arrow_border = ScaleColorAlpha(border, arrow_alpha);
 
@@ -1547,9 +1614,9 @@ void Application::RenderWires(ImDrawList* draw_list) {
     ImVec2 end_screen_pos = WorldToScreen(endIt->second);
 
     ImU32 wire_color;
-    float wire_thickness = (wire.isElectric ? 2.0f : 3.0f);
+    float wire_thickness = wire.kind == WireKind::kPneumatic ? 3.0f : 2.0f;
 
-    if (wire.isElectric) {
+    if ((wire.kind == WireKind::kElectric)) {
       auto port1_ref = std::make_pair(wire.fromComponentId, wire.fromPortId);
       auto port2_ref = std::make_pair(wire.toComponentId, wire.toPortId);
       float v1 = port_voltages_.count(port1_ref) ? port_voltages_.at(port1_ref)
@@ -1640,7 +1707,7 @@ void Application::RenderWires(ImDrawList* draw_list) {
       if (!entry.wire) {
         continue;
       }
-      draw_tag_label(entry.layout, entry.grouped_ports, entry.is_electric,
+      draw_tag_label(entry.layout, entry.grouped_ports, entry.kind,
                      entry.color_index, entry.arrow_alpha, entry.tag_text);
     }
   }
@@ -1661,7 +1728,10 @@ Application::WiringUndoState Application::CaptureWiringState() const {
 }
 
 void Application::ApplyWiringState(const WiringUndoState& state) {
+  for (auto& part : placed_components_) ReleaseHmiButtons(&part);
   placed_components_ = state.components;
+  for (auto& part : placed_components_)
+    if (part.type == ComponentType::kTouchPanel) part.hmi_state = {};
   wires_ = state.wires;
   selected_component_id_ = state.selected_component_id;
   selected_wire_id_ = state.selected_wire_id;
@@ -1854,7 +1924,10 @@ void Application::RenderWiringCanvas() {
     const bool is_canvas_hovered =
         !popup_blocking &&
         !overlay_point_blocking &&
-        (ImGui::IsItemHovered() || mouse_within_canvas_bounds);
+        (ImGui::IsItemHovered() ||
+         (mouse_within_canvas_bounds &&
+          ImGui::IsWindowHovered(
+              ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)));
     const bool is_pan_input = last_pointer_is_pan_input_;
     const double now = ImGui::GetTime();
     const float move_epsilon = 1.0f;
@@ -1884,8 +1957,8 @@ void Application::RenderWiringCanvas() {
       }
     }
 
-    RenderPlacedComponents(draw_list);
     RenderWires(draw_list);
+    RenderPlacedComponents(draw_list);
     if (is_connecting_) {
       ImVec2 snapped_mouse_pos = ApplySnap(mouse_world_pos, true);
       UpdateWireDrawing(snapped_mouse_pos);
@@ -1894,6 +1967,47 @@ void Application::RenderWiringCanvas() {
         RenderSnapGuides(draw_list, snapped_mouse_pos);
       }
       RenderTemporaryWire(draw_list);
+      int hovered_component = -1;
+      Port* hovered = FindPortAtPosition(mouse_world_pos, hovered_component);
+      if (hovered && hovered_component != -1) {
+        const Port target = *hovered;
+        bool valid = false;
+        bool single_start = false;
+        for (const auto& component : placed_components_) {
+          if (component.instanceId != wire_start_component_id_) continue;
+          for (const Port& start : GetRuntimePortsForComponent(component)) {
+            if (start.id == wire_start_port_id_) {
+              single_start = plc_emulator::HasSingleConnection(start);
+              valid = IsValidWireConnection(start, target) &&
+                  !(hovered_component == wire_start_component_id_ &&
+                    target.id == wire_start_port_id_);
+            }
+          }
+        }
+        if (valid) {
+          for (const auto& wire : wires_) {
+            const auto uses = [&](int id, int port) {
+              return (wire.fromComponentId == id && wire.fromPortId == port) ||
+                     (wire.toComponentId == id && wire.toPortId == port);
+            };
+            if ((single_start && uses(wire_start_component_id_, wire_start_port_id_)) ||
+                (plc_emulator::HasSingleConnection(target) &&
+                 uses(hovered_component, target.id))) valid = false;
+          }
+        }
+        const auto anchor = port_positions_.find({hovered_component, target.id});
+        if (anchor != port_positions_.end()) {
+          draw_list->AddCircle(WorldToScreen(anchor->second), 9.0f,
+              valid ? IM_COL32(60, 200, 100, 255)
+                    : IM_COL32(230, 70, 70, 255), 0, 2.0f);
+        }
+        if (!valid) {
+          ImGui::BeginTooltip();
+          ImGui::TextUnformatted(TR("ui.wiring.incompatible_port",
+                                   "Incompatible port type or role"));
+          ImGui::EndTooltip();
+        }
+      }
     }
 
     if (current_tool_ == ToolType::SELECT && is_box_selecting_) {
@@ -1945,8 +2059,8 @@ void Application::RenderWiringCanvas() {
 
       if (!tooltip_shown) {
         int hover_index = is_canvas_hovered
-                              ? FindTopmostComponentIndexAtPosition(
-                                    placed_components_, mouse_world_pos)
+                              ? FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_)
                               : -1;
         if (hover_index != -1) {
           const auto& comp = placed_components_[static_cast<size_t>(hover_index)];
@@ -1964,7 +2078,8 @@ void Application::RenderWiringCanvas() {
               continue;
             }
             const auto& comp = placed_components_[i];
-            if (IsPointInsideComponent(comp, mouse_world_pos)) {
+            if (plc_emulator::IsRenderVisible(comp) &&
+                IsPointInsideComponent(comp, mouse_world_pos)) {
               const ComponentBehavior* behavior =
                   GetComponentBehavior(comp.type);
               if (behavior && behavior->BuildTooltip &&
@@ -1977,6 +2092,17 @@ void Application::RenderWiringCanvas() {
           }
         }
       }
+    }
+
+    if (physics_paused_) {
+      const char* label = TR("ui.wiring.simulation_paused", "Simulation paused");
+      const ImVec2 text_size = ImGui::CalcTextSize(label);
+      const ImVec2 start{canvas_top_left_.x + 12, canvas_top_left_.y + 12};
+      const ImVec2 end{start.x + text_size.x + 24, start.y + text_size.y + 16};
+      draw_list->AddRectFilled(start, end, IM_COL32(255, 224, 155, 245), 5);
+      draw_list->AddRect(start, end, IM_COL32(180, 100, 20, 255), 5);
+      draw_list->AddText({start.x + 12, start.y + 8},
+                          IM_COL32(100, 50, 0, 255), label);
     }
 
     if (is_canvas_hovered) {
@@ -2016,6 +2142,10 @@ void Application::RenderWiringCanvas() {
 
     RenderTagPopup();
     RenderComponentContextMenu();
+    RenderZLayerPanel();
+    RenderLayerPanel();
+    RenderPneumaticFrontPreview();
+    RenderHmiEditor(hmi_editor_component_id_);
   }
   ImGui::EndChild();
   ImGui::PopStyleVar();
@@ -2150,9 +2280,11 @@ void Application::AddWayPoint(ImVec2 position) {
 void Application::RenderTemporaryWire(ImDrawList* draw_list) {
   if (!is_connecting_)
     return;
-  ImU32 temp_color = (current_tool_ == ToolType::ELECTRIC)
-                         ? IM_COL32(255, 69, 0, 150)
-                         : IM_COL32(33, 150, 243, 150);
+  ImU32 temp_color = pending_wire_kind_ == WireKind::kElectric
+      ? IM_COL32(255, 69, 0, 150)
+      : pending_wire_kind_ == WireKind::kPneumatic
+          ? IM_COL32(33, 150, 243, 150)
+          : IM_COL32(153, 89, 204, 150);
 
   ImVec2 current_pos_on_screen = WorldToScreen(wire_start_pos_);
 
@@ -2327,7 +2459,7 @@ Application::BoxSelectionResult Application::BuildBoxSelectionResult() const {
 
   for (auto& comp : placed_components_) {
     const Size display = GetComponentDisplaySize(comp);
-    const bool hit =
+    const bool hit = plc_emulator::IsRenderVisible(comp) &&
         !(comp.position.x + display.width < min_x ||
           comp.position.x > max_x ||
           comp.position.y + display.height < min_y ||
@@ -2605,7 +2737,8 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
       return nullptr;
     }
     const int top_index =
-        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
     if (top_index == -1) {
       return nullptr;
     }
@@ -2744,7 +2877,8 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
     bool interaction_handled = false;
     if (io.KeyShift) {
       int top_index =
-          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
       if (top_index != -1) {
         auto& comp = placed_components_[static_cast<size_t>(top_index)];
         if (comp.type == ComponentType::LIMIT_SWITCH) {
@@ -2795,7 +2929,8 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
 
     if (!interaction_handled) {
       int top_index =
-          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
       if (top_index != -1) {
         const bool already_selected =
             placed_components_[static_cast<size_t>(top_index)].selected;
@@ -2895,7 +3030,8 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
 
     if (!handled) {
       int top_index =
-          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
       if (top_index != -1) {
         auto& comp = placed_components_[static_cast<size_t>(top_index)];
         const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
@@ -2932,7 +3068,8 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
       !box_select_pending_ && !is_box_selecting_ &&
       !(current_tool_ == ToolType::SELECT && io.KeyCtrl)) {
     int top_index =
-        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
     if (top_index != -1) {
       auto& comp = placed_components_[static_cast<size_t>(top_index)];
       const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
@@ -2977,14 +3114,20 @@ void Application::HandleSelectMode(bool is_canvas_hovered,
       ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
       HasSelectedComponents() && !is_moving_component_ &&
       !box_select_pending_ && !is_box_selecting_ && !io.KeyCtrl) {
+    const ImVec2 press_world_pos =
+        ScreenToWorld(io.MouseClickedPos[ImGuiMouseButton_Left]);
     int top_index =
-        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos);
+        FindTopmostComponentIndexAtPosition(placed_components_, press_world_pos,
+                                              camera_zoom_);
     if (top_index != -1) {
       const auto& comp = placed_components_[static_cast<size_t>(top_index)];
       if (comp.selected) {
         CanvasInteractionCommand command;
         command.type = CanvasInteractionCommand::Type::StartComponentMove;
         command.component_id = comp.instanceId;
+        command.world_pos = press_world_pos;
+        ApplyCanvasInteractionCommand(command);
+        command.type = CanvasInteractionCommand::Type::UpdateComponentMove;
         command.world_pos = mouse_world_pos;
         ApplyCanvasInteractionCommand(command);
       }
@@ -3438,7 +3581,8 @@ bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
     if (!comp.selected) {
       continue;
     }
-    if (IsPointInsideComponent(comp, mouse_world_pos)) {
+    if (plc_emulator::IsRenderVisible(comp) &&
+                IsPointInsideComponent(comp, mouse_world_pos)) {
       const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
       if (try_apply_wheel_interaction(&comp, behavior)) {
         if (from_touchpad) {
@@ -3463,7 +3607,8 @@ bool Application::HandleFRLPressureAdjustment(ImVec2 mouse_world_pos,
     if (comp.selected) {
       continue; // Already checked above
     }
-    if (IsPointInsideComponent(comp, mouse_world_pos)) {
+    if (plc_emulator::IsRenderVisible(comp) &&
+                IsPointInsideComponent(comp, mouse_world_pos)) {
       const ComponentBehavior* behavior = GetComponentBehavior(comp.type);
       if (try_apply_wheel_interaction(&comp, behavior)) {
         if (from_touchpad) {
@@ -3979,8 +4124,8 @@ void Application::HandleCanvasContextActions(bool is_canvas_hovered,
 
   if (right_click && is_canvas_hovered && io.KeyCtrl) {
     int top_index =
-        FindTopmostComponentIndexAtPosition(placed_components_,
-                                            mouse_world_pos);
+        FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
     if (top_index != -1) {
       const auto& comp = placed_components_[static_cast<size_t>(top_index)];
       CanvasInteractionCommand command;
@@ -4012,8 +4157,8 @@ void Application::HandleCanvasContextActions(bool is_canvas_hovered,
       bool deleted = false;
       if (right_double_click) {
         int top_index =
-            FindTopmostComponentIndexAtPosition(placed_components_,
-                                                mouse_world_pos);
+            FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
         if (top_index != -1) {
           const auto& comp =
               placed_components_[static_cast<size_t>(top_index)];
@@ -4088,8 +4233,8 @@ void Application::HandleCanvasContextActions(bool is_canvas_hovered,
     bool deleted = false;
     if (side_click) {
       int top_index =
-          FindTopmostComponentIndexAtPosition(placed_components_,
-                                              mouse_world_pos);
+          FindTopmostComponentIndexAtPosition(placed_components_, mouse_world_pos,
+                                              camera_zoom_);
       if (top_index != -1) {
         const auto& comp = placed_components_[static_cast<size_t>(top_index)];
         CanvasInteractionCommand command;
@@ -4169,7 +4314,8 @@ bool Application::IsPointOverComponentAtScreenPos(ImVec2 screen_pos) const {
   ImVec2 world_pos = ScreenToWorld(screen_pos);
   for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
        ++it) {
-    if (!IsPointInsideComponent(*it, world_pos)) {
+    if (!plc_emulator::IsRenderVisible(*it) ||
+        !IsPointInsideComponent(*it, world_pos)) {
       continue;
     }
     if (it->type == ComponentType::FRL ||
@@ -4188,7 +4334,8 @@ bool Application::HasWheelResponsiveComponentAtScreenPos(
   ImVec2 world_pos = ScreenToWorld(screen_pos);
   for (auto it = placed_components_.rbegin(); it != placed_components_.rend();
        ++it) {
-    if (!IsPointInsideComponent(*it, world_pos)) {
+    if (!plc_emulator::IsRenderVisible(*it) ||
+        !IsPointInsideComponent(*it, world_pos)) {
       continue;
     }
     const ComponentBehavior* behavior = GetComponentBehavior(it->type);
@@ -4230,7 +4377,8 @@ std::string Application::DescribeInputTargetAtScreenPos(ImVec2 screen_pos) const
   desc += " world=(" + std::to_string(static_cast<int>(world_pos.x)) + "," +
           std::to_string(static_cast<int>(world_pos.y)) + ")";
 
-  int top_index = FindTopmostComponentIndexAtPosition(placed_components_, world_pos);
+  int top_index = FindTopmostComponentIndexAtPosition(placed_components_, world_pos,
+                                              camera_zoom_);
   if (top_index == -1) {
     return desc + " target=canvas_empty";
   }
@@ -4289,6 +4437,7 @@ void Application::RotateSelectedComponent(int delta_quadrants) {
   for (int instance_id : selected_ids) {
     PlacedComponent* comp = FindComponentById(instance_id);
     ApplyRotationToComponent(comp, delta_quadrants);
+    plc_emulator::UpdateWarehouseWorkpieces(&placed_components_, false);
   }
   RepairPrimarySelection();
 }
@@ -4395,6 +4544,53 @@ void Application::RenderComponentContextMenu() {
     int component_id = context_menu_component_id_;
     if (component_id != -1) {
       PlacedComponent* comp = FindComponentById(component_id);
+      if (comp && ImGui::BeginMenu(
+                      TR("ui.wiring.context.edit_label", "Edit part name"))) {
+        bool show_label = comp->show_custom_label;
+        if (ImGui::Checkbox(TR("ui.wiring.context.show_label", "Show name"),
+                             &show_label)) {
+          PushWiringUndoState();
+          comp->show_custom_label = show_label;
+        }
+        char label[256];
+        std::snprintf(label, sizeof(label), "%s", comp->customLabel.c_str());
+        ImGui::SetNextItemWidth(240.0f);
+        if (ImGui::InputText("##PartName", label, sizeof(label),
+                             ImGuiInputTextFlags_EnterReturnsTrue)) {
+          PushWiringUndoState();
+          comp->customLabel = label;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextUnformatted(TR("ui.wiring.context.label_hint",
+                                 "Enter to apply; empty to hide"));
+        ImGui::EndMenu();
+      }
+      if (comp && ImGui::MenuItem(TR("ui.z_layers.title", "Physical Z layers"))) {
+        show_z_layer_panel_ = true;
+        z_edit_component_id_ = component_id;
+        z_edit_config_ = comp->z_config;
+        axis_edit_settings_ = comp->axis_settings;
+        fiber_edit_settings_ = comp->fiber_settings;
+        hmi_edit_settings_ = comp->hmi_settings;
+      }
+
+      if (comp && comp->type == ComponentType::kTouchPanel &&
+          ImGui::MenuItem(TR("ui.hmi.edit_screen", "Edit screen"))) {
+        OpenHmiEditor(component_id);
+      }
+
+      if (comp && (plc_emulator::IsSensorCylinder(comp->type) ||
+                   plc_emulator::IsServoLift(comp->type) ||
+                   plc_emulator::IsStorageSensorPart(comp->type)) &&
+          ImGui::MenuItem(comp->type == ComponentType::kTouchPanel
+                              ? TR("ui.hmi.operate", "Operate HMI")
+                              : TR("ui.wiring.context.front_preview",
+                                   "Front view"))) {
+        pneumatic_front_component_id_ = component_id;
+        fiber_edit_settings_ = comp->fiber_settings;
+        hmi_edit_settings_ = comp->hmi_settings;
+        show_pneumatic_front_ = true;
+      }
       if (ImGui::MenuItem(
               TR("ui.wiring.context.bring_front", "Bring to Front"))) {
         BringComponentToFront(component_id);
@@ -4417,6 +4613,7 @@ void Application::RenderComponentContextMenu() {
         if (comp) {
           PushWiringUndoState();
           ApplyRotationToComponent(comp, 1);
+          plc_emulator::UpdateWarehouseWorkpieces(&placed_components_, false);
         }
       }
       if (ImGui::MenuItem(
@@ -4424,6 +4621,7 @@ void Application::RenderComponentContextMenu() {
         if (comp) {
           PushWiringUndoState();
           ApplyRotationToComponent(comp, -1);
+          plc_emulator::UpdateWarehouseWorkpieces(&placed_components_, false);
         }
       }
       if (ImGui::MenuItem(
@@ -4431,6 +4629,7 @@ void Application::RenderComponentContextMenu() {
         if (comp) {
           PushWiringUndoState();
           comp->flip_x = !comp->flip_x;
+          plc_emulator::UpdateWarehouseWorkpieces(&placed_components_, false);
         }
       }
       if (ImGui::MenuItem(
@@ -4438,6 +4637,7 @@ void Application::RenderComponentContextMenu() {
         if (comp) {
           PushWiringUndoState();
           comp->flip_y = !comp->flip_y;
+          plc_emulator::UpdateWarehouseWorkpieces(&placed_components_, false);
         }
       }
       ImGui::Separator();

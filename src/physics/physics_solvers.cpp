@@ -1,3 +1,4 @@
+#include "plc_emulator/components/plc_ports.h"
 // physics_solvers.cpp
 //
 // Numerical solvers for physics equations.
@@ -17,7 +18,7 @@ namespace plc {
 
 namespace {
 constexpr int kMaxComponents = PhysicsEngineDefaults::DEFAULT_MAX_COMPONENTS;
-constexpr int kMaxElectricalNodes = kMaxComponents * 32;
+constexpr int kMaxElectricalNodes = kMaxComponents * plc_emulator::kPlcPortCapacity;
 constexpr int kMaxElectricalEdges = kMaxComponents * 50;
 constexpr int kMaxPneumaticNodes = kMaxComponents * 16;
 constexpr int kMaxPneumaticEdges = kMaxComponents * 30;

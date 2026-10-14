@@ -1,7 +1,7 @@
 #include "plc_emulator/components/valve_double_def.h"
 
 #include "imgui.h"
-
+#include "plc_emulator/components/valve_symbol.h"
 #include "plc_emulator/lang/lang_manager.h"
 
 namespace plc {
@@ -9,33 +9,58 @@ namespace plc {
 namespace {
 
 ImU32 ToImU32(const Color& color) {
-  return IM_COL32(static_cast<int>(color.r * 255.0f),
-                  static_cast<int>(color.g * 255.0f),
-                  static_cast<int>(color.b * 255.0f),
-                  static_cast<int>(color.a * 255.0f));
+  return IM_COL32(
+      static_cast<int>(color.r * 255.0f), static_cast<int>(color.g * 255.0f),
+      static_cast<int>(color.b * 255.0f), static_cast<int>(color.a * 255.0f));
 }
 
 const ComponentPortDef kPorts[] = {
-    {0, {15.0f, 15.0f}, PortType::ELECTRIC, true,
-     {1.0f, 0.0f, 0.0f, 1.0f}, "SOL_A_24V"},
-    {1, {15.0f, 30.0f}, PortType::ELECTRIC, true,
-     {0.0f, 0.0f, 0.0f, 1.0f}, "SOL_A_0V"},
-    {2, {85.0f, 15.0f}, PortType::ELECTRIC, true,
-     {1.0f, 0.0f, 0.0f, 1.0f}, "SOL_B_24V"},
-    {3, {85.0f, 30.0f}, PortType::ELECTRIC, true,
-     {0.0f, 0.0f, 0.0f, 1.0f}, "SOL_B_0V"},
-    {4, {50.0f, 90.0f}, PortType::PNEUMATIC, true,
-     {0.13f, 0.59f, 0.95f, 1.0f}, "P_IN"},
-    {5, {25.0f, 55.0f}, PortType::PNEUMATIC, false,
-     {0.13f, 0.59f, 0.95f, 1.0f}, "PORT_A_OUT"},
-    {6, {75.0f, 55.0f}, PortType::PNEUMATIC, false,
-     {0.13f, 0.59f, 0.95f, 1.0f}, "PORT_B_OUT"},
+    {0,
+     {15.0f, 15.0f},
+     PortType::ELECTRIC,
+     true,
+     {1.0f, 0.0f, 0.0f, 1.0f},
+     "SOL_A_24V"},
+    {1,
+     {15.0f, 30.0f},
+     PortType::ELECTRIC,
+     true,
+     {0.0f, 0.0f, 0.0f, 1.0f},
+     "SOL_A_0V"},
+    {2,
+     {85.0f, 15.0f},
+     PortType::ELECTRIC,
+     true,
+     {1.0f, 0.0f, 0.0f, 1.0f},
+     "SOL_B_24V"},
+    {3,
+     {85.0f, 30.0f},
+     PortType::ELECTRIC,
+     true,
+     {0.0f, 0.0f, 0.0f, 1.0f},
+     "SOL_B_0V"},
+    {4,
+     {50.0f, 90.0f},
+     PortType::PNEUMATIC,
+     true,
+     {0.13f, 0.59f, 0.95f, 1.0f},
+     "P_IN"},
+    {5,
+     {25.0f, 55.0f},
+     PortType::PNEUMATIC,
+     false,
+     {0.13f, 0.59f, 0.95f, 1.0f},
+     "PORT_A_OUT"},
+    {6,
+     {75.0f, 55.0f},
+     PortType::PNEUMATIC,
+     false,
+     {0.13f, 0.59f, 0.95f, 1.0f},
+     "PORT_B_OUT"},
 };
 
-void RenderValveDouble(ImDrawList* draw_list,
-                       const PlacedComponent& comp,
-                       ImVec2 screen_pos,
-                       float zoom) {
+void RenderValveDouble(ImDrawList* draw_list, const PlacedComponent& comp,
+                       ImVec2 screen_pos, float zoom) {
   ImVec2 body_end = {screen_pos.x + comp.size.width * zoom,
                      screen_pos.y + comp.size.height * zoom};
   draw_list->AddRectFilled(screen_pos, body_end, IM_COL32(224, 224, 224, 255),
@@ -63,6 +88,10 @@ void RenderValveDouble(ImDrawList* draw_list,
     draw_list->AddCircleFilled(port_pos, 6 * zoom, ToImU32(port.color));
   }
 
+  plc_emulator::DrawValveSymbol(
+      draw_list, {screen_pos.x + 20 * zoom, screen_pos.y + 67 * zoom}, zoom,
+      true);
+
   if (zoom > 0.5f) {
     float text_scale = zoom / 1.3f;
     float font_size = 16.0f * text_scale;
@@ -79,8 +108,8 @@ void RenderValveDouble(ImDrawList* draw_list,
                      screen_pos.y + port_mid_y * zoom};
     ImVec2 text_pos = {center.x - text_size.x * 0.5f,
                        center.y - text_size.y * 0.5f};
-    draw_list->AddText(font, font_size, text_pos,
-                       IM_COL32(50, 50, 50, 255), label);
+    draw_list->AddText(font, font_size, text_pos, IM_COL32(50, 50, 50, 255),
+                       label);
   }
 }
 

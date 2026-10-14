@@ -850,6 +850,9 @@ bool ParseCellInput(const std::string& text, Type default_type,
       statement = {"LABEL", {name}};
       name = "LABEL";
     } else if (entered_operand) {
+      if (default_type == Type::APPLICATION) {
+        throw std::runtime_error("Enter an instruction mnemonic, e.g. MOV K10 D0");
+      }
       statement.operands.insert(statement.operands.begin(), name);
       name = default_type == Type::XIC               ? "LD"
              : default_type == Type::XIO             ? "LDI"

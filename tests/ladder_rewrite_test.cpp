@@ -2082,8 +2082,15 @@ void FxPulseAndPositioning() {
   for (int scan = 0; scan < 4; ++scan)
     executor.ExecuteScanCycle();
   Require(executor.GetMemory().D[8140] == 50, "PLSY accumulated pulse count");
+  Require(executor.GetPhysicalPulseTotal(0)->forward == 50 &&
+              executor.GetPhysicalPulseTotal(0)->reverse == 0,
+          "Physical pulse total survives per-instruction resets");
+  const auto previous_epoch = executor.GetPhysicalPulseTotal(0)->epoch;
 
   executor.ResetMemory();
+  Require(executor.GetPhysicalPulseTotal(0)->forward == 0 &&
+              executor.GetPhysicalPulseTotal(0)->epoch > previous_epoch,
+          "Hardware pulse reset has an explicit epoch");
   Require(executor.LoadProgram(Statements(
               {{"LD", {"X7"}}, {"PWM", {"K15", "K40", "Y2"}}, {"END", {}}})),
           "PWM program");

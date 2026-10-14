@@ -19,10 +19,23 @@ void Application::ProcessInput() {
 void Application::ProcessFrameKeyboardInput() {
   ImGuiIO& io = ImGui::GetIO();
 
+  if (!io.KeyCtrl && !io.KeyAlt && ImGui::IsKeyPressed(ImGuiKey_F12, false))
+    show_plc_engine_status_ = true;
+
+  if (!io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeyShift &&
+      !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) &&
+      ImGui::IsKeyPressed(ImGuiKey_Tab, false)) {
+    SetApplicationMode(current_mode_ == Mode::PROGRAMMING
+                           ? Mode::WIRING : Mode::PROGRAMMING);
+    return;
+  }
+
   // '?' is typically Shift + '/', and we also accept Ctrl + '/'.
   if (!io.WantTextInput && io.KeyCtrl &&
-      ImGui::IsKeyPressed(ImGuiKey_Slash, false)) {
-    show_shortcut_help_popup_ = true;
+      (ImGui::IsKeyPressed(ImGuiKey_Comma, false) ||
+       ImGui::IsKeyPressed(ImGuiKey_Slash, false))) {
+    show_shortcut_help_popup_ = !show_shortcut_help_popup_;
+    return;
   }
 
   if (!io.WantTextInput && io.KeyCtrl &&
@@ -88,14 +101,13 @@ void Application::ProcessFrameKeyboardInput() {
 
   if (!io.KeyCtrl && !io.KeyAlt &&
       ImGui::IsKeyPressed(ImGuiKey_Q, false)) {
+    is_connecting_ = false;
+    current_way_points_.clear();
     switch (current_tool_) {
       case ToolType::SELECT:
-        current_tool_ = ToolType::PNEUMATIC;
+        current_tool_ = ToolType::kWire;
         break;
-      case ToolType::PNEUMATIC:
-        current_tool_ = ToolType::ELECTRIC;
-        break;
-      case ToolType::ELECTRIC:
+      case ToolType::kWire:
         current_tool_ = ToolType::TAG;
         break;
       case ToolType::TAG:
@@ -137,6 +149,18 @@ void Application::ProcessFrameKeyboardInput() {
       RotateSelectedComponent(1);
     }
   }
+}
+
+void Application::SetApplicationMode(Mode mode) {
+  if (mode == current_mode_) return;
+  if (mode == Mode::PROGRAMMING) {
+    for (auto& panel : placed_components_) {
+      if (panel.type != ComponentType::kTouchPanel) continue;
+      for (int i = 0; i < static_cast<int>(panel.hmi_settings.widgets.size()); ++i)
+        if (panel.hmi_state.held[i]) SetHmiButton(panel.instanceId, i, false);
+    }
+  }
+  current_mode_ = mode;
 }
 
 void Application::RegisterWin32RightClick() {

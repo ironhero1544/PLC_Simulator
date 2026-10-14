@@ -28,7 +28,29 @@ CompiledPLCExecutor::GetAxisState(int axis) const {
   return result;
 }
 
+std::optional<CompiledPLCExecutor::PhysicalPulseSnapshot>
+CompiledPLCExecutor::GetPhysicalPulseTotal(int axis) const {
+  if (axis < 0 || axis >= 4) {
+    return std::nullopt;
+  }
+  return physical_pulse_totals_[axis];
+}
+
+std::optional<double> CompiledPLCExecutor::GetPhysicalPwmDutyRatio(
+    int output) const {
+  if (output < 0 || output >= 4) return std::nullopt;
+  const auto& state = axes_[output];
+  if (!state.status.busy) return std::nullopt;
+  if (state.opcode != model::Opcode::kPulseWidth) return 0.0;
+  return static_cast<double>(state.pwm_high) / state.pwm_period;
+}
+
 void CompiledPLCExecutor::InitializeAxes(bool initialize_registers) {
+  ++physical_pulse_epoch_;
+  physical_pulse_totals_ = {};
+  for (auto& total : physical_pulse_totals_) {
+    total.epoch = physical_pulse_epoch_;
+  }
   for (int axis = 0; axis < 4; ++axis) {
     if (axes_[axis].owner != SIZE_MAX) {
       memory_.Y[axis] = false;
@@ -202,6 +224,14 @@ void CompiledPLCExecutor::AdvanceAxes() {
       if (state.finite)
         count = std::min(count, state.remaining);
       state.status.generated_pulses += static_cast<uint64_t>(count);
+      auto& physical = physical_pulse_totals_[axis];
+      if (state.sign > 0) {
+        physical.forward += static_cast<uint64_t>(count);
+      } else {
+        physical.reverse += static_cast<uint64_t>(count);
+      }
+      physical.direction_output = state.direction.kind == model::DeviceKind::kY
+          ? static_cast<int>(state.direction.index) : -1;
       const int position_register =
           IsPulseCounter(state.opcode) ? 8140 + axis * 2 : base;
       const int32_t position = GetWordValue(Register(position_register), true);
@@ -286,6 +316,19 @@ bool CompiledPLCExecutor::ExecuteMotionOperation(
       memory_.special_m[29] = true;
     if (state.status.abnormal)
       memory_.special_m[329] = true;
+    if (state.status.busy && opcode == Opcode::kPulseWidth) {
+      const int64_t high = value(0);
+      const int64_t period = value(1);
+      if (period < 1 || period > 32767 || high < 0 || high > period) {
+        FinishAxis(axis, true);
+        return fail("PWM requires 0 <= high time <= period (1..32767 ms)");
+      }
+      state.pwm_high = static_cast<int>(high);
+      state.pwm_period = static_cast<int>(period);
+      state.pwm_phase %= state.pwm_period;
+      state.status.frequency = 1000.0 / static_cast<double>(period);
+      memory_.Y[axis] = state.pwm_phase < state.pwm_high;
+    }
     if (state.status.busy && opcode == Opcode::kPulseOutput) {
       const int64_t frequency = value(0);
       if (frequency <= 0 || frequency > (instruction.wide ? 200000 : 32767))

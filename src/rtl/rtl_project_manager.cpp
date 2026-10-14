@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <functional>
+#include <filesystem>
 #include <iomanip>
 #include <regex>
 #include <set>
@@ -51,20 +52,22 @@ static constexpr size_t kMaxStoredRtlLogBytes = 256 * 1024;
 
 // --- Internal Utilities (Private Linkage) ---
 
+static std::string LocalHashHex(const std::string& text) {
+  uint64_t hash = 1469598103934665603ULL;
+  for (const unsigned char ch : text) {
+    hash ^= static_cast<uint64_t>(ch);
+    hash *= 1099511628211ULL;
+  }
+  std::ostringstream stream;
+  stream << std::hex << std::setfill('0') << std::setw(16) << hash;
+  return stream.str();
+}
+
 static bool LocalFileExists(const std::string& path) {
   if (path.empty()) return false;
 #ifdef _WIN32
-  DWORD attrs = GetFileAttributesA(path.c_str());
+  const DWORD attrs = GetFileAttributesW(plc_emulator::WslToolchain::ToWide(path).c_str());
   return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0);
-#else
-  std::ifstream f(path.c_str()); return f.good();
-#endif
-}
-
-static bool LocalPathExists(const std::string& path) {
-  if (path.empty()) return false;
-#ifdef _WIN32
-  return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
 #else
   std::ifstream f(path.c_str()); return f.good();
 #endif
@@ -321,131 +324,11 @@ static std::string LocalEscape(const std::string& arg) {
   return escaped;
 }
 
-#ifdef _WIN32
-static std::wstring LocalToWide(const std::string& s) {
-  if (s.empty()) return L"";
-  int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-  if (n <= 0) return L"";
-  std::wstring res(n, L'\0');
-  MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &res[0], n);
-  if (!res.empty() && res.back() == L'\0') res.pop_back();
-  return res;
-}
-
-static DWORD GetPowerAwareTimeout(DWORD timeout) {
-  return plc::GetPowerAwareTimeout(timeout);
-}
-#endif
-
-static bool LocalRunCommand(const std::string& cmd, std::string* out, DWORD timeout) {
-  if (out) out->clear();
-  if (cmd.empty()) return false;
-#ifdef _WIN32
-  timeout = GetPowerAwareTimeout(timeout);
-  SECURITY_ATTRIBUTES sa; memset(&sa, 0, sizeof(sa)); sa.nLength = sizeof(sa); sa.bInheritHandle = TRUE;
-  HANDLE rPipe = nullptr, wPipe = nullptr;
-  if (!CreatePipe(&rPipe, &wPipe, &sa, 0)) return false;
-  SetHandleInformation(rPipe, HANDLE_FLAG_INHERIT, 0);
-  HANDLE nIn = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ, &sa, OPEN_EXISTING, 0, nullptr);
-  STARTUPINFOW si; memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
-  si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES; si.wShowWindow = SW_HIDE;
-  si.hStdInput = (nIn != INVALID_HANDLE_VALUE ? nIn : nullptr); si.hStdOutput = si.hStdError = wPipe;
-  PROCESS_INFORMATION pi; memset(&pi, 0, sizeof(pi));
-  std::wstring wcmd = LocalToWide(cmd);
-  if (!CreateProcessW(nullptr, &wcmd[0], nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-    CloseHandle(rPipe); CloseHandle(wPipe); if (nIn != INVALID_HANDLE_VALUE) CloseHandle(nIn);
-    if (out) {
-      DWORD err = GetLastError();
-      char msg[512] = {0};
-      FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                     nullptr, err, 0, msg, sizeof(msg), nullptr);
-      *out = std::string("CreateProcess failed (") + std::to_string(err) + "): " + msg + "\nCommand: " + cmd;
-    }
-    return false;
-  }
-  ApplyWindowsEfficiencyModeCompatibility(pi.hProcess, pi.hThread);
-  CloseHandle(wPipe); if (nIn != INVALID_HANDLE_VALUE) CloseHandle(nIn);
-  std::string captured; DWORD start = GetTickCount(); bool tO = false;
-  while (true) {
-    DWORD avail = 0;
-    if (PeekNamedPipe(rPipe, nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
-      std::vector<char> buf(avail); DWORD read = 0;
-      if (ReadFile(rPipe, buf.data(), avail, &read, nullptr)) captured.append(buf.data(), read);
-    }
-    if (WaitForSingleObject(pi.hProcess, 50) != WAIT_TIMEOUT) break;
-    if (GetTickCount() - start > timeout) { tO = true; TerminateProcess(pi.hProcess, 1); break; }
-  }
-  DWORD fDrainStart = GetTickCount();
-  while (GetTickCount() - fDrainStart < 500) {
-    DWORD avail = 0;
-    if (PeekNamedPipe(rPipe, nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
-      std::vector<char> buf(avail); DWORD read = 0;
-      if (ReadFile(rPipe, buf.data(), avail, &read, nullptr)) captured.append(buf.data(), read);
-    } else break;
-  }
-  DWORD exit = 1; GetExitCodeProcess(pi.hProcess, &exit);
-  CloseHandle(pi.hThread); CloseHandle(pi.hProcess); CloseHandle(rPipe);
-
-#ifdef _WIN32
-  {
-    int wlen = MultiByteToWideChar(CP_OEMCP, 0, captured.c_str(), static_cast<int>(captured.size()), nullptr, 0);
-    if (wlen > 0) {
-      std::wstring wbuf(wlen, L'\0');
-      MultiByteToWideChar(CP_OEMCP, 0, captured.c_str(), static_cast<int>(captured.size()), &wbuf[0], wlen);
-      int ulen = WideCharToMultiByte(CP_UTF8, 0, wbuf.c_str(), wlen, nullptr, 0, nullptr, nullptr);
-      if (ulen > 0) {
-        std::string utf8(ulen, '\0');
-        WideCharToMultiByte(CP_UTF8, 0, wbuf.c_str(), wlen, &utf8[0], ulen, nullptr, nullptr);
-        captured = std::move(utf8);
-      }
-    }
-  }
-#endif
-
-  if (out) {
-    *out = LocalTrim(captured);
-    if (tO) *out += "\nCommand timed out.";
-    if (exit != 0 && out->empty()) {
-      char hexBuf[32];
-      snprintf(hexBuf, sizeof(hexBuf), "%lX", static_cast<unsigned long>(exit));
-      *out = "Process crashed or exited silently with code " + std::to_string(exit) + " (0x" + hexBuf + ").\nIf the code is 0xC0000135, a required DLL (e.g., libintl-8.dll) is missing from the toolchain.";
-    }
-  }
-  return !tO && exit == 0;
-#else
-  (void)timeout; return false;
-#endif
-}
-
-static std::string LocalHashHex(const std::string& text) {
-  uint64_t h = 1469598103934665603ULL;
-  for (unsigned char ch : text) { h ^= static_cast<uint64_t>(ch); h *= 1099511628211ULL; }
-  std::ostringstream ss; ss << std::hex << std::setfill('0') << std::setw(16) << h;
-  return ss.str();
-}
-
-static std::string LocalReadToolchain(const std::string& path, const std::string& key) {
-  std::ifstream in(path); if (!in.is_open()) return "";
-  std::string prefix = "set(" + key + " \"", line;
-  while (std::getline(in, line)) {
-    size_t pos = line.find(prefix); if (pos == std::string::npos) continue;
-    size_t start = pos + prefix.size(), end = line.find('"', start);
-    if (end == std::string::npos) continue;
-    std::string val = line.substr(start, end - start), unesc;
-    for (size_t i = 0; i < val.size(); ++i) {
-      if (val[i] == '\\' && i + 1 < val.size() && val[i+1] == '\\') { unesc += '\\'; i++; }
-      else unesc += val[i];
-    }
-    return unesc;
-  }
-  return "";
-}
-
-static std::string LocalFirstExisting(const std::vector<std::string>& paths, bool allowDir = false) {
-  for (const auto& p : paths) {
-    if (!p.empty() && (allowDir ? LocalPathExists(p) : LocalFileExists(p))) return p;
-  }
-  return "";
+static bool LocalIsWindowsWorker(const std::string& data) {
+  if (data.size() < 64 || data[0] != 'M' || data[1] != 'Z') return false;
+  uint32_t offset = 0;
+  std::memcpy(&offset, data.data() + 60, sizeof(offset));
+  return offset <= data.size() - 4 && data.compare(offset, 4, "PE\0\0", 4) == 0;
 }
 
 static std::string LocalStripComments(const std::string& text) {
@@ -470,69 +353,106 @@ static std::string LocalWinPathToWslPath(const std::string& path) {
 }
 
 static bool LocalWriteFileContent(const std::string& path, const std::string& content) {
-  std::ofstream f(path, std::ios::binary); if (!f.is_open()) return false;
-  f << content; return true;
+  std::ofstream f(
+      std::filesystem::path(plc_emulator::WslToolchain::ToWide(path)),
+      std::ios::binary);
+  if (!f.is_open())
+    return false;
+  f << content;
+  return true;
+}
+
+static bool LocalWriteWslSources(const RtlLibraryEntry& entry,
+                                 const std::string& directory,
+                                 std::vector<std::wstring>* arguments,
+                                 std::string* diagnostics) {
+  for (const auto& source : entry.sourceFiles) {
+    const std::string relative = LocalToForwardSlashes(source.path);
+    const std::filesystem::path path(
+        plc_emulator::WslToolchain::ToWide(relative));
+    if (relative.empty() || path.is_absolute() || path.has_root_name() ||
+        path.has_root_directory() || relative.find(':') != std::string::npos) {
+      if (diagnostics)
+        *diagnostics = "HDL source paths must be relative.";
+      return false;
+    }
+    for (const auto& segment : path) {
+      if (segment == "..") {
+        if (diagnostics)
+          *diagnostics = "HDL paths cannot escape the source directory.";
+        return false;
+      }
+    }
+    const auto destination =
+        std::filesystem::path(plc_emulator::WslToolchain::ToWide(directory)) /
+        L"src" / path;
+    std::error_code error;
+    std::filesystem::create_directories(destination.parent_path(), error);
+    if (error) {
+      if (diagnostics)
+        *diagnostics = "Cannot create HDL source directory: " + error.message();
+      return false;
+    }
+    std::ofstream output(destination, std::ios::binary);
+    output << source.content;
+    if (!output.good()) {
+      if (diagnostics)
+        *diagnostics = "Cannot write HDL source: " + relative;
+      return false;
+    }
+    arguments->push_back(plc_emulator::WslToolchain::ToWide("src/" + relative));
+  }
+  return !entry.sourceFiles.empty();
 }
 
 static std::string LocalGetTempBasePath(const std::string& suffix) {
-#ifdef _WIN32
-  char buf[MAX_PATH] = {0}; DWORD len = GetTempPathA(MAX_PATH, buf);
-  if (len > 0 && len < MAX_PATH) {
-    std::string p(buf, len); if (!p.empty() && p.back() != '\\' && p.back() != '/') p += "\\";
-    p += suffix; return p;
-  }
-#endif
-  return suffix;
-}
-
-static std::string LocalGetDirectoryName(const std::string& path) {
-  size_t pos = path.find_last_of("\\/");
-  if (pos == std::string::npos) return "";
-  return path.substr(0, pos);
+  std::error_code error;
+  const auto path =
+      std::filesystem::temp_directory_path(error) /
+      std::filesystem::path(plc_emulator::WslToolchain::ToWide(suffix));
+  if (error)
+    return suffix;
+  const auto utf8 = path.u8string();
+  return std::string(utf8.begin(), utf8.end());
 }
 
 static bool LocalEnsureDirRecursive(const std::string& path) {
-  if (path.empty()) return false;
-  std::string norm = path; std::replace(norm.begin(), norm.end(), '/', '\\');
-#ifdef _WIN32
-  size_t pos = norm.find('\\', 3);
-  while (pos != std::string::npos) { CreateDirectoryA(norm.substr(0, pos).c_str(), nullptr); pos = norm.find('\\', pos + 1); }
-  if (CreateDirectoryA(norm.c_str(), nullptr) != 0) return true;
-  return GetLastError() == ERROR_ALREADY_EXISTS;
-#else
-  return true;
-#endif
+  if (path.empty())
+    return false;
+  std::error_code error;
+  std::filesystem::create_directories(
+      std::filesystem::path(plc_emulator::WslToolchain::ToWide(path)), error);
+  return !error;
 }
 
 static std::string GetLocalAppDataPathInternal() {
 #ifdef _WIN32
-  char buf[MAX_PATH] = {0}; if (GetEnvironmentVariableA("LOCALAPPDATA", buf, MAX_PATH) > 0) return std::string(buf);
+  const wchar_t* value = _wgetenv(L"LOCALAPPDATA");
+  if (value != nullptr) {
+    const auto utf8 = std::filesystem::path(value).u8string();
+    return std::string(utf8.begin(), utf8.end());
+  }
 #endif
   return ".";
 }
 
 static std::string BuildCacheRootDirectory() {
-  return LocalJoinPath(GetLocalAppDataPathInternal(), "PLCSimulator\\rtl_cache");
+  return LocalJoinPath(GetLocalAppDataPathInternal(),
+                       "PLCSimulator\\rtl_cache");
 }
 
 static std::string LocalReadFileContent(const std::string& path) {
-  std::ifstream f(path, std::ios::binary);
-  if (!f.is_open()) return "";
+  std::ifstream f(
+      std::filesystem::path(plc_emulator::WslToolchain::ToWide(path)),
+      std::ios::binary);
+  if (!f.is_open())
+    return "";
   std::ostringstream ss;
   ss << f.rdbuf();
   return ss.str();
 }
 
-static const std::vector<std::string>& GetRtlWorkerRuntimeFileNames() {
-  static const std::vector<std::string> kNames = {
-      "libgcc_s_seh-1.dll",
-      "libstdc++-6.dll",
-      "libwinpthread-1.dll",
-  };
-  return kNames;
-}
-
-} // anonymous namespace
+}  // anonymous namespace
 
 // --- Public Function ---
 bool FileExists(const std::string& path) { return LocalFileExists(path); }
@@ -543,7 +463,7 @@ RtlProjectManager::RtlProjectManager() { LoadGlobalLibrary(); }
 RtlProjectManager::~RtlProjectManager() { SaveGlobalLibrary(); }
 
 void RtlProjectManager::LoadGlobalLibrary() {
-  std::ifstream f(LocalJoinPath(GetLocalAppDataPathInternal(), "PLCSimulator\\rtl_library.json"), std::ios::binary);
+  std::ifstream f(std::filesystem::path(plc_emulator::WslToolchain::ToWide(LocalJoinPath(GetLocalAppDataPathInternal(), "PLCSimulator\\rtl_library.json"))), std::ios::binary);
   if (!f.is_open()) return;
   std::ostringstream ss; ss << f.rdbuf();
   if (!ss.str().empty()) DeserializeLibraryJson(ss.str());
@@ -553,7 +473,7 @@ void RtlProjectManager::SaveGlobalLibrary() const {
   std::string p = LocalJoinPath(GetLocalAppDataPathInternal(), "PLCSimulator\\rtl_library.json");
   size_t pos = p.find_last_of("\\/");
   if (pos != std::string::npos) LocalEnsureDirRecursive(p.substr(0, pos));
-  std::ofstream f(p, std::ios::binary); if (f.is_open()) f << SerializeLibraryJson();
+  std::ofstream f(std::filesystem::path(plc_emulator::WslToolchain::ToWide(p)), std::ios::binary); if (f.is_open()) f << SerializeLibraryJson();
 }
 
 void RtlProjectManager::InvalidateLibraryIndex() {
@@ -718,7 +638,7 @@ bool RtlProjectManager::Analyze(const std::string& id) {
 bool RtlProjectManager::Build(const std::string& id) {
   auto* e = FindEntryById(id); if (!e) return false;
   e->buildSuccess = false; e->buildDiagnostics.clear();
-  auto s = DetectToolchain(); if (!s.verilatorFound || !s.compilerFound) { e->buildDiagnostics = s.description; LocalCapEntryLogs(e); return false; }
+  auto s = DetectToolchain(); if (!s.doctor.ready) { e->buildDiagnostics = s.description; LocalCapEntryLogs(e); return false; }
   if (!e->analyzeSuccess) { e->buildDiagnostics = "Analyze first."; LocalCapEntryLogs(e); return false; }
   e->buildSuccess = RunVerilatorBuild(e, s, &e->buildDiagnostics);
   LocalCapEntryLogs(e);
@@ -767,7 +687,7 @@ bool RtlProjectManager::RunTestbench(const std::string& id) {
   }
 
   auto s = DetectToolchain();
-  if (!s.verilatorFound || !s.compilerFound) {
+  if (!s.doctor.ready) {
     e->testbenchDiagnostics = s.description;
     LocalCapEntryLogs(e);
     return false;
@@ -778,92 +698,40 @@ bool RtlProjectManager::RunTestbench(const std::string& id) {
 }
 
 RtlToolchainStatus RtlProjectManager::DetectToolchain() const {
-  RtlToolchainStatus st;
-#ifdef _WIN32
-  auto GetExecDir = []() {
-    char p[MAX_PATH] = {0}; GetModuleFileNameA(nullptr, p, MAX_PATH);
-    std::string s(p); size_t pos = s.find_last_of("\\/");
-    return (pos != std::string::npos) ? s.substr(0, pos) : ".";
-  };
-  std::string tDir = LocalJoinPath(GetExecDir(), "tools");
-  if (!LocalFileExists(LocalJoinPath(tDir, "setup_tools.ps1"))) tDir = "tools";
-  st.toolsDir = tDir;
-  std::string tcP = LocalJoinPath(tDir, "toolchain.cmake");
-
-  const std::string kDefaultMsys2Root  = "C:\\msys64";
-  const std::string kDefaultMsys2Bin   = "C:\\msys64\\ucrt64\\bin";
-  const std::string kDefaultMsys2Share = "C:\\msys64\\ucrt64\\share\\verilator";
-  const std::string kDefaultUsrBin     = "C:\\msys64\\usr\\bin";
-
-  std::string tcMingwRoot = LocalReadToolchain(tcP, "MINGW_ROOT");
-  std::replace(tcMingwRoot.begin(), tcMingwRoot.end(), '/', '\\');
-  std::string tcMingwBin = tcMingwRoot.empty() ? "" : LocalJoinPath(tcMingwRoot, "bin");
-
-  auto NormalizePath = [](const std::string& p) {
-    std::string n;
-    for (size_t i = 0; i < p.size(); ++i) {
-      n += p[i];
-      if (p[i] == '\\' && i + 1 < p.size() && p[i + 1] == '\\') ++i;
-    }
-    return n;
-  };
-
-  auto FindMsys2RootFromToolchain = [&](const std::string& root) -> std::string {
-    if (root.empty()) return kDefaultMsys2Root;
-    size_t pos = root.rfind("\\ucrt64");
-    if (pos == std::string::npos) pos = root.rfind("\\mingw64");
-    if (pos == std::string::npos) pos = root.rfind("\\clang64");
-    if (pos == std::string::npos) return kDefaultMsys2Root;
-    return root.substr(0, pos);
-  };
-
-  st.compilerPath = LocalFirstExisting({
-      LocalReadToolchain(tcP, "CMAKE_CXX_COMPILER"),
-      tcMingwBin.empty() ? "" : LocalJoinPath(tcMingwBin, "g++.exe"),
-      LocalJoinPath(kDefaultMsys2Bin, "g++.exe")});
-
-  st.makePath = LocalFirstExisting({
-      LocalReadToolchain(tcP, "CMAKE_MAKE_PROGRAM"),
-      tcMingwBin.empty() ? "" : LocalJoinPath(tcMingwBin, "mingw32-make.exe"),
-      tcMingwBin.empty() ? "" : LocalJoinPath(FindMsys2RootFromToolchain(tcMingwRoot), "usr\\bin\\make.exe"),
-      LocalJoinPath(kDefaultUsrBin, "make.exe"),
-      LocalJoinPath(kDefaultMsys2Bin, "mingw32-make.exe")});
-
-  st.verilatorPath = LocalFirstExisting({
-      tcMingwBin.empty() ? "" : LocalJoinPath(tcMingwBin, "verilator_bin.exe"),
-      tcMingwBin.empty() ? "" : LocalJoinPath(tcMingwBin, "verilator.exe"),
-      LocalJoinPath(kDefaultMsys2Bin, "verilator_bin.exe"),
-      LocalJoinPath(kDefaultMsys2Bin, "verilator.exe")});
-
-  st.verilatorRoot = LocalFirstExisting({
-      LocalReadToolchain(tcP, "VERILATOR_ROOT"),
-      tcMingwRoot.empty() ? "" : LocalJoinPath(tcMingwRoot, "share\\verilator"),
-      kDefaultMsys2Share
-  }, true);
-
-  st.makePath = NormalizePath(st.makePath);
-  st.compilerPath = NormalizePath(st.compilerPath);
-  st.verilatorPath = NormalizePath(st.verilatorPath);
-  st.verilatorRoot = NormalizePath(st.verilatorRoot);
-
-  st.mingwBinPath = !tcMingwBin.empty() && LocalPathExists(tcMingwBin)
-                    ? tcMingwBin
-                    : kDefaultMsys2Bin;
-  st.msys2Root = FindMsys2RootFromToolchain(tcMingwRoot);
-
-  st.compilerFound = !st.compilerPath.empty();
-  st.makeFound = !st.makePath.empty();
-  st.verilatorFound = !st.verilatorPath.empty();
-  st.description = st.verilatorFound ? "Ready." : "Verilator not found.";
-#else
-  st.description = "Windows only.";
-#endif
-  return st;
+  RtlToolchainStatus status;
+  status.doctor = plc_emulator::WslToolchain::Diagnose(plc_emulator::WslToolchain::LoadProfile());
+  for (const auto& check : status.doctor.checks) {
+    if (check.name == "WSL2 distribution") status.wslFound = check.passed;
+    if (check.name == "Verilator") status.verilatorFound = check.passed;
+    if (check.name == "MinGW Windows compiler") status.compilerFound = check.passed;
+    if (check.name == "make") status.makeFound = check.passed;
+  }
+  status.wslVerilatorFound = status.verilatorFound;
+  status.wslCompilerFound = status.compilerFound;
+  status.wslMakeFound = status.makeFound;
+  status.wslPath = "wsl.exe";
+  status.verilatorPath = status.wslVerilatorPath = "/usr/bin/verilator";
+  status.compilerPath = status.wslCompilerPath = "/usr/bin/x86_64-w64-mingw32-g++-posix";
+  status.makePath = status.wslMakePath = "/usr/bin/make";
+  status.description = status.doctor.ready ? "WSL2 RTL toolchain ready."
+      : "Open Tool Doctor to select WSL2 and repair missing tools.";
+  return status;
 }
 
 bool RtlProjectManager::HasBuildArtifact(const RtlLibraryEntry& e) const {
   if (e.buildHash.empty()) return false;
-  return LocalFileExists(LocalJoinPath(GetBuildCacheDirectory(e), "rtl_worker.exe"));
+  std::ifstream file(std::filesystem::path(plc_emulator::WslToolchain::ToWide(
+      LocalJoinPath(GetBuildCacheDirectory(e), "rtl_worker.exe"))), std::ios::binary);
+  char header[64] = {};
+  file.read(header, sizeof(header));
+  if (file.gcount() != 64 || header[0] != 'M' || header[1] != 'Z') return false;
+  uint32_t offset = 0;
+  std::memcpy(&offset, header + 60, sizeof(offset));
+  if (offset > 1024 * 1024) return false;
+  file.seekg(offset);
+  char signature[4] = {};
+  file.read(signature, sizeof(signature));
+  return file.gcount() == 4 && std::memcmp(signature, "PE\0\0", 4) == 0;
 }
 
 std::string RtlProjectManager::GetBuildCacheDirectory(const RtlLibraryEntry& e) const {
@@ -877,8 +745,8 @@ std::string RtlProjectManager::GetWslBuildCacheDirectory(const RtlLibraryEntry& 
 
 std::string RtlProjectManager::GetTestbenchCacheDirectory(const RtlLibraryEntry& e) const {
   if (e.testbenchTopModule.empty()) return "";
-  std::ostringstream ss; ss << "tb-v1|" << e.testbenchTopModule << "|" << e.testbenchTopFile;
-  for (const auto& f : e.sourceFiles) ss << "|" << f.path << "|" << f.content.size();
+  std::ostringstream ss; ss << "wsl2-tb-v1|" << e.testbenchTopModule << "|" << e.testbenchTopFile;
+  for (const auto& f : e.sourceFiles) ss << "|" << f.path << "|" << f.content;
   return LocalJoinPath(BuildCacheRootDirectory(), LocalHashHex(ss.str()));
 }
 
@@ -886,10 +754,10 @@ std::string RtlProjectManager::GetWslTestbenchCacheDirectory(const RtlLibraryEnt
   std::string d = GetTestbenchCacheDirectory(e); return d.empty() ? "" : LocalWinPathToWslPath(d);
 }
 
-std::string RtlProjectManager::GetWorkerLaunchCommand(const RtlLibraryEntry& e, const RtlToolchainStatus& s) const {
-  (void)s; if (!HasBuildArtifact(e)) return "";
-  std::string exe = LocalJoinPath(GetBuildCacheDirectory(e), "rtl_worker.exe");
-  return LocalFileExists(exe) ? LocalEscape(exe) : "";
+std::string RtlProjectManager::GetWorkerLaunchCommand(const RtlLibraryEntry& entry, const RtlToolchainStatus& status) const {
+  (void)status;
+  if (!HasBuildArtifact(entry)) return {};
+  return LocalEscape(LocalJoinPath(GetBuildCacheDirectory(entry), "rtl_worker.exe"));
 }
 
 std::string RtlProjectManager::SerializeLibraryJson() const {
@@ -900,7 +768,17 @@ std::string RtlProjectManager::SerializeLibraryJson() const {
   r["entries"] = ents; return r.dump(2, ' ', false, json::error_handler_t::replace);
 }
 
-std::string RtlProjectManager::SerializeProjectRtlJson() const { return SerializeLibraryJson(); }
+std::string RtlProjectManager::SerializeProjectRtlJson(
+    const std::vector<std::string>& module_ids) const {
+  json result = {{"version", 1}, {"entries", json::array()}};
+  for (const auto& entry : library_) {
+    if (std::find(module_ids.begin(), module_ids.end(), entry.moduleId) !=
+        module_ids.end()) {
+      result["entries"].push_back(LocalSerializeEntry(entry, true));
+    }
+  }
+  return result.dump(2, ' ', false, json::error_handler_t::replace);
+}
 
 std::string RtlProjectManager::SerializeEntryJson(const RtlLibraryEntry& entry,
                                                  bool includeSourceFiles) const {
@@ -921,6 +799,15 @@ bool RtlProjectManager::DeserializeLibraryJson(const std::string& jText, bool me
     if (!LocalDeserializeEntry(i, &e)) {
       continue;
     }
+    // Project reloads keep module IDs stable instead of cloning the library.
+    if (merge) {
+      RtlLibraryEntry* existing = FindEntryById(e.moduleId);
+      if (existing) {
+        e.displayName = BuildUniqueDisplayName(e.displayName, e.moduleId);
+        *existing = std::move(e);
+        continue;
+      }
+    }
     e.displayName = BuildUniqueDisplayName(e.displayName);
     if (e.moduleId.empty() || std::any_of(library_.begin(), library_.end(),
                                           [&](const RtlLibraryEntry& existing) {
@@ -935,6 +822,7 @@ bool RtlProjectManager::DeserializeLibraryJson(const std::string& jText, bool me
                            }));
     }
     library_.push_back(e);
+    InvalidateLibraryIndex();
   }
   InvalidateLibraryIndex();
   if (merge) SaveGlobalLibrary();
@@ -1010,22 +898,11 @@ std::map<std::string, std::string> RtlProjectManager::GetBuildArtifactBundle(
   std::string workerData = LocalReadFileContent(workerPath);
   if (workerData.empty()) return files;
   files["rtl_worker.exe"] = std::move(workerData);
-
-  std::string compilerDir;
-  RtlToolchainStatus status = DetectToolchain();
-  if (!status.compilerPath.empty()) {
-    compilerDir = LocalGetDirectoryName(status.compilerPath);
-  }
-
-  for (const auto& fileName : GetRtlWorkerRuntimeFileNames()) {
-    const std::string cachedPath = LocalJoinPath(cacheDir, fileName);
-    std::string data = LocalReadFileContent(cachedPath);
-    if (data.empty() && !compilerDir.empty()) {
-      data = LocalReadFileContent(LocalJoinPath(compilerDir, fileName));
-    }
-    if (!data.empty()) {
-      files[fileName] = std::move(data);
-    }
+  // Older native bundles may depend on these MinGW runtime DLLs.
+  for (const char* name : {"libgcc_s_seh-1.dll", "libstdc++-6.dll",
+                           "libwinpthread-1.dll"}) {
+    const std::string data = LocalReadFileContent(LocalJoinPath(cacheDir, name));
+    if (!data.empty()) files[name] = data;
   }
 
   return files;
@@ -1041,18 +918,24 @@ bool RtlProjectManager::RestoreBuildArtifactBundle(
   const std::string cacheDir = GetBuildCacheDirectory(*e);
   if (cacheDir.empty() || !LocalEnsureDirRecursive(cacheDir)) return false;
 
-  bool restoredWorker = false;
-  for (const auto& [fileName, data] : files) {
-    if (fileName.empty() || data.empty()) continue;
-    if (fileName.find_first_of("\\/") != std::string::npos) continue;
-    const std::string filePath = LocalJoinPath(cacheDir, fileName);
-    if (!LocalWriteFileContent(filePath, data)) continue;
-    if (LocalEqualsIgnoreCase(fileName, "rtl_worker.exe")) {
-      restoredWorker = LocalFileExists(filePath);
-    }
+  const auto worker = files.find("rtl_worker.exe");
+  if (worker == files.end() || !LocalIsWindowsWorker(worker->second)) {
+    e->buildSuccess = false;
+    e->buildDiagnostics = "Linux workers require a Windows MinGW rebuild.";
+    return false;
   }
+  const bool restoredWorker = LocalWriteFileContent(LocalJoinPath(cacheDir, "rtl_worker.exe"), worker->second);
 
   if (restoredWorker) {
+    for (const char* name : {"libgcc_s_seh-1.dll", "libstdc++-6.dll",
+                             "libwinpthread-1.dll"}) {
+      const auto dependency = files.find(name);
+      if (dependency != files.end() &&
+          !LocalWriteFileContent(LocalJoinPath(cacheDir, name), dependency->second)) {
+        e->buildSuccess = false;
+        return false;
+      }
+    }
     e->buildSuccess = true;
   }
   return restoredWorker;
@@ -1128,30 +1011,6 @@ bool RtlProjectManager::RestoreBuildArtifact(const std::string& id, const std::s
 
 std::vector<RtlPinBinding> RtlProjectManager::BuildDefaultPinBindings(const std::vector<RtlPortDescriptor>& pts) {
   std::vector<RtlPinBinding> b; for (const auto& p : pts) b.push_back({p.pinName, p.portId, p.isInput}); return b;
-}
-
-bool RtlProjectManager::RunCommandCapture(const std::string& cmd, std::string* out, const RtlToolchainStatus& s, unsigned int tO) const {
-#ifdef _WIN32
-  char oP[32768]; DWORD n = GetEnvironmentVariableA("PATH", oP, 32768);
-  std::string prev = (n > 0 && n < 32768) ? std::string(oP, n) : "";
-  // MSYS2 usr/bin (perl, python, sh 등)도 함께 포함
-  std::string msys2UsrBin = LocalJoinPath(s.msys2Root, "usr\\bin");
-  std::string eff = s.mingwBinPath;
-  if (!msys2UsrBin.empty() && LocalPathExists(msys2UsrBin)) {
-    eff += ";" + msys2UsrBin;
-  }
-  if (!prev.empty()) eff += ";" + prev;
-  SetEnvironmentVariableA("PATH", eff.c_str());
-  if (!s.verilatorRoot.empty()) {
-    SetEnvironmentVariableA("VERILATOR_ROOT", LocalToForwardSlashes(s.verilatorRoot).c_str());
-  }
-  if (!s.makePath.empty()) SetEnvironmentVariableA("MAKE", s.makePath.c_str());
-  bool ok = LocalRunCommand(cmd, out, static_cast<DWORD>(tO));
-  SetEnvironmentVariableA("PATH", prev.empty() ? nullptr : prev.c_str());
-  SetEnvironmentVariableA("VERILATOR_ROOT", nullptr); SetEnvironmentVariableA("MAKE", nullptr); return ok;
-#else
-  return false;
-#endif
 }
 
 bool RtlProjectManager::AnalyzeWithRegex(RtlLibraryEntry* entry) const {
@@ -1263,40 +1122,68 @@ bool RtlProjectManager::AnalyzeWithRegex(RtlLibraryEntry* entry) const {
   return !entry->ports.empty();
 }
 
-bool RtlProjectManager::RunVerilatorLint(const RtlLibraryEntry& e, const RtlToolchainStatus& s, std::string* diag) const {
-  std::string tD = LocalGetTempBasePath("plc_lint\\"); LocalEnsureDirRecursive(tD);
-  std::string p = LocalJoinPath(tD, e.topFile); LocalWriteFileContent(p, e.sourceFiles[0].content);
-  std::ostringstream cmd; cmd << LocalEscape(s.verilatorPath) << " --lint-only -Wno-fatal -Wno-TIMESCALEMOD --timing -I" << LocalEscape(LocalToForwardSlashes(LocalJoinPath(s.verilatorRoot, "include"))) << " --top-module " << LocalEscape(e.topModule) << " " << LocalEscape(p);
-  return RunCommandCapture(cmd.str(), diag, s, kLocalDefaultTimeoutMs);
+bool RtlProjectManager::RunVerilatorLint(const RtlLibraryEntry& entry,
+                                         const RtlToolchainStatus& status,
+                                         std::string* diagnostics) const {
+  const std::string directory = LocalGetTempBasePath("plc_rtl_lint") + "\\" +
+                                LocalHashHex(entry.moduleId);
+  plc_emulator::WslCommand command;
+  command.distribution =
+      plc_emulator::WslToolchain::ToWide(status.doctor.profile.distribution);
+  command.working_directory =
+      plc_emulator::WslToolchain::ToWide(LocalWinPathToWslPath(directory));
+  command.program = L"/usr/bin/verilator";
+  command.arguments = {L"--lint-only",
+                       L"-Wno-fatal",
+                       L"-Wno-TIMESCALEMOD",
+                       L"--timing",
+                       L"--top-module",
+                       plc_emulator::WslToolchain::ToWide(entry.topModule),
+                       L"-Isrc"};
+  if (!LocalWriteWslSources(entry, directory, &command.arguments, diagnostics))
+    return false;
+  const auto result =
+      plc_emulator::WslToolchain::Run(command, kLocalDefaultTimeoutMs);
+  if (diagnostics)
+    *diagnostics = result.output + "\n" + result.error;
+  return result.Succeeded();
 }
 
-bool RtlProjectManager::RunVerilatorBuild(RtlLibraryEntry* e, const RtlToolchainStatus& s, std::string* diag) const {
+bool RtlProjectManager::RunVerilatorBuild(RtlLibraryEntry* e,
+                                          const RtlToolchainStatus& s,
+                                          std::string* diag) const {
 #ifdef _WIN32
-  if (e->buildHash.empty()) {
-    std::ostringstream hashSrc;
-    hashSrc << e->moduleId << "|" << e->topModule;
-    for (const auto& f : e->sourceFiles) {
-      hashSrc << "|" << f.path << "|" << f.content.size();
-    }
-    e->buildHash = LocalHashHex(hashSrc.str());
+  {
+    std::ostringstream hash_source;
+    hash_source << "wsl2-mingw-static-worker-v1|"
+                << s.doctor.profile.distribution << "|" << e->moduleId << "|"
+                << e->topModule;
+    for (const auto& source : e->sourceFiles)
+      hash_source << "|" << source.path << "|" << source.content;
+    e->buildHash = LocalHashHex(hash_source.str());
   }
 
   std::string d = GetBuildCacheDirectory(*e);
   if (d.empty()) {
-    if (diag) *diag = "[Build] Cache path generation failed: buildHash is empty.";
+    if (diag)
+      *diag = "[Build] Cache path generation failed: buildHash is empty.";
     return false;
   }
 
   std::string sD = LocalJoinPath(d, "src"), oD = LocalJoinPath(d, "obj");
-  LocalEnsureDirRecursive(d); LocalEnsureDirRecursive(sD); LocalEnsureDirRecursive(oD);
-  std::string p = LocalJoinPath(sD, e->topFile); LocalWriteFileContent(p, e->sourceFiles[0].content);
+  LocalEnsureDirRecursive(d);
+  LocalEnsureDirRecursive(sD);
+  LocalEnsureDirRecursive(oD);
+
   std::string wm = LocalJoinPath(d, "worker.cpp");
   std::ostringstream code;
   code << "#include \"V" << e->topModule << ".h\"\n"
        << "#include <verilated.h>\n"
-       << "#include <iostream>\n#include <sstream>\n#include <string>\n#include <cstdint>\n\n"
+       << "#include <iostream>\n#include <sstream>\n#include "
+          "<string>\n#include <cstdint>\n\n"
        << "static vluint64_t g_main_time = 0;\n"
-       << "double sc_time_stamp() { return static_cast<double>(g_main_time); }\n\n"
+       << "double sc_time_stamp() { return static_cast<double>(g_main_time); "
+          "}\n\n"
        << "int main(int argc, char** argv) {\n"
        << "  Verilated::commandArgs(argc, argv);\n"
        << "  V" << e->topModule << " top;\n"
@@ -1314,7 +1201,8 @@ bool RtlProjectManager::RunVerilatorBuild(RtlLibraryEntry* e, const RtlToolchain
 
   for (const auto& port : e->ports) {
     if (port.isInput) {
-      code << "        if (pin == \"" << port.pinName << "\") top." << port.pinName << " = val;\n";
+      code << "        if (pin == \"" << port.pinName << "\") top."
+           << port.pinName << " = val;\n";
     }
   }
 
@@ -1325,7 +1213,8 @@ bool RtlProjectManager::RunVerilatorBuild(RtlLibraryEntry* e, const RtlToolchain
 
   for (const auto& port : e->ports) {
     if (!port.isInput) {
-      code << "      std::cout << \" \" << \"" << port.pinName << "=\" << (int)top." << port.pinName << ";\n";
+      code << "      std::cout << \" \" << \"" << port.pinName
+           << "=\" << (int)top." << port.pinName << ";\n";
     }
   }
 
@@ -1335,87 +1224,77 @@ bool RtlProjectManager::RunVerilatorBuild(RtlLibraryEntry* e, const RtlToolchain
        << "  top.final(); return 0;\n"
        << "}\n";
 
-  LocalWriteFileContent(wm, code.str());
-  std::ostringstream vC;
-  vC << LocalEscape(s.verilatorPath) << " --cc --exe -Wno-fatal -Wno-TIMESCALEMOD --timing"
-     << " -I" << LocalEscape(LocalToForwardSlashes(LocalJoinPath(s.verilatorRoot, "include")))
-     << " --top-module " << LocalEscape(e->topModule) << " -Mdir "
-     << LocalEscape(LocalToForwardSlashes(oD)) << " "
-     << LocalEscape(LocalToForwardSlashes(p)) << " "
-     << LocalEscape(LocalToForwardSlashes(wm));
-  std::string out;
-  if (!RunCommandCapture(vC.str(), &out, s, kLocalBuildTimeoutMs)) {
-    if (diag) {
-      *diag = "[Verilator step]\n";
-      *diag += out.empty() ? "Process execution failed (check paths/permissions).\nCommand: " + vC.str() : out;
-    }
+  if (!LocalWriteFileContent(wm, code.str())) {
+    if (diag)
+      *diag = "Cannot write RTL worker driver.";
     return false;
   }
-
-  std::ostringstream cC;
-  std::string vIncl = LocalToForwardSlashes(LocalJoinPath(s.verilatorRoot, "include"));
-  std::string outExe = LocalJoinPath(d, "rtl_worker.exe");
-
-  cC << LocalEscape(LocalToForwardSlashes(s.compilerPath))
-     << " -std=c++20 -fcoroutines -Os"
-     << " -I" << LocalEscape(vIncl)
-     << " -I" << LocalEscape(vIncl + "/vltstd")
-     << " -I" << LocalEscape(LocalToForwardSlashes(oD))
-     << " " << LocalEscape(LocalToForwardSlashes(wm))
-     << " " << LocalEscape(vIncl + "/verilated.cpp");
-
-  if (LocalFileExists(LocalToForwardSlashes(vIncl + "/verilated_threads.cpp"))) {
-    cC << " " << LocalEscape(vIncl + "/verilated_threads.cpp");
-  }
-
-  WIN32_FIND_DATAA findData;
-  std::string searchPath = oD + "\\V" + e->topModule + "*.cpp";
-  HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
-  if (hFind != INVALID_HANDLE_VALUE) {
-    do {
-      if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-        cC << " " << LocalEscape(LocalToForwardSlashes(LocalJoinPath(oD, findData.cFileName)));
-      }
-    } while (FindNextFileA(hFind, &findData));
-    FindClose(hFind);
-  }
-
-  cC << " -o " << LocalEscape(LocalToForwardSlashes(outExe));
-
-  std::string compileCmd = cC.str();
-  if (!RunCommandCapture(compileCmd, &out, s, kLocalBuildTimeoutMs)) {
-    if (diag) {
-      *diag = "[C++ Compile step]\n";
-      *diag += out.empty() ? "Process execution failed.\nCommand: " + compileCmd : out;
-    }
+  plc_emulator::WslCommand command;
+  command.distribution =
+      plc_emulator::WslToolchain::ToWide(s.doctor.profile.distribution);
+  command.working_directory =
+      plc_emulator::WslToolchain::ToWide(GetWslBuildCacheDirectory(*e));
+  command.program = L"/usr/bin/verilator";
+  command.arguments = {L"--cc",
+                       L"--exe",
+                       L"--compiler",
+                       L"gcc",
+                       L"-Wno-fatal",
+                       L"-Wno-TIMESCALEMOD",
+                       L"--timing",
+                       L"--top-module",
+                       plc_emulator::WslToolchain::ToWide(e->topModule),
+                       L"--Mdir",
+                       L"obj",
+                       L"-CFLAGS",
+                       L"-std=c++20",
+                       L"-LDFLAGS",
+                       L"-static -pthread",
+                       L"-o",
+                       L"../rtl_worker.exe",
+                       L"-Isrc"};
+  if (!LocalWriteWslSources(*e, d, &command.arguments, diag))
     return false;
-  }
-
-  const std::string compilerDir = LocalGetDirectoryName(s.compilerPath);
-  if (!compilerDir.empty()) {
-    for (const auto& fileName : GetRtlWorkerRuntimeFileNames()) {
-      const std::string sourcePath = LocalJoinPath(compilerDir, fileName);
-      if (!LocalFileExists(sourcePath)) {
-        continue;
-      }
-      LocalWriteFileContent(LocalJoinPath(d, fileName),
-                            LocalReadFileContent(sourcePath));
-    }
-  }
-
-  return LocalFileExists(outExe);
+  command.arguments.push_back(L"worker.cpp");
+  const auto generated =
+      plc_emulator::WslToolchain::Run(command, kLocalBuildTimeoutMs);
+  if (diag)
+    *diag = generated.output + "\n" + generated.error;
+  if (!generated.Succeeded())
+    return false;
+  command.program = L"/usr/bin/make";
+  command.arguments = {
+      L"-C",
+      L"obj",
+      L"-f",
+      plc_emulator::WslToolchain::ToWide("V" + e->topModule + ".mk"),
+      L"-j",
+      std::to_wstring(s.doctor.profile.cpu_budget),
+      L"CXX=/usr/bin/x86_64-w64-mingw32-g++-posix",
+      L"LINK=/usr/bin/x86_64-w64-mingw32-g++-posix",
+      L"AR=/usr/bin/x86_64-w64-mingw32-ar"};
+  const auto built =
+      plc_emulator::WslToolchain::Run(command, kLocalBuildTimeoutMs);
+  if (diag)
+    *diag += "\n" + built.output + "\n" + built.error;
+  return built.Succeeded() && HasBuildArtifact(*e);
 #else
-  (void)e; (void)s; (void)diag;
+  (void)e;
+  (void)s;
+  (void)diag;
 #endif
   return false;
 }
 
-bool RtlProjectManager::RunVerilatorTestbench(RtlLibraryEntry* e, const RtlToolchainStatus& s, std::string* diag) const {
+bool RtlProjectManager::RunVerilatorTestbench(RtlLibraryEntry* e,
+                                              const RtlToolchainStatus& s,
+                                              std::string* diag) const {
 #ifdef _WIN32
   // ── 1. 캐시 디렉토리 준비 ──────────────────────────────────────
-  std::string d  = GetTestbenchCacheDirectory(*e);
+  std::string d = GetTestbenchCacheDirectory(*e);
   if (d.empty()) {
-    if (diag) *diag = "Failed to get testbench cache directory.";
+    if (diag)
+      *diag = "Failed to get testbench cache directory.";
     return false;
   }
   std::string sD = LocalJoinPath(d, "src");
@@ -1424,19 +1303,9 @@ bool RtlProjectManager::RunVerilatorTestbench(RtlLibraryEntry* e, const RtlToolc
   LocalEnsureDirRecursive(sD);
   LocalEnsureDirRecursive(oD);
 
-  // ── 2. 소스 파일 전체 기록 ────────────────────────────────────
-  for (const auto& f : e->sourceFiles) {
-    std::string dest = LocalJoinPath(sD, f.path);
-    // 하위 디렉토리 포함 경로 처리
-    size_t slash = dest.find_last_of("\\/");
-    if (slash != std::string::npos) LocalEnsureDirRecursive(dest.substr(0, slash));
-    LocalWriteFileContent(dest, f.content);
-  }
-
   // ── 3. C++ 시뮬레이션 드라이버 생성 ─────────────────────────
   std::string vcdAbsPath = LocalToForwardSlashes(LocalJoinPath(d, "dump.vcd"));
-  std::string tbMain     = LocalJoinPath(d, "tb_main.cpp");
-  std::string tbExe      = LocalJoinPath(d, "tb_sim.exe");
+  std::string tbMain = LocalJoinPath(d, "tb_main.cpp");
 
   std::ostringstream code;
   code << "#include \"V" << e->testbenchTopModule << ".h\"\n"
@@ -1451,7 +1320,7 @@ bool RtlProjectManager::RunVerilatorTestbench(RtlLibraryEntry* e, const RtlToolc
        << "  Verilated::traceEverOn(true);\n"
        << "  VerilatedVcdC vcd;\n"
        << "  top.trace(&vcd, 99);\n"
-       << "  vcd.open(\"" << vcdAbsPath << "\");\n"
+       << "  vcd.open(\"dump.vcd\");\n"
        // 최대 10M 스텝 (무한루프 방지)
        << "  const uint64_t kMaxSteps = 10000000ULL;\n"
        << "  while (!Verilated::gotFinish() && g_sim_time < kMaxSteps) {\n"
@@ -1463,105 +1332,89 @@ bool RtlProjectManager::RunVerilatorTestbench(RtlLibraryEntry* e, const RtlToolc
        << "  vcd.flush(); vcd.close();\n"
        << "  return Verilated::gotFinish() ? 0 : 2;\n"
        << "}\n";
-  LocalWriteFileContent(tbMain, code.str());
+  if (!LocalWriteFileContent(tbMain, code.str())) {
+    if (diag)
+      *diag = "Cannot write testbench driver.";
+    return false;
+  }
 
   // ── 4. Verilator: C++ 코드 생성 ───────────────────────────────
-  std::ostringstream vC;
-  vC << LocalEscape(s.verilatorPath)
-     << " --cc --exe --trace -Wno-fatal -Wno-TIMESCALEMOD --timing"
-     << " -I" << LocalEscape(LocalToForwardSlashes(LocalJoinPath(s.verilatorRoot, "include")))
-     << " --top-module " << LocalEscape(e->testbenchTopModule)
-     << " -Mdir " << LocalEscape(LocalToForwardSlashes(oD));
-  for (const auto& f : e->sourceFiles) {
-    vC << " " << LocalEscape(LocalToForwardSlashes(LocalJoinPath(sD, f.path)));
-  }
-  vC << " " << LocalEscape(LocalToForwardSlashes(tbMain));
-
-  std::string buildLog;
-  if (!RunCommandCapture(vC.str(), &buildLog, s, kLocalBuildTimeoutMs)) {
-    if (diag) *diag = "[Verilator step]\n" + (buildLog.empty()
-        ? "Process failed.\nCommand: " + vC.str() : buildLog);
-    e->testbenchBuildLog = buildLog;
+  plc_emulator::WslCommand command;
+  command.distribution =
+      plc_emulator::WslToolchain::ToWide(s.doctor.profile.distribution);
+  command.working_directory =
+      plc_emulator::WslToolchain::ToWide(GetWslTestbenchCacheDirectory(*e));
+  command.program = L"/usr/bin/verilator";
+  command.arguments = {
+      L"--cc",
+      L"--exe",
+      L"--build",
+      L"-j",
+      std::to_wstring(s.doctor.profile.cpu_budget),
+      L"-Wno-fatal",
+      L"-Wno-TIMESCALEMOD",
+      L"--timing",
+      L"--trace",
+      L"--top-module",
+      plc_emulator::WslToolchain::ToWide(e->testbenchTopModule),
+      L"--Mdir",
+      L"obj",
+      L"-CFLAGS",
+      L"-std=c++20",
+      L"-o",
+      L"../tb_sim",
+      L"-Isrc"};
+  if (!LocalWriteWslSources(*e, d, &command.arguments, diag))
+    return false;
+  command.arguments.push_back(L"tb_main.cpp");
+  const auto result =
+      plc_emulator::WslToolchain::Run(command, kLocalBuildTimeoutMs);
+  e->testbenchBuildLog = result.output + "\n" + result.error;
+  if (!result.Succeeded()) {
+    if (diag)
+      *diag = e->testbenchBuildLog;
     return false;
   }
-  e->testbenchBuildLog = buildLog;
-
-  // ── 5. g++: 수동 컴파일 ────────────────────────────────────────
-  std::string vIncl = LocalToForwardSlashes(LocalJoinPath(s.verilatorRoot, "include"));
-  std::ostringstream cC;
-  cC << LocalEscape(LocalToForwardSlashes(s.compilerPath))
-     << " -std=c++20 -fcoroutines -Os"
-     << " -I" << LocalEscape(vIncl)
-     << " -I" << LocalEscape(vIncl + "/vltstd")
-     << " -I" << LocalEscape(LocalToForwardSlashes(oD))
-     << " " << LocalEscape(LocalToForwardSlashes(tbMain))
-     << " " << LocalEscape(vIncl + "/verilated.cpp")
-     << " " << LocalEscape(vIncl + "/verilated_vcd_c.cpp");
-
-  if (LocalFileExists(LocalToForwardSlashes(vIncl + "/verilated_threads.cpp")))
-    cC << " " << LocalEscape(vIncl + "/verilated_threads.cpp");
-  if (LocalFileExists(LocalToForwardSlashes(vIncl + "/verilated_timing.cpp")))
-    cC << " " << LocalEscape(vIncl + "/verilated_timing.cpp");
-
-  // V{top}*.cpp 파일 추가
-  WIN32_FIND_DATAA fd;
-  std::string searchPat = oD + "\\V" + e->testbenchTopModule + "*.cpp";
-  HANDLE hFind = FindFirstFileA(searchPat.c_str(), &fd);
-  if (hFind != INVALID_HANDLE_VALUE) {
-    do {
-      if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        cC << " " << LocalEscape(LocalToForwardSlashes(LocalJoinPath(oD, fd.cFileName)));
-    } while (FindNextFileA(hFind, &fd));
-    FindClose(hFind);
-  }
-  cC << " -o " << LocalEscape(LocalToForwardSlashes(tbExe));
-
-  std::string compileLog;
-  if (!RunCommandCapture(cC.str(), &compileLog, s, kLocalBuildTimeoutMs)) {
-    e->testbenchBuildLog += "\n[C++ Compile]\n" + (compileLog.empty()
-        ? "Compile failed.\nCommand: " + cC.str() : compileLog);
-    if (diag) *diag = e->testbenchBuildLog;
-    return false;
-  }
-  e->testbenchBuildLog += "\n[C++ Compile]\n" + compileLog;
-
-  if (!LocalFileExists(tbExe)) {
-    if (diag) *diag = "Testbench executable not produced.";
-    return false;
-  }
-
-  // ── 6. 테스트벤치 실행 ────────────────────────────────────────
-  std::string runLog;
-  bool ran = RunCommandCapture(LocalEscape(LocalToForwardSlashes(tbExe)),
-                               &runLog, s, kLocalDefaultTimeoutMs);
+  command.program = plc_emulator::WslToolchain::ToWide(
+      GetWslTestbenchCacheDirectory(*e) + "/tb_sim");
+  command.arguments.clear();
+  const auto run_result =
+      plc_emulator::WslToolchain::Run(command, kLocalDefaultTimeoutMs);
+  const std::string runLog = run_result.output + "\n" + run_result.error;
   e->testbenchRunLog = runLog;
-
+  const bool ran = run_result.Succeeded();
   // ── 7. 합격/실패 판정 ─────────────────────────────────────────
   auto HasKeyword = [&](const std::string& kw) {
     return runLog.find(kw) != std::string::npos;
   };
-  bool hasFatal = HasKeyword("$fatal") || HasKeyword("%Fatal") ||
-                  HasKeyword("Aborting");
+  bool hasFatal =
+      HasKeyword("$fatal") || HasKeyword("%Fatal") || HasKeyword("Aborting");
   bool hasError = HasKeyword("$error") || HasKeyword("%Error") ||
                   HasKeyword("Assertion failed") ||
                   HasKeyword("assertion failed");
 
   if (hasFatal || hasError) {
-    if (diag) *diag = "Testbench reported errors. Check Testbench Run Log.";
+    if (diag)
+      *diag = "Testbench reported errors. Check Testbench Run Log.";
     return false;
   }
   if (!ran) {
-    if (diag) *diag = "Testbench timed out or crashed. Check Testbench Run Log.";
+    if (diag)
+      *diag = "Testbench timed out or crashed. Check Testbench Run Log.";
     return false;
   }
 
   // VCD 파일 기록
-  if (LocalFileExists(vcdAbsPath)) e->testbenchVcdPath = vcdAbsPath;
+  if (LocalFileExists(vcdAbsPath))
+    e->testbenchVcdPath = vcdAbsPath;
 
-  if (diag) *diag = "Testbench passed.";
+  if (diag)
+    *diag = "Testbench passed.";
   return true;
 #else
-  (void)e; (void)s; (void)diag;
+  (void)e;
+  (void)s;
+  (void)diag;
   return false;
 #endif
 }

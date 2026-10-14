@@ -82,3 +82,19 @@ __pycache__/
 # Backup files from migration
 *.old
 *.backup
+
+# Local packaging and investigation artifacts
+/tmp/
+/releases/
+/sdk_extracted/
+/.claude/
+*.pdb
+*.ilk
+/imgui.ini
+/PKGBUILD.txt
+/build_output.txt
+/compile_err.txt
+/err.txt
+/stderr.txt
+/stderr2.txt
+/test_lint.v

@@ -11,6 +11,8 @@ Read in [한국어](README_kr.md), [日本語](README_ja.md)
 
 [Project History](docs/Project_History_en.md) · [1.1.0 Patch Notes](PATCH_NOTES_1.1.0.md)
 
+[프로그램 사용법 가이드](docs/guides/program/README.md) · [산업기사 3번 실습 가이드](docs/guides/exam03/GUIDE.md)
+
 ## Why this project?
 
 PLC training is often constrained by hardware accessibility, time, and cost.  
@@ -59,7 +61,7 @@ This project aims to:
 - integrated Verilog RTL editor with syntax highlighting
 - RTL module management: create, rename, delete, and organize modules in the RTL library
 - analyze, build, and testbench workflows with dedicated log panels
-- RTL toolchain management: one-click setup, verification, and removal of verilator
+- WSL2 RTL Tool Doctor: distribution/CPU selection, diagnosis, tool installation, start/stop, WSL2 conversion and updates ([details](docs/RTL_WSL_TOOLCHAIN.md))
 - `.plccomp` component packages: export/import reusable RTL modules with optional Verilog source or runtime-only bundles
 - RTL runtime artifacts are bundled inside `.plcproj` project packages for cross-machine portability
 
@@ -74,7 +76,7 @@ This project aims to:
 
 - unified project package format (`.plcproj`) carrying wiring, ladder, and RTL data
 - `Ctrl+S` quick save in both wiring and programming modes
-- NSIS installer with optional RTL toolchain cleanup on uninstall
+- NSIS installer; shared WSL distributions and tools are retained on uninstall
 - backward-compatible with 1.0.x project files
 
 ### Localization and help
@@ -90,7 +92,7 @@ This project aims to:
 - C++20 compiler
 - OpenGL runtime
 - Git (for FetchContent dependency download)
-- *(optional)* PowerShell 7+ for RTL toolchain scripts on older Windows versions
+- *(for RTL)* Windows with WSL2, a Linux distribution, Verilator 5.x+, g++, make and MinGW-w64 POSIX (Windows worker EXE); tool installation supports Ubuntu/Debian
 
 ## Third-party libraries
 
@@ -152,7 +154,7 @@ src/                    # active implementation
   rtl/                  # RTL project/library/runtime management
   project/              # project file save/load, GX2 CSV
 resources/              # fonts, i18n lang files, assets
-tools/                  # RTL toolchain setup/verify/delete scripts
+tools/                  # legacy native RTL scripts (not used by WSL2 Tool Doctor)
 tests/                  # unit/integration tests
 legacy/                 # old MVP code (reference only, not built)
 ```
