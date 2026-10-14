@@ -1,4 +1,4 @@
-# PLC Simulator 2.0
+# PLC Simulator
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://isocpp.org/)
 [![CMake](https://img.shields.io/badge/CMake-3.20%2B-064F8C?logo=cmake)](https://cmake.org/)
