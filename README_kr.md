@@ -37,7 +37,7 @@ PLC 실습은 장비 접근성, 시간, 비용 제약이 큰 편입니다.
 ### 레더 프로그래밍 모드
 ![프로그래밍모드.png](docs_img/%ED%94%84%EB%A1%9C%EA%B7%B8%EB%9E%98%EB%B0%8D%EB%AA%A8%EB%93%9C.png)
 - GX Developer 스타일 레더 에디터
-- 명령어 지원: `LD`, `LDI`, `OUT`, `SET`, `RST`, `MOV`, `BKRST`
+- 명령어 지원: `Gxworks2` 에서 `FXCPU`로 지원하는 모든 명령어 호환
 - 블록 선택, 복사/붙여넣기, 드래그 기반 렁 순서 변경
 - `F9` 가로선 / `Shift+F9` 세로 연결로 직렬·병렬 회로 편집
 - OpenPLC 호환 LD 변환 및 컴파일 파이프라인
